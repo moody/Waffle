@@ -150,4 +150,20 @@ do
   assert(tostring(err):find("dup"))
 end
 
+-- Test: a keyed grandchild inside a declarative subtree handed to `AddRow`
+-- (not the root) is still found, mixing builder and declarative composition.
+do
+  local root = Mocks:CreateFrame()
+  local leaf = Mocks:CreateFrame()
+
+  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  builder:AddRow({
+    frame = Mocks:CreateFrame(),
+    direction = "ROW",
+    children = { { frame = leaf, key = "mixed" } }
+  })
+
+  assert(builder:GetChild("mixed").node.frame == leaf)
+end
+
 print("All assertions passed.")
