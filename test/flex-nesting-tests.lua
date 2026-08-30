@@ -27,7 +27,7 @@ do
         end
       },
     }
-  }):Build()
+  }):Layout()
 
   assert(child._test.width == 120 and child._test.height == 50)
   assert(received.frame == child)
@@ -55,7 +55,7 @@ do
         end
       },
     }
-  }):Build()
+  }):Layout()
 
   assert(received.width == 200 and received.height == 50) -- 300 - 100
 end
@@ -81,7 +81,7 @@ do
         end
       },
     }
-  }):Build()
+  }):Layout()
 
   assert(child._test.width == 200 and child._test.height == 40)
   assert(received.width == 200 and received.height == 40)
@@ -114,11 +114,11 @@ do
               { frame = leftChild, size = 150 },
               { frame = rightChild },
             }
-          }):Build()
+          }):Layout()
         end
       },
     }
-  }):Build()
+  }):Layout()
 
   -- middle got the remaining column space: full width (COLUMN's cross axis
   -- stretches), height = 300 - 50 = 250.
@@ -158,7 +158,7 @@ do
         }
       },
     }
-  }):Build()
+  }):Layout()
 
   -- middle got the remaining column space: full width (COLUMN's cross axis
   -- stretches), height = 300 - 50 = 250.
@@ -196,7 +196,7 @@ do
         }
       },
     }
-  }):Build()
+  }):Layout()
 
   -- Falls back to ROW: left/right sit side by side, not stacked.
   assert(left._test.point.offsetX == 0 and left._test.point.offsetY == 0)
@@ -227,7 +227,7 @@ do
         }
       },
     }
-  }):Build()
+  }):Layout()
 
   assert(a._test.point.offsetX == 5)  -- padding
   assert(b._test.point.offsetX == 65) -- 5 padding + 50 + 10 gap
@@ -254,7 +254,7 @@ do
         onLayout = function() onLayoutCalled = true end,
       },
     }
-  }):Build()
+  }):Layout()
 
   assert(onLayoutCalled)
   assert(ignoredChild._test.width == nil)

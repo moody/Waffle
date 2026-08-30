@@ -120,7 +120,7 @@ end
 -- =============================================================================
 
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
---- nothing runs until `Build()` is called on the root builder.
+--- nothing runs until `Layout()` is called on the root builder.
 --- @class WaffleFlexBuilder
 --- @field private node WaffleFlexOptions | WaffleFlexChild
 local FlexBuilder = {}
@@ -164,7 +164,7 @@ end
 --- Runs the layout for everything composed so far. Call only on the root
 --- builder, nested `AddRow`/`AddColumn` builders are laid out automatically
 --- as part of it.
-function FlexBuilder:Build()
+function FlexBuilder:Layout()
   flexLayout(self.node)
 end
 
@@ -173,8 +173,8 @@ end
 -- =============================================================================
 
 --- Starts composing a `Flex` container and returns a builder: call
---- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Build()` to run the
---- layout. For a fully declarative style, `options.children` may be given directly.
+--- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
+--- For a fully declarative style, `options.children` may be given directly.
 --- @param options WaffleFlexOptions
 --- @return WaffleFlexBuilder
 function Waffle:Flex(options)
