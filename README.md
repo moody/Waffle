@@ -123,12 +123,24 @@ root:AddChild({
 
 **Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, then call `Layout()` again on the same root builder to bring the frames in line. Removing children and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
 
+**Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root builder or from any other builder or handle in the tree, they all share the same lookup.
+
+```lua
+root:AddChild({ frame = content, key = "content" })
+
+-- from anywhere else with a reference into this tree:
+local contentHandle = root:GetChild("content")
+```
+
+Duplicate or invalid keys will throw an error. Only children added through `AddChild`/`AddRow`/`AddColumn` can be looked up this way (for now).
+
 ## API
 
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexContainerBuilder`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
 - **`Builder:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns a handle to it.
 - **`Builder:AddRow(child?)`** / **`Builder:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new builder scoped to it.
 - **`Builder:Layout()`** — Runs the layout for everything composed so far. Call only on the root builder, nested containers are laid out automatically as part of it. Safe to call again later.
+- **`Builder:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested builder/handle. Errors if no child was registered under `key`.
 
 The options (`WaffleFlexOptions`) passed to `Waffle:Flex()` accept:
 
@@ -143,6 +155,7 @@ A child (`WaffleFlexChild`), whether given via `options.children` or `AddChild`/
 
 - **`frame`** — An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 - **`frameFactory`** — Creates this child's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`.
+- **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly.
 - **`onLayout`** — Called with this child's frame and resolved width/height, once assigned.
 
