@@ -28,7 +28,7 @@ do
         end
       },
     }
-  })
+  }):Build()
 
   assert(child._test.width == 120 and child._test.height == 50)
   assert(received.frame == child)
@@ -56,13 +56,13 @@ do
         end
       },
     }
-  })
+  }):Build()
 
   assert(received.width == 200 and received.height == 50) -- 300 - 100
 end
 
 -- Test: in a COLUMN, `onLayout` receives (width, height) in that order too,
--- not (main, cross) — main is height here, so it must be swapped correctly.
+-- not (main, cross); main is height here, so it must be swapped correctly.
 do
   local parent = Mocks:CreateFrame()
   local child = Mocks:CreateFrame()
@@ -82,7 +82,7 @@ do
         end
       },
     }
-  })
+  }):Build()
 
   assert(child._test.width == 200 and child._test.height == 40)
   assert(received.width == 200 and received.height == 40)
@@ -116,11 +116,11 @@ do
               { frame = leftChild, size = 150 },
               { frame = rightChild },
             }
-          })
+          }):Build()
         end
       },
     }
-  })
+  }):Build()
 
   -- middle got the remaining column space: full width (COLUMN's cross axis
   -- stretches), height = 300 - 50 = 250.
@@ -161,7 +161,7 @@ do
         }
       },
     }
-  })
+  }):Build()
 
   -- middle got the remaining column space: full width (COLUMN's cross axis
   -- stretches), height = 300 - 50 = 250.
@@ -199,7 +199,7 @@ do
         }
       },
     }
-  })
+  }):Build()
 
   -- Falls back to ROW: left/right sit side by side, not stacked.
   assert(left._test.point.offsetX == 0 and left._test.point.offsetY == 0)
@@ -231,7 +231,7 @@ do
         }
       },
     }
-  })
+  }):Build()
 
   assert(a._test.point.offsetX == 5)  -- padding
   assert(b._test.point.offsetX == 65) -- 5 padding + 50 + 10 gap
@@ -258,7 +258,7 @@ do
         onLayout = function() onLayoutCalled = true end,
       },
     }
-  })
+  }):Build()
 
   assert(onLayoutCalled)
   assert(ignoredChild._test.width == nil)

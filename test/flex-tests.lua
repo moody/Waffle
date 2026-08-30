@@ -19,7 +19,7 @@ do
       { frame = b, size = 100 },
       { frame = c, size = 100 },
     }
-  })
+  }):Build()
 
   assert(a._test.width == 100 and a._test.height == 50)
   assert(b._test.width == 100 and b._test.height == 50)
@@ -47,7 +47,7 @@ do
       { frame = flex },
       { frame = fixed2, size = 50 },
     }
-  })
+  }):Build()
 
   assert(fixed1._test.width == 50)
   assert(flex._test.width == 200) -- 300 - 50 - 50
@@ -71,7 +71,7 @@ do
       { frame = b },
       { frame = c },
     }
-  })
+  }):Build()
 
   assert(a._test.width == 100 and b._test.width == 100 and c._test.width == 100)
   assert(a._test.point.offsetX == 0 and b._test.point.offsetX == 100 and c._test.point.offsetX == 200)
@@ -92,7 +92,7 @@ do
       { frame = a, size = 30 },
       { frame = b, size = 30 },
     }
-  })
+  }):Build()
 
   assert(a._test.width == 200 and a._test.height == 30)
   assert(b._test.width == 200 and b._test.height == 30)
@@ -117,7 +117,7 @@ do
       { frame = b, size = 100 },
       { frame = c, size = 100 },
     }
-  })
+  }):Build()
 
   assert(a._test.point.offsetX == 0)
   assert(b._test.point.offsetX == 110) -- 100 + gap
@@ -140,7 +140,7 @@ do
       { frame = a, size = 50 },
       { frame = b }, -- flex: (220 - 20 padding) - 50 = 150
     }
-  })
+  }):Build()
 
   assert(a._test.point.offsetX == 10 and a._test.point.offsetY == -10)
   assert(a._test.height == 40)        -- 60 - 10*2
@@ -151,7 +151,7 @@ end
 -- Test: an empty children list is a safe no-op, doesn't error.
 do
   local parent = Mocks:CreateFrame()
-  Waffle:Flex({ parent = parent, direction = "ROW", width = 100, height = 50, children = {} })
+  Waffle:Flex({ parent = parent, direction = "ROW", width = 100, height = 50, children = {} }):Build()
 end
 
 -- Test: fixed children that overflow the container don't produce a negative
@@ -169,7 +169,7 @@ do
       { frame = fixed, size = 150 }, -- already exceeds the container
       { frame = flex },
     }
-  })
+  }):Build()
 
   assert(flex._test.width == 0)
 end
@@ -186,7 +186,7 @@ do
     width = 300,
     height = 50,
     children = { { frame = child, size = 100 } }
-  })
+  }):Build()
 
   assert(parent._test.width == 300 and parent._test.height == 50)
 end
@@ -205,7 +205,7 @@ do
       { frame = a, size = 50 },
       { frame = b },
     }
-  })
+  }):Build()
 
   assert(a._test.point.offsetX == 0 and a._test.point.offsetY == 0)
   assert(b._test.point.offsetX == 50 and b._test.point.offsetY == 0)
