@@ -123,7 +123,7 @@ root:AddChild({
 
 **Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, then call `Layout()` again on the same root builder to bring the frames in line. Removing children and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
 
-**Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root builder or from any other builder or handle in the tree, they all share the same lookup.
+**Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root builder or from any other builder or handle in the tree, they all share the same lookup. Duplicate or invalid keys will throw an error.
 
 ```lua
 root:AddChild({ frame = content, key = "content" })
@@ -131,8 +131,6 @@ root:AddChild({ frame = content, key = "content" })
 -- from anywhere else with a reference into this tree:
 local contentHandle = root:GetChild("content")
 ```
-
-Duplicate or invalid keys will throw an error. Only children added through `AddChild`/`AddRow`/`AddColumn` can be looked up this way (for now).
 
 ## API
 
