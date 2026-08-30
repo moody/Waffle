@@ -25,12 +25,13 @@ local Waffle = Addon.Waffle
 
 --- A single child of a `Flex` container.
 --- @class WaffleFlexChild
---- @field frame WaffleFrame
+--- @field frame? WaffleFrame Omit to create a default frame via `frameFactory`.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omitted children split the remaining space evenly.
 --- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container.
 --- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field gap? integer Gap between children, once this becomes a nested container.
 --- @field padding? integer Padding around children, once this becomes a nested container.
+--- @field frameFactory? fun(): WaffleFrame Overrides the inherited `frameFactory` for this child and its own nested children.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion.
 
 --- @class WaffleFlexOptions
@@ -41,6 +42,7 @@ local Waffle = Addon.Waffle
 --- @field children? WaffleFlexChild[]
 --- @field gap? integer Space between consecutive children. Default `0`.
 --- @field padding? integer Space between the container's edge and its children, on all four sides. Default `0`.
+--- @field frameFactory? fun(): WaffleFrame Creates a default frame for any child that omits `frame`. Inherited by nested containers unless a child overrides it with its own `frameFactory`.
 
 -- =============================================================================
 -- Local Functions
@@ -79,11 +81,18 @@ local function flexLayout(options)
 
   local mainOffset = padding
   for _, child in ipairs(children) do
-    child.frame:ClearAllPoints()
-    child.frame:SetParent(options.parent)
+    local frameFactory = child.frameFactory or options.frameFactory
+    local frame = child.frame
+    if not frame then
+      assert(frameFactory, "Waffle: child has no frame and no frameFactory was provided")
+      frame = frameFactory()
+      child.frame = frame
+    end
+
+    frame:ClearAllPoints()
+    frame:SetParent(options.parent)
 
     local size = child.size or flexSize
-    local frame = child.frame
     local width, height
 
     if isRow then
@@ -107,6 +116,7 @@ local function flexLayout(options)
         direction = child.direction,
         gap = child.gap,
         padding = child.padding,
+        frameFactory = frameFactory,
         children = child.children,
       })
     end
