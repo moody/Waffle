@@ -7,24 +7,29 @@ do
   local parent = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  Waffle:Flex({ parent = parent, direction = "ROW", width = 200, height = 50 })
-      :AddChild({ frame = a, size = 50 })
-      :AddChild({ frame = b })
-      :Layout()
+  local builder = Waffle:Flex({ parent = parent, direction = "ROW", width = 200, height = 50 })
+  builder:AddChild({ frame = a, size = 50 })
+  builder:AddChild({ frame = b })
+  builder:Layout()
 
   assert(a._test.width == 50 and a._test.point.offsetX == 0)
   assert(b._test.width == 150 and b._test.point.offsetX == 50) -- 200 - 50
 end
 
--- Test: `AddChild` returns the same builder, so calls chain.
+-- Test: `AddChild` returns a handle to the child just added, not the same
+-- builder, a leaf handle can't add children of its own.
 do
   local parent = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
   local builder = Waffle:Flex({ parent = parent, direction = "ROW", width = 100, height = 50 })
-  local returned = builder:AddChild({ frame = a })
+  local handle = builder:AddChild({ frame = a })
 
-  assert(returned == builder)
+  assert(handle ~= builder)
+  --- @diagnostic disable-next-line: invisible
+  assert(handle.node.frame == a)
+  --- @diagnostic disable-next-line: undefined-field
+  assert(handle.AddChild == nil)
 end
 
 -- Test: children from `options.children` and children added via `AddChild`
@@ -33,13 +38,15 @@ do
   local parent = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  Waffle:Flex({
+  local builder = Waffle:Flex({
     parent = parent,
     direction = "ROW",
     width = 200,
     height = 50,
     children = { { frame = a, size = 50 } }
-  }):AddChild({ frame = b }):Layout()
+  })
+  builder:AddChild({ frame = b })
+  builder:Layout()
 
   assert(a._test.width == 50 and a._test.point.offsetX == 0)
   assert(b._test.width == 150 and b._test.point.offsetX == 50)
