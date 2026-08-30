@@ -23,36 +23,33 @@ local Waffle = Addon.Waffle
 
 --- @alias WaffleFlexDirection "ROW" | "COLUMN"
 
---- A single child of a `Flex` container. Providing `children` makes this
---- child itself a nested `Flex` container.
+--- A single child of a `Flex` container.
 --- @class WaffleFlexChild
 --- @field frame WaffleFrame
---- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omit to fill remaining space, shared evenly with every other child that also omits it.
---- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container, laid out within its own resolved width/height.
+--- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omitted children split the remaining space evenly.
+--- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container.
 --- @field direction? WaffleFlexDirection Default `ROW`.
---- @field gap? integer Passed through to the nested `Flex` call.
---- @field padding? integer Passed through to the nested `Flex` call.
---- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's own frame and its resolved width/height, right after they're assigned. Use this instead of `children` for anything beyond "just recurse".
+--- @field gap? integer Gap between children, once this becomes a nested container.
+--- @field padding? integer Padding around children, once this becomes a nested container.
+--- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion.
 
 --- @class WaffleFlexOptions
 --- @field parent WaffleFrame
 --- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field width integer The container's available width.
 --- @field height integer The container's available height.
---- @field children WaffleFlexChild[]
+--- @field children? WaffleFlexChild[]
 --- @field gap? integer Space between consecutive children. Default `0`.
 --- @field padding? integer Space between the container's edge and its children, on all four sides. Default `0`.
 
 -- =============================================================================
--- Waffle
+-- Local Functions
 -- =============================================================================
 
---- Positions `options.children` in a row or column within `options.parent`,
---- each child's `TOPLEFT` anchored to `options.parent`'s `TOPLEFT` with a
---- computed offset, never anchored to a sibling. Children stretch to fill
---- the cross axis (height for `ROW`, width for `COLUMN`).
+--- Positions `options.children` in a row or column within `options.parent`.
+--- Children stretch to fill the cross axis (height for `ROW`, width for `COLUMN`).
 --- @param options WaffleFlexOptions
-function Waffle:Flex(options)
+local function flexLayout(options)
   options.parent:SetWidth(options.width)
   options.parent:SetHeight(options.height)
 
@@ -103,7 +100,7 @@ function Waffle:Flex(options)
     if child.onLayout then
       child.onLayout(frame, width, height)
     elseif child.children then
-      Waffle:Flex({
+      flexLayout({
         parent = frame,
         width = width,
         height = height,
@@ -116,4 +113,70 @@ function Waffle:Flex(options)
 
     mainOffset = mainOffset + size + gap
   end
+end
+
+-- =============================================================================
+-- FlexBuilder
+-- =============================================================================
+
+--- Returned by `Waffle:Flex()`. Composes a container's children fluently;
+--- nothing runs until `Build()` is called on the root builder.
+--- @class WaffleFlexBuilder
+--- @field private node WaffleFlexOptions | WaffleFlexChild
+local FlexBuilder = {}
+FlexBuilder.__index = FlexBuilder
+
+--- @param node WaffleFlexOptions | WaffleFlexChild
+--- @return WaffleFlexBuilder
+local function newFlexBuilder(node)
+  node.children = node.children or {}
+  return setmetatable({ node = node }, FlexBuilder)
+end
+
+--- Appends a child as-is.
+--- @param child WaffleFlexChild
+--- @return WaffleFlexBuilder self
+function FlexBuilder:AddChild(child)
+  table.insert(self.node.children, child)
+  return self
+end
+
+--- Appends a new ROW container as a child, returning its builder for further composition.
+--- @param child? WaffleFlexChild
+--- @return WaffleFlexBuilder
+function FlexBuilder:AddRow(child)
+  child = child or {}
+  child.direction = "ROW"
+  table.insert(self.node.children, child)
+  return newFlexBuilder(child)
+end
+
+--- Appends a new COLUMN container as a child, returning its builder for further composition.
+--- @param child? WaffleFlexChild
+--- @return WaffleFlexBuilder
+function FlexBuilder:AddColumn(child)
+  child = child or {}
+  child.direction = "COLUMN"
+  table.insert(self.node.children, child)
+  return newFlexBuilder(child)
+end
+
+--- Runs the layout for everything composed so far. Call only on the root
+--- builder, nested `AddRow`/`AddColumn` builders are laid out automatically
+--- as part of it.
+function FlexBuilder:Build()
+  flexLayout(self.node)
+end
+
+-- =============================================================================
+-- Waffle
+-- =============================================================================
+
+--- Starts composing a `Flex` container and returns a builder: call
+--- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Build()` to run the
+--- layout. For a fully declarative style, `options.children` may be given directly.
+--- @param options WaffleFlexOptions
+--- @return WaffleFlexBuilder
+function Waffle:Flex(options)
+  return newFlexBuilder(options)
 end
