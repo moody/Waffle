@@ -1,4 +1,6 @@
-# Waffle
+# Waffle 🧇
+
+**W**oW **A**ddon **F**lexible **F**rame **L**ayout **E**ngine
 
 Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS Flexbox](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_flexible_box_layout/Basic_concepts_of_flexbox).
 
