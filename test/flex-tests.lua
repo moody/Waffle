@@ -174,4 +174,42 @@ do
   assert(flex._test.width == 0)
 end
 
+-- Test: the container itself (`options.parent`) is sized to the given
+-- width/height, not just its children.
+do
+  local parent = Mocks:CreateFrame()
+  local child = Mocks:CreateFrame()
+
+  Waffle:Flex({
+    parent = parent,
+    direction = "ROW",
+    width = 300,
+    height = 50,
+    children = { { frame = child, size = 100 } }
+  })
+
+  assert(parent._test.width == 300 and parent._test.height == 50)
+end
+
+-- Test: omitting `direction` entirely at the top level defaults to ROW,
+-- same as an explicit `direction = "ROW"`.
+do
+  local parent = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  Waffle:Flex({
+    parent = parent,
+    width = 200,
+    height = 50,
+    children = {
+      { frame = a, size = 50 },
+      { frame = b },
+    }
+  })
+
+  assert(a._test.point.offsetX == 0 and a._test.point.offsetY == 0)
+  assert(b._test.point.offsetX == 50 and b._test.point.offsetY == 0)
+  assert(a._test.height == 50 and b._test.height == 50) -- cross axis stretches
+end
+
 print("All assertions passed.")
