@@ -1,5 +1,5 @@
 -- =============================================================================
--- Waffle: 0.1.0 - https://github.com/moody/Waffle
+-- Waffle: 0.2.0 - https://github.com/moody/Waffle
 -- =============================================================================
 
 local _, Addon = ...
@@ -25,13 +25,13 @@ local Waffle = Addon.Waffle
 
 --- A single child of a `Flex` container.
 --- @class WaffleFlexChild
---- @field frame? WaffleFrame Omit to create a default frame via `frameFactory`.
+--- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
+--- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this child's own frame, once. Cannot be given together with `frame`.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omitted children split the remaining space evenly.
 --- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container.
 --- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field gap? integer Gap between children, once this becomes a nested container.
 --- @field padding? integer Padding around children, once this becomes a nested container.
---- @field frameFactory? fun(): WaffleFrame Overrides the inherited `frameFactory` for this child and its own nested children.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion.
 
 --- @class WaffleFlexOptions
@@ -42,7 +42,7 @@ local Waffle = Addon.Waffle
 --- @field children? WaffleFlexChild[]
 --- @field gap? integer Space between consecutive children. Default `0`.
 --- @field padding? integer Space between the container's edge and its children, on all four sides. Default `0`.
---- @field frameFactory? fun(): WaffleFrame Creates a default frame for any child that omits `frame`. Inherited by nested containers unless a child overrides it with its own `frameFactory`.
+--- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`.
 
 -- =============================================================================
 -- Local Functions
@@ -81,12 +81,16 @@ local function flexLayout(options)
 
   local mainOffset = padding
   for _, child in ipairs(children) do
-    local frameFactory = child.frameFactory or options.frameFactory
+    assert(not (child.frame and child.frameFactory),
+      "Waffle: child cannot have both `frame` and `frameFactory`")
+
     local frame = child.frame
     if not frame then
-      assert(frameFactory, "Waffle: child has no frame and no frameFactory was provided")
-      frame = frameFactory()
+      local factory = child.frameFactory or options.defaultFrameFactory
+      assert(factory, "Waffle: child has no `frame` and no `frameFactory`/`defaultFrameFactory` was provided")
+      frame = factory(options.parent)
       child.frame = frame
+      child.frameFactory = nil
     end
 
     frame:ClearAllPoints()
@@ -116,7 +120,7 @@ local function flexLayout(options)
         direction = child.direction,
         gap = child.gap,
         padding = child.padding,
-        frameFactory = frameFactory,
+        defaultFrameFactory = options.defaultFrameFactory,
         children = child.children,
       })
     end
