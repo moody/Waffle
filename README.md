@@ -126,7 +126,7 @@ root:AddChild({
 ## API
 
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexBuilder`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
-- **`Builder:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns the same builder.
+- **`Builder:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns a handle to it.
 - **`Builder:AddRow(child?)`** / **`Builder:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new builder scoped to it.
 - **`Builder:Layout()`** — Runs the layout for everything composed so far. Call only on the root builder, nested containers are laid out automatically as part of it. Safe to call again later.
 
