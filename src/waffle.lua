@@ -245,11 +245,33 @@ end
 -- Waffle
 -- =============================================================================
 
+--- Recursively scans a declarative subtree for `key`-bearing children and
+--- registers the right handle for each into `root.keyed`, so `GetChild`
+--- finds them too, not just ones added through `AddChild`/`AddRow`/`AddColumn`.
+--- @param children WaffleFlexChild[]
+--- @param root WaffleFlexContainerBuilder
+local function registerDeclarativeKeys(children, root)
+  for _, child in ipairs(children) do
+    if child.key then
+      if child.children then
+        newFlexContainerBuilder(child, root)
+      else
+        newFlexLeafHandle(child, root)
+      end
+    end
+    if child.children then
+      registerDeclarativeKeys(child.children, root)
+    end
+  end
+end
+
 --- Starts composing a `Flex` container and returns a builder: call
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
 --- For a fully declarative style, `options.children` may be given directly.
 --- @param options WaffleFlexOptions
 --- @return WaffleFlexContainerBuilder
 function Waffle:Flex(options)
-  return newFlexContainerBuilder(options)
+  local root = newFlexContainerBuilder(options)
+  registerDeclarativeKeys(root.node.children, root)
+  return root
 end
