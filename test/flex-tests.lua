@@ -2,9 +2,8 @@
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: three fixed-size children in a ROW, positioned left to right with
--- no gap/padding, each anchored to the parent's TOPLEFT directly (not to
--- each other), each stretched to the container's full height.
+-- Test: fixed ROW children anchor to the parent directly, not to each
+-- other, and stretch to fill the container's height.
 do
   local parent = Mocks:CreateFrame()
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
@@ -154,8 +153,8 @@ do
   Waffle:Flex({ parent = parent, direction = "ROW", width = 100, height = 50, children = {} }):Build()
 end
 
--- Test: fixed children that overflow the container don't produce a negative
--- flex size, it clamps to zero instead of going negative.
+-- Test: fixed children that overflow the container clamp the flex size to
+-- zero instead of going negative.
 do
   local parent = Mocks:CreateFrame()
   local fixed, flex = Mocks:CreateFrame(), Mocks:CreateFrame()
@@ -191,8 +190,7 @@ do
   assert(parent._test.width == 300 and parent._test.height == 50)
 end
 
--- Test: omitting `direction` entirely at the top level defaults to ROW,
--- same as an explicit `direction = "ROW"`.
+-- Test: omitting `direction` defaults to ROW, same as `direction = "ROW"`.
 do
   local parent = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()

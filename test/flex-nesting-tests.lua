@@ -2,9 +2,8 @@
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `onLayout` receives its own frame plus the exact resolved
--- width/height for a fixed-size ROW child, after SetWidth/SetHeight/SetPoint
--- have already run.
+-- Test: `onLayout` receives its own frame plus the resolved width/height
+-- for a fixed ROW child, after sizing/positioning has already run.
 do
   local parent = Mocks:CreateFrame()
   local child = Mocks:CreateFrame()
@@ -88,10 +87,9 @@ do
   assert(received.width == 200 and received.height == 40)
 end
 
--- Test: a real two-level nested cascade via `onLayout`. The grandchildren
--- end up positioned relative to the middle frame, not the root, and sized
--- from what the middle frame actually resolved to, not the root's own
--- dimensions.
+-- Test: two-level cascade via `onLayout`. Grandchildren position relative
+-- to the middle frame, not the root, sized from the middle's resolved
+-- size, not the root's.
 do
   local root = Mocks:CreateFrame()
   local middle = Mocks:CreateFrame()
@@ -137,9 +135,8 @@ do
   assert(rightChild._test.point.offsetX == 150)
 end
 
--- Test: `children` sugar recurses automatically, no `onLayout` needed for
--- the plain "this child is itself a nested container" case.
--- Same shape as the `onLayout` cascade test above, but declarative.
+-- Test: `children` sugar recurses automatically, no `onLayout` needed.
+-- Same shape as the cascade test above, but declarative.
 do
   local root = Mocks:CreateFrame()
   local middle = Mocks:CreateFrame()
@@ -207,8 +204,7 @@ do
   assert(left._test.height == 100 and right._test.height == 100) -- cross axis stretches
 end
 
--- Test: `children` sugar passes `gap`/`padding` through to the
--- nested call correctly.
+-- Test: `children` sugar applies `gap`/`padding` to the nested container correctly.
 do
   local root = Mocks:CreateFrame()
   local middle = Mocks:CreateFrame()
@@ -238,7 +234,7 @@ do
 end
 
 -- Test: if both `onLayout` and `children` are given, `onLayout` wins and
--- `children` is ignored entirely.
+-- `children` is ignored.
 do
   local root = Mocks:CreateFrame()
   local middle = Mocks:CreateFrame()
