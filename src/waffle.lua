@@ -130,72 +130,72 @@ local function flexLayout(options)
 end
 
 -- =============================================================================
--- FlexHandle
+-- FlexLeafHandle
 -- =============================================================================
 
 --- Returned by `AddChild`. A handle to a single leaf child; can't have
 --- children of its own.
---- @class WaffleFlexHandle
+--- @class WaffleFlexLeafHandle
 --- @field private node WaffleFlexChild
-local FlexHandle = {}
-FlexHandle.__index = FlexHandle
+local FlexLeafHandle = {}
+FlexLeafHandle.__index = FlexLeafHandle
 
 --- @param node WaffleFlexChild
---- @return WaffleFlexHandle
-local function newFlexHandle(node)
-  return setmetatable({ node = node }, FlexHandle)
+--- @return WaffleFlexLeafHandle
+local function newFlexLeafHandle(node)
+  return setmetatable({ node = node }, FlexLeafHandle)
 end
 
 -- =============================================================================
--- FlexBuilder
+-- FlexContainerBuilder
 -- =============================================================================
 
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
 --- nothing runs until `Layout()` is called on the root builder.
---- @class WaffleFlexBuilder
+--- @class WaffleFlexContainerBuilder
 --- @field private node WaffleFlexOptions | WaffleFlexChild
-local FlexBuilder = {}
-FlexBuilder.__index = FlexBuilder
+local FlexContainerBuilder = {}
+FlexContainerBuilder.__index = FlexContainerBuilder
 
 --- @param node WaffleFlexOptions | WaffleFlexChild
---- @return WaffleFlexBuilder
-local function newFlexBuilder(node)
+--- @return WaffleFlexContainerBuilder
+local function newFlexContainerBuilder(node)
   node.children = node.children or {}
-  return setmetatable({ node = node }, FlexBuilder)
+  return setmetatable({ node = node }, FlexContainerBuilder)
 end
 
 --- Appends a child as-is, returning a handle to it.
 --- @param child WaffleFlexChild
---- @return WaffleFlexHandle
-function FlexBuilder:AddChild(child)
+--- @return WaffleFlexLeafHandle
+function FlexContainerBuilder:AddChild(child)
   table.insert(self.node.children, child)
-  return newFlexHandle(child)
+  return newFlexLeafHandle(child)
 end
 
 --- Appends a new ROW container as a child, returning its builder for further composition.
 --- @param child? WaffleFlexChild
---- @return WaffleFlexBuilder
-function FlexBuilder:AddRow(child)
+--- @return WaffleFlexContainerBuilder
+function FlexContainerBuilder:AddRow(child)
   child = child or {}
   child.direction = "ROW"
   table.insert(self.node.children, child)
-  return newFlexBuilder(child)
+  return newFlexContainerBuilder(child)
 end
 
 --- Appends a new COLUMN container as a child, returning its builder for further composition.
 --- @param child? WaffleFlexChild
---- @return WaffleFlexBuilder
-function FlexBuilder:AddColumn(child)
+--- @return WaffleFlexContainerBuilder
+function FlexContainerBuilder:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
   table.insert(self.node.children, child)
-  return newFlexBuilder(child)
+  return newFlexContainerBuilder(child)
 end
 
 --- Runs the layout for everything composed so far. Call only on the root
 --- builder, nested `AddRow`/`AddColumn` builders are laid out automatically
 --- as part of it.
-function FlexBuilder:Layout()
+function FlexContainerBuilder:Layout()
   flexLayout(self.node)
 end
 
@@ -207,7 +207,7 @@ end
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
 --- For a fully declarative style, `options.children` may be given directly.
 --- @param options WaffleFlexOptions
---- @return WaffleFlexBuilder
+--- @return WaffleFlexContainerBuilder
 function Waffle:Flex(options)
-  return newFlexBuilder(options)
+  return newFlexContainerBuilder(options)
 end
