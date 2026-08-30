@@ -76,7 +76,7 @@ body:AddChild({ frame = content })
 root:Layout()
 ```
 
-**Frame factory.** Omit `frame` on a child and Waffle creates one for it via `frameFactory`, inherited down the whole tree unless a child overrides it. Handy for wrapper containers that don't need to be anything but a positioning box.
+**Frame factory.** Give the root a `defaultFrameFactory` and any child that omits both `frame` and its own `frameFactory` gets one automatically, reaching every level of nesting. Handy for wrapper containers that don't need to be anything but a positioning box. It receives the frame's resolved parent as an argument.
 
 ```lua
 local root = Waffle:Flex({
@@ -84,15 +84,28 @@ local root = Waffle:Flex({
   width = 400,
   height = 300,
   direction = "COLUMN",
-  frameFactory = function() return CreateFrame("Frame") end
+  defaultFrameFactory = function(parent) return CreateFrame("Frame", nil, parent) end
 })
 root:AddChild({ frame = header, size = 40 })
 
-local body = root:AddRow() -- no frame given, frameFactory makes one
+local body = root:AddRow() -- no frame given, defaultFrameFactory makes one
 body:AddChild({ frame = sidebar, size = 100 })
 body:AddChild({ frame = content })
 
 root:Layout()
+```
+
+A child can also provide its own `frameFactory` instead of `frame`, for building content inline. Scoped to that child only, its own nested children still fall back to `defaultFrameFactory`. Here, `parent` matters for `$parent` name substitution: `CreateFrame` resolves `$parent` into the parent's actual name at creation time, which only works if the real parent is passed in immediately rather than reparented later:
+
+```lua
+root:AddChild({
+  frameFactory = function(parent)
+    local card = CreateFrame("Frame", "$parent_Card", parent)
+    card.text = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    card.text:SetText("Hello")
+    return card
+  end
+})
 ```
 
 **Reacting to resolved size.** `onLayout` fires with a child's own frame and its resolved width/height, right after they're assigned. Use it instead of `children` for anything beyond "just recurse."
@@ -124,11 +137,12 @@ The options (`WaffleFlexOptions`) passed to `Waffle:Flex()` accept:
 - **`children`** — Can be given directly for a fully declarative style, instead of `AddChild`/`AddRow`/`AddColumn`.
 - **`direction`** — `"ROW"` or `"COLUMN"`. Defaults to `"ROW"`.
 - **`gap`** / **`padding`** — Space between/around children.
-- **`frameFactory`** — Creates a default frame for any child that omits `frame`.
+- **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Reaches every level, receives the resolved parent as an argument.
 
-A child (`WaffleFlexChild`), whether given via `options.children` or `AddChild`/`AddRow`/`AddColumn`, accepts the same `direction`, `gap`, `padding`, and `frameFactory` as above (they apply to the nested container this child becomes), plus:
+A child (`WaffleFlexChild`), whether given via `options.children` or `AddChild`/`AddRow`/`AddColumn`, accepts the same `direction`, `gap`, and `padding` as above (they apply to the nested container this child becomes), plus:
 
-- **`frame`** — The frame to position. Omit to create one via `frameFactory`.
+- **`frame`** — An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
+- **`frameFactory`** — Creates this child's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly.
 - **`onLayout`** — Called with this child's frame and resolved width/height, once assigned.
 
