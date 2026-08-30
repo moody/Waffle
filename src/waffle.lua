@@ -29,14 +29,14 @@ local Waffle = Addon.Waffle
 --- @field frame WaffleFrame
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omit to fill remaining space, shared evenly with every other child that also omits it.
 --- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container, laid out within its own resolved width/height.
---- @field direction? WaffleFlexDirection
+--- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field gap? integer Passed through to the nested `Flex` call.
 --- @field padding? integer Passed through to the nested `Flex` call.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's own frame and its resolved width/height, right after they're assigned. Use this instead of `children` for anything beyond "just recurse".
 
 --- @class WaffleFlexOptions
 --- @field parent WaffleFrame
---- @field direction WaffleFlexDirection
+--- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field width integer The container's available width.
 --- @field height integer The container's available height.
 --- @field children WaffleFlexChild[]
@@ -59,7 +59,7 @@ function Waffle:Flex(options)
   local children = options.children
   local gap = options.gap or 0
   local padding = options.padding or 0
-  local isRow = options.direction == "ROW"
+  local isRow = (options.direction or "ROW"):upper() == "ROW"
 
   local mainSize = (isRow and options.width or options.height) - (padding * 2)
   local crossSize = (isRow and options.height or options.width) - (padding * 2)
