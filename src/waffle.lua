@@ -130,6 +130,23 @@ local function flexLayout(options)
 end
 
 -- =============================================================================
+-- FlexHandle
+-- =============================================================================
+
+--- Returned by `AddChild`. A handle to a single leaf child; can't have
+--- children of its own.
+--- @class WaffleFlexHandle
+--- @field private node WaffleFlexChild
+local FlexHandle = {}
+FlexHandle.__index = FlexHandle
+
+--- @param node WaffleFlexChild
+--- @return WaffleFlexHandle
+local function newFlexHandle(node)
+  return setmetatable({ node = node }, FlexHandle)
+end
+
+-- =============================================================================
 -- FlexBuilder
 -- =============================================================================
 
@@ -147,12 +164,12 @@ local function newFlexBuilder(node)
   return setmetatable({ node = node }, FlexBuilder)
 end
 
---- Appends a child as-is.
+--- Appends a child as-is, returning a handle to it.
 --- @param child WaffleFlexChild
---- @return WaffleFlexBuilder self
+--- @return WaffleFlexHandle
 function FlexBuilder:AddChild(child)
   table.insert(self.node.children, child)
-  return self
+  return newFlexHandle(child)
 end
 
 --- Appends a new ROW container as a child, returning its builder for further composition.
