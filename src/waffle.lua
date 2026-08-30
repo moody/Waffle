@@ -178,6 +178,8 @@ end
 local FlexContainerBuilder = {}
 FlexContainerBuilder.__index = FlexContainerBuilder
 
+--- Constructs a container builder for `node`, and recursively creates
+--- builders/handles for its children as necessary.
 --- @param node WaffleFlexOptions | WaffleFlexChild
 --- @param root? WaffleFlexContainerBuilder Omit for the root itself.
 --- @return WaffleFlexContainerBuilder
@@ -191,6 +193,13 @@ local function newFlexContainerBuilder(node, root)
   if node.key then
     assert(not builder.root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
     builder.root.keyed[node.key] = builder
+  end
+  for _, child in ipairs(node.children) do
+    if child.children then
+      newFlexContainerBuilder(child, builder.root)
+    else
+      newFlexLeafHandle(child, builder.root)
+    end
   end
   return builder
 end
@@ -245,33 +254,11 @@ end
 -- Waffle
 -- =============================================================================
 
---- Recursively scans a declarative subtree for `key`-bearing children and
---- registers the right handle for each into `root.keyed`, so `GetChild`
---- finds them too, not just ones added through `AddChild`/`AddRow`/`AddColumn`.
---- @param children WaffleFlexChild[]
---- @param root WaffleFlexContainerBuilder
-local function registerDeclarativeKeys(children, root)
-  for _, child in ipairs(children) do
-    if child.key then
-      if child.children then
-        newFlexContainerBuilder(child, root)
-      else
-        newFlexLeafHandle(child, root)
-      end
-    end
-    if child.children then
-      registerDeclarativeKeys(child.children, root)
-    end
-  end
-end
-
 --- Starts composing a `Flex` container and returns a builder: call
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
 --- For a fully declarative style, `options.children` may be given directly.
 --- @param options WaffleFlexOptions
 --- @return WaffleFlexContainerBuilder
 function Waffle:Flex(options)
-  local root = newFlexContainerBuilder(options)
-  registerDeclarativeKeys(root.node.children, root)
-  return root
+  return newFlexContainerBuilder(options)
 end
