@@ -27,7 +27,7 @@ local Waffle = Addon.Waffle
 --- @class WaffleFlexChild
 --- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this child's own frame, once. Cannot be given together with `frame`.
---- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key silently overwrites the previous registration.
+--- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omitted children split the remaining space evenly.
 --- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container.
 --- @field direction? WaffleFlexDirection Default `ROW`.
@@ -148,6 +148,7 @@ FlexLeafHandle.__index = FlexLeafHandle
 local function newFlexLeafHandle(node, root)
   local handle = setmetatable({ node = node, root = root }, FlexLeafHandle)
   if node.key then
+    assert(not root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
     root.keyed[node.key] = handle
   end
   return handle
@@ -188,6 +189,7 @@ local function newFlexContainerBuilder(node, root)
     builder.keyed = {}
   end
   if node.key then
+    assert(not builder.root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
     builder.root.keyed[node.key] = builder
   end
   return builder
