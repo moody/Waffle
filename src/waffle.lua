@@ -27,6 +27,7 @@ local Waffle = Addon.Waffle
 --- @class WaffleFlexChild
 --- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this child's own frame, once. Cannot be given together with `frame`.
+--- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key silently overwrites the previous registration.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omitted children split the remaining space evenly.
 --- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container.
 --- @field direction? WaffleFlexDirection Default `ROW`.
@@ -136,14 +137,31 @@ end
 --- Returned by `AddChild`. A handle to a single leaf child; can't have
 --- children of its own.
 --- @class WaffleFlexLeafHandle
---- @field private node WaffleFlexChild
+--- @field package node WaffleFlexChild
+--- @field package root WaffleFlexContainerBuilder
 local FlexLeafHandle = {}
 FlexLeafHandle.__index = FlexLeafHandle
 
 --- @param node WaffleFlexChild
+--- @param root WaffleFlexContainerBuilder
 --- @return WaffleFlexLeafHandle
-local function newFlexLeafHandle(node)
-  return setmetatable({ node = node }, FlexLeafHandle)
+local function newFlexLeafHandle(node, root)
+  local handle = setmetatable({ node = node, root = root }, FlexLeafHandle)
+  if node.key then
+    root.keyed[node.key] = handle
+  end
+  return handle
+end
+
+--- Looks up a child anywhere in the tree by the `key` it was given when
+--- added. Works from any builder or handle in the tree. Errors if no
+--- child was registered under `key`.
+--- @param key string
+--- @return WaffleFlexContainerBuilder | WaffleFlexLeafHandle
+function FlexLeafHandle:GetChild(key)
+  local found = self.root.keyed[key]
+  assert(found, "Waffle: no child registered under key '" .. key .. "'")
+  return found
 end
 
 -- =============================================================================
@@ -153,15 +171,37 @@ end
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
 --- nothing runs until `Layout()` is called on the root builder.
 --- @class WaffleFlexContainerBuilder
---- @field private node WaffleFlexOptions | WaffleFlexChild
+--- @field package node WaffleFlexOptions | WaffleFlexChild
+--- @field package root WaffleFlexContainerBuilder
+--- @field package keyed table<string, WaffleFlexContainerBuilder | WaffleFlexLeafHandle>
 local FlexContainerBuilder = {}
 FlexContainerBuilder.__index = FlexContainerBuilder
 
 --- @param node WaffleFlexOptions | WaffleFlexChild
+--- @param root? WaffleFlexContainerBuilder Omit for the root itself.
 --- @return WaffleFlexContainerBuilder
-local function newFlexContainerBuilder(node)
+local function newFlexContainerBuilder(node, root)
   node.children = node.children or {}
-  return setmetatable({ node = node }, FlexContainerBuilder)
+  local builder = setmetatable({ node = node }, FlexContainerBuilder)
+  builder.root = root or builder
+  if not root then
+    builder.keyed = {}
+  end
+  if node.key then
+    builder.root.keyed[node.key] = builder
+  end
+  return builder
+end
+
+--- Looks up a child anywhere in the tree by the `key` it was given when
+--- added. Works from any builder or handle in the tree. Errors if no
+--- child was registered under `key`.
+--- @param key string
+--- @return WaffleFlexContainerBuilder | WaffleFlexLeafHandle
+function FlexContainerBuilder:GetChild(key)
+  local found = self.root.keyed[key]
+  assert(found, "Waffle: no child registered under key '" .. key .. "'")
+  return found
 end
 
 --- Appends a child as-is, returning a handle to it.
@@ -169,7 +209,7 @@ end
 --- @return WaffleFlexLeafHandle
 function FlexContainerBuilder:AddChild(child)
   table.insert(self.node.children, child)
-  return newFlexLeafHandle(child)
+  return newFlexLeafHandle(child, self.root)
 end
 
 --- Appends a new ROW container as a child, returning its builder for further composition.
@@ -179,7 +219,7 @@ function FlexContainerBuilder:AddRow(child)
   child = child or {}
   child.direction = "ROW"
   table.insert(self.node.children, child)
-  return newFlexContainerBuilder(child)
+  return newFlexContainerBuilder(child, self.root)
 end
 
 --- Appends a new COLUMN container as a child, returning its builder for further composition.
@@ -189,7 +229,7 @@ function FlexContainerBuilder:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
   table.insert(self.node.children, child)
-  return newFlexContainerBuilder(child)
+  return newFlexContainerBuilder(child, self.root)
 end
 
 --- Runs the layout for everything composed so far. Call only on the root
