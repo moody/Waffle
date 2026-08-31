@@ -121,7 +121,7 @@ root:AddChild({
 
 `onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once.
 
-**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, then call `Layout()` again on the same root builder to bring the frames in line. Removing children and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
+**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, then call `Layout()` again on the same root builder to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Removing children and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
 
 **Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root builder or from any other builder or handle in the tree, they all share the same lookup. Duplicate or invalid keys will throw an error.
 
@@ -137,7 +137,7 @@ local contentHandle = root:GetChild("content")
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexContainerBuilder`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
 - **`Builder:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns a handle to it.
 - **`Builder:AddRow(child?)`** / **`Builder:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new builder scoped to it.
-- **`Builder:Layout()`** — Runs the layout for everything composed so far. Call only on the root builder, nested containers are laid out automatically as part of it. Safe to call again later.
+- **`Builder:Layout()`** — Runs the layout for everything composed so far. Call only on the root builder, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
 - **`Builder:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested builder/handle. Errors if no child was registered under `key`.
 
 The options (`WaffleFlexOptions`) passed to `Waffle:Flex()` accept:
