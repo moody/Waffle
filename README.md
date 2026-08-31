@@ -158,6 +158,18 @@ root:SetGap(20) -- more space between the root's own children
 root:Layout()
 ```
 
+**Reordering a child.** `order` controls visual position among siblings, independent of the order they were declared or added in. Defaults to `0`; siblings with equal `order` keep their declaration order. Works on any container or leaf.
+
+```lua
+local sidebarLeaf = root:AddChild({ frame = sidebar, size = 100 }) -- added first
+root:AddChild({ frame = content })
+
+sidebarLeaf:SetOrder(1) -- moves after content, despite being added first
+root:Layout()
+```
+
+`order` can also be given up front, declaratively, instead of calling `SetOrder()` after the fact.
+
 ## API
 
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexComponentContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
@@ -170,6 +182,7 @@ root:Layout()
 - **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its own parent. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
 - **`Container:SetGap(gap?)`** — Sets the space between this container's own children. Container-only. No-ops if already that gap.
 - **`Container:SetPadding(padding?)`** — Sets the space between this container's edge and its children, on all four sides. Container-only. No-ops if already that padding.
+- **`Container:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that order.
 
 The options (`WaffleFlexNodeParent`) passed to `Waffle:Flex()` accept:
 
@@ -186,6 +199,7 @@ A child (`WaffleFlexNodeChild`), whether given via `options.children` or `AddChi
 - **`frameFactory`** — Creates this child's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`.
 - **`hidden`** — Excludes this child from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
+- **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. Can also be toggled after the fact with `SetOrder()`.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly. Can also be toggled after the fact with `SetSize()`.
 - **`onLayout`** — Called with this child's frame and resolved width/height, once assigned.
 
