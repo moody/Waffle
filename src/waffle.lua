@@ -34,6 +34,7 @@ local Waffle = Addon.Waffle
 --- @field children? WaffleFlexNodeChild[] Children positioned within this node, in a row or column depending on `direction`.
 --- @field hidden? boolean Excludes this node from the layout flow entirely, its siblings reflow to fill the space. Default `false`. Set directly or via `Hide()`/`Show()`. No effect on the tree's actual root, nothing lays it out.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its own parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
+--- @field order? integer Visual position among siblings, independent of declaration order. Default `0`. Ties broken by declaration order. Set directly or via `SetOrder()`. No effect on the tree's actual root, nothing orders it among siblings.
 
 --- A single child of a `Flex` container.
 --- @class WaffleFlexNodeChild : WaffleFlexNode
@@ -49,7 +50,74 @@ local Waffle = Addon.Waffle
 --- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`.
 
 -- =============================================================================
--- Local Functions
+-- DeclarationOrder
+-- =============================================================================
+
+-- Assigns each child a permanent declaration order the first time it's
+-- seen, used to break `order` ties. Weak keys, an unreferenced child can
+-- still be garbage collected.
+local DeclarationOrder = {
+  next = 0,
+  byChild = setmetatable({}, { __mode = "k" })
+}
+
+--- Returns `child`'s declaration order, `0` if not yet assigned.
+--- @param child WaffleFlexNodeChild
+--- @return integer
+function DeclarationOrder:Get(child)
+  return self.byChild[child] or 0
+end
+
+--- Assigns `child` the next declaration order. No-ops if it already has one.
+--- @param child WaffleFlexNodeChild
+function DeclarationOrder:Assign(child)
+  if not self.byChild[child] then
+    self.next = self.next + 1
+    self.byChild[child] = self.next
+  end
+end
+
+--- Clears `child`'s declaration order, so it's assigned a fresh one if
+--- added again later.
+--- @param child WaffleFlexNodeChild
+function DeclarationOrder:Unassign(child)
+  self.byChild[child] = nil
+end
+
+-- =============================================================================
+-- Sort Functions
+-- =============================================================================
+
+--- Whether `childA` sorts before `childB`, by `order` then declaration order.
+--- @param childA WaffleFlexNodeChild
+--- @param childB WaffleFlexNodeChild
+--- @return boolean
+local function isFlexChildBefore(childA, childB)
+  local orderA, orderB = childA.order or 0, childB.order or 0
+  if orderA ~= orderB then
+    return orderA < orderB
+  end
+  local decOrderA, decOrderB = DeclarationOrder:Get(childA), DeclarationOrder:Get(childB)
+  return decOrderA < decOrderB
+end
+
+--- Sorts `children` in place by `order`, ties broken by declaration order.
+--- Stable insertion sort.
+--- @param children WaffleFlexNodeChild[]
+local function sortFlexChildren(children)
+  for i = 2, #children do
+    local child = children[i]
+    local j = i - 1
+    while j >= 1 and isFlexChildBefore(child, children[j]) do
+      children[j + 1] = children[j]
+      j = j - 1
+    end
+    children[j + 1] = child
+  end
+end
+
+-- =============================================================================
+-- Layout Functions
 -- =============================================================================
 
 --- Positions `options.children` in a row or column within `options.parent`.
@@ -70,11 +138,12 @@ local function flexLayout(options)
   -- Sum fixed sizes and count flexible children among the visible ones, to
   -- find out how much space is left over, then split it evenly. A hidden
   -- child is excluded from the layout flow entirely, its siblings reflow
-  -- to fill the space.
+  -- to fill the space. Also assigns a declaration order to new children.
   local fixedTotal = 0
   local flexCount = 0
   local visibleCount = 0
   for _, child in ipairs(children) do
+    DeclarationOrder:Assign(child)
     if not child.hidden then
       visibleCount = visibleCount + 1
       if child.size then
@@ -84,6 +153,8 @@ local function flexLayout(options)
       end
     end
   end
+
+  sortFlexChildren(children)
 
   local totalGap = gap * math.max(visibleCount - 1, 0)
   local remaining = mainSize - fixedTotal - totalGap
@@ -199,6 +270,17 @@ end
 function FlexComponent:SetSize(size)
   if self.node.size ~= size then
     self.node.size = size
+    self.root.isDirty = true
+  end
+end
+
+--- Sets this node's visual position among its siblings, independent of
+--- declaration order. Pass `nil` to reset to the default (`0`). No-ops if
+--- already that order.
+--- @param order? integer
+function FlexComponent:SetOrder(order)
+  if self.node.order ~= order then
+    self.node.order = order
     self.root.isDirty = true
   end
 end
