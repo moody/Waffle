@@ -7,7 +7,18 @@ local Mocks = {}
 --- Returns a mock frame, recording every call made to it under `._test`.
 --- @return WaffleMockFrame MockFrame
 function Mocks:CreateFrame()
-  local MockFrame = { _test = { width = nil, height = nil, point = nil, parent = nil, clearedPoints = 0 } }
+  local MockFrame = {
+    _test = {
+      width = nil,
+      height = nil,
+      point = nil,
+      parent = nil,
+      clearedPoints = 0,
+      visible = true,
+      hideCalls = 0,
+      showCalls = 0,
+    }
+  }
 
   function MockFrame:SetWidth(width)
     self._test.width = width
@@ -34,6 +45,16 @@ function Mocks:CreateFrame()
 
   function MockFrame:SetParent(parent)
     self._test.parent = parent
+  end
+
+  function MockFrame:Hide()
+    self._test.visible = false
+    self._test.hideCalls = self._test.hideCalls + 1
+  end
+
+  function MockFrame:Show()
+    self._test.visible = true
+    self._test.showCalls = self._test.showCalls + 1
   end
 
   return MockFrame
