@@ -40,7 +40,7 @@ Waffle:Flex({
 }):Layout()
 ```
 
-`direction` defaults to `"ROW"`, same as CSS Flexbox. Children stretch to fill the cross axis. A child with `size` takes exactly that much space along the main axis; a child without one splits whatever's left over evenly with any other flexible siblings, here that's `content` getting the full 300 left after `sidebar`'s 100.
+`direction` defaults to `"ROW"`. Children stretch to fill the cross axis. A child with `size` takes exactly that much space along the main axis; a child without one splits whatever's left over evenly with any other flexible siblings, here that's `content` getting the full 300 left after `sidebar`'s 100.
 
 **Nesting.** A child with its own `children` becomes a nested container, laid out within its own resolved width/height once the parent knows it.
 
@@ -121,7 +121,7 @@ root:AddChild({
 
 `onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once.
 
-**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Removing children and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
+**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, hide or show one with `Hide()`/`Show()`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Genuinely detaching a child (not just hiding it) and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
 
 **Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root container or from any other container or leaf in the tree, they all share the same lookup. Duplicate or invalid keys will throw an error.
 
@@ -132,15 +132,31 @@ root:AddChild({ frame = content, key = "content" })
 local contentLeaf = root:GetChild("content")
 ```
 
+**Hiding and showing a child.** `Hide()` takes a child out of the layout flow entirely, its siblings reflow to fill the space. `Show()` brings it back. Its position in the tree is preserved either way, no re-inserting needed.
+
+```lua
+local sidebarLeaf = root:AddChild({ frame = sidebar, size = 100 })
+
+sidebarLeaf:Hide()
+root:Layout() -- content now gets the full width, sidebar's frame is hidden
+
+sidebarLeaf:Show()
+root:Layout() -- sidebar is back, content shrinks to make room again
+```
+
+`hidden = true` can also be given up front, declaratively, instead of calling `Hide()` after the fact.
+
 ## API
 
-- **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexNodeContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
+- **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexComponentContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
 - **`Container:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns its leaf.
 - **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it.
 - **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
 - **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
+- **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space. Works from a container or a leaf. No-ops if already hidden.
+- **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
 
-The options (`WaffleFlexOptions`) passed to `Waffle:Flex()` accept:
+The options (`WaffleFlexNodeParent`) passed to `Waffle:Flex()` accept:
 
 - **`parent`** — The frame `children` are positioned within.
 - **`width`** / **`height`** — The container's available size.
@@ -149,10 +165,11 @@ The options (`WaffleFlexOptions`) passed to `Waffle:Flex()` accept:
 - **`gap`** / **`padding`** — Space between/around children.
 - **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Reaches every level, receives the resolved parent as an argument.
 
-A child (`WaffleFlexChild`), whether given via `options.children` or `AddChild`/`AddRow`/`AddColumn`, accepts the same `direction`, `gap`, and `padding` as above (they apply to the nested container this child becomes), plus:
+A child (`WaffleFlexNodeChild`), whether given via `options.children` or `AddChild`/`AddRow`/`AddColumn`, accepts the same `direction`, `gap`, and `padding` as above (they apply to the nested container this child becomes), plus:
 
 - **`frame`** — An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 - **`frameFactory`** — Creates this child's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`.
+- **`hidden`** — Excludes this child from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly.
 - **`onLayout`** — Called with this child's frame and resolved width/height, once assigned.
