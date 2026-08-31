@@ -175,6 +175,7 @@ end
 --- @field package node WaffleFlexOptions | WaffleFlexChild
 --- @field package root WaffleFlexContainerBuilder
 --- @field package keyed table<string, WaffleFlexContainerBuilder | WaffleFlexLeafHandle>
+--- @field package isDirty boolean Root only. Set by builder methods; cleared by `Layout()`.
 local FlexContainerBuilder = {}
 FlexContainerBuilder.__index = FlexContainerBuilder
 
@@ -189,6 +190,7 @@ local function newFlexContainerBuilder(node, root)
   builder.root = root or builder
   if not root then
     builder.keyed = {}
+    builder.isDirty = true
   end
   if node.key then
     assert(not builder.root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
@@ -220,6 +222,7 @@ end
 --- @return WaffleFlexLeafHandle
 function FlexContainerBuilder:AddChild(child)
   table.insert(self.node.children, child)
+  self.root.isDirty = true
   return newFlexLeafHandle(child, self.root)
 end
 
@@ -230,6 +233,7 @@ function FlexContainerBuilder:AddRow(child)
   child = child or {}
   child.direction = "ROW"
   table.insert(self.node.children, child)
+  self.root.isDirty = true
   return newFlexContainerBuilder(child, self.root)
 end
 
@@ -240,14 +244,18 @@ function FlexContainerBuilder:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
   table.insert(self.node.children, child)
+  self.root.isDirty = true
   return newFlexContainerBuilder(child, self.root)
 end
 
 --- Runs the layout for everything composed so far. Call only on the root
 --- builder, nested `AddRow`/`AddColumn` builders are laid out automatically
---- as part of it.
+--- as part of it. No-ops if nothing changed since the last call.
 function FlexContainerBuilder:Layout()
-  flexLayout(self.node)
+  if self.root.isDirty then
+    flexLayout(self.node)
+    self.root.isDirty = false
+  end
 end
 
 -- =============================================================================
