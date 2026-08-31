@@ -134,9 +134,9 @@ end
 -- FlexNode
 -- =============================================================================
 
---- Shared behavior between `WaffleFlexContainerBuilder` and `WaffleFlexLeafHandle`.
+--- Shared behavior between `WaffleFlexNodeContainer` and `WaffleFlexNodeLeaf`.
 --- @class WaffleFlexNode
---- @field package root WaffleFlexContainerBuilder
+--- @field package root WaffleFlexNodeContainer
 local FlexNode = {}
 FlexNode.__index = FlexNode
 
@@ -149,7 +149,7 @@ end
 --- Looks up a child anywhere in the tree by its `key`. Errors if none was
 --- registered under it.
 --- @param key string
---- @return WaffleFlexContainerBuilder | WaffleFlexLeafHandle
+--- @return WaffleFlexNodeContainer | WaffleFlexNodeLeaf
 function FlexNode:GetChild(key)
   local found = self.root.keyed[key]
   assert(found, "Waffle: no child registered under key '" .. key .. "'")
@@ -157,103 +157,102 @@ function FlexNode:GetChild(key)
 end
 
 -- =============================================================================
--- FlexLeafHandle
+-- FlexNodeLeaf
 -- =============================================================================
 
---- Returned by `AddChild`. A handle to a single leaf child; can't have
---- children of its own.
---- @class WaffleFlexLeafHandle : WaffleFlexNode
+--- Returned by `AddChild`. A leaf child; cannot have children of its own.
+--- @class WaffleFlexNodeLeaf : WaffleFlexNode
 --- @field package node WaffleFlexChild
-local FlexLeafHandle = newFlexNode()
-FlexLeafHandle.__index = FlexLeafHandle
+local FlexNodeLeaf = newFlexNode()
+FlexNodeLeaf.__index = FlexNodeLeaf
 
 --- @param node WaffleFlexChild
---- @param root WaffleFlexContainerBuilder
---- @return WaffleFlexLeafHandle
-local function newFlexLeafHandle(node, root)
-  local handle = setmetatable({ node = node, root = root }, FlexLeafHandle)
+--- @param root WaffleFlexNodeContainer
+--- @return WaffleFlexNodeLeaf
+local function newFlexNodeLeaf(node, root)
+  local leaf = setmetatable({ node = node, root = root }, FlexNodeLeaf)
   if node.key then
     assert(not root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
-    root.keyed[node.key] = handle
+    root.keyed[node.key] = leaf
   end
-  return handle
+  return leaf
 end
 
 -- =============================================================================
--- FlexContainerBuilder
+-- FlexNodeContainer
 -- =============================================================================
 
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
---- nothing runs until `Layout()` is called on the root builder.
---- @class WaffleFlexContainerBuilder : WaffleFlexNode
+--- nothing runs until `Layout()` is called on the root container.
+--- @class WaffleFlexNodeContainer : WaffleFlexNode
 --- @field package node WaffleFlexOptions | WaffleFlexChild
---- @field package keyed table<string, WaffleFlexContainerBuilder | WaffleFlexLeafHandle>
---- @field package isDirty boolean Root only. Set by builder methods; cleared by `Layout()`.
-local FlexContainerBuilder = newFlexNode()
-FlexContainerBuilder.__index = FlexContainerBuilder
+--- @field package keyed table<string, WaffleFlexNodeContainer | WaffleFlexNodeLeaf>
+--- @field package isDirty boolean Root only. Set by `AddChild`/`AddRow`/`AddColumn`; cleared by `Layout()`.
+local FlexNodeContainer = newFlexNode()
+FlexNodeContainer.__index = FlexNodeContainer
 
---- Constructs a container builder for `node`, and recursively creates
---- builders/handles for its children as necessary.
+--- Constructs a container for `node`, and recursively creates
+--- containers/leaves for its children as necessary.
 --- @param node WaffleFlexOptions | WaffleFlexChild
---- @param root? WaffleFlexContainerBuilder Omit for the root itself.
---- @return WaffleFlexContainerBuilder
-local function newFlexContainerBuilder(node, root)
+--- @param root? WaffleFlexNodeContainer Omit for the root itself.
+--- @return WaffleFlexNodeContainer
+local function newFlexNodeContainer(node, root)
   node.children = node.children or {}
-  local builder = setmetatable({ node = node }, FlexContainerBuilder)
-  builder.root = root or builder
+  local container = setmetatable({ node = node }, FlexNodeContainer)
+  container.root = root or container
   if not root then
-    builder.keyed = {}
-    builder.isDirty = true
+    container.keyed = {}
+    container.isDirty = true
   end
   if node.key then
-    assert(not builder.root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
-    builder.root.keyed[node.key] = builder
+    assert(not container.root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
+    container.root.keyed[node.key] = container
   end
   for _, child in ipairs(node.children) do
     if child.children then
-      newFlexContainerBuilder(child, builder.root)
+      newFlexNodeContainer(child, container.root)
     else
-      newFlexLeafHandle(child, builder.root)
+      newFlexNodeLeaf(child, container.root)
     end
   end
-  return builder
+  return container
 end
 
---- Appends a child as-is, returning a handle to it.
+--- Appends a child as-is, returning its leaf.
 --- @param child WaffleFlexChild
---- @return WaffleFlexLeafHandle
-function FlexContainerBuilder:AddChild(child)
+--- @return WaffleFlexNodeLeaf
+function FlexNodeContainer:AddChild(child)
   table.insert(self.node.children, child)
   self.root.isDirty = true
-  return newFlexLeafHandle(child, self.root)
+  return newFlexNodeLeaf(child, self.root)
 end
 
---- Appends a new ROW container as a child, returning its builder for further composition.
+--- Appends a new ROW container as a child, returning its container for further composition.
 --- @param child? WaffleFlexChild
---- @return WaffleFlexContainerBuilder
-function FlexContainerBuilder:AddRow(child)
+--- @return WaffleFlexNodeContainer
+function FlexNodeContainer:AddRow(child)
   child = child or {}
   child.direction = "ROW"
   table.insert(self.node.children, child)
   self.root.isDirty = true
-  return newFlexContainerBuilder(child, self.root)
+  return newFlexNodeContainer(child, self.root)
 end
 
---- Appends a new COLUMN container as a child, returning its builder for further composition.
+--- Appends a new COLUMN container as a child, returning its container for further composition.
 --- @param child? WaffleFlexChild
---- @return WaffleFlexContainerBuilder
-function FlexContainerBuilder:AddColumn(child)
+--- @return WaffleFlexNodeContainer
+function FlexNodeContainer:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
   table.insert(self.node.children, child)
   self.root.isDirty = true
-  return newFlexContainerBuilder(child, self.root)
+  return newFlexNodeContainer(child, self.root)
 end
 
 --- Runs the layout for everything composed so far. Call only on the root
---- builder, nested `AddRow`/`AddColumn` builders are laid out automatically
---- as part of it. No-ops if nothing changed since the last call.
-function FlexContainerBuilder:Layout()
+--- container, nested `AddRow`/`AddColumn` containers are laid out
+--- automatically as part of it. No-ops if nothing changed since the last call.
+function FlexNodeContainer:Layout()
   if self.root.isDirty then
     flexLayout(self.node)
     self.root.isDirty = false
@@ -264,11 +263,11 @@ end
 -- Waffle
 -- =============================================================================
 
---- Starts composing a `Flex` container and returns a builder: call
+--- Starts composing a `Flex` container and returns it: call
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
 --- For a fully declarative style, `options.children` may be given directly.
 --- @param options WaffleFlexOptions
---- @return WaffleFlexContainerBuilder
+--- @return WaffleFlexNodeContainer
 function Waffle:Flex(options)
-  return newFlexContainerBuilder(options)
+  return newFlexNodeContainer(options)
 end
