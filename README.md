@@ -7,7 +7,7 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 ## Features
 
 - Row/column flex layout with fixed and flexible sizing, gap, and padding, no manual `SetPoint` math
-- A fluent builder API (`AddRow`, `AddColumn`, `AddChild`) for composing nested layouts, or a fully declarative table if you'd rather write it that way
+- A fluent API (`AddRow`, `AddColumn`, `AddChild`) for composing nested layouts, or a fully declarative table if you'd rather write it that way
 - `Layout()` is a pure recompute of the current tree, not a one-time construction step, call it again any time state changes and the layout needs to catch up
 - An optional frame factory so you don't have to `CreateFrame` every wrapper container yourself
 - Annotated with [LuaCATS](https://luals.github.io/wiki/annotations/) for autocomplete and inline documentation in editors
@@ -26,7 +26,7 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 
 ## Usage
 
-**Composing declaratively.** `Waffle:Flex(options)` positions `options.children` in a row or column within `options.parent`, and returns a builder. Nothing runs until `Layout()` is called on it.
+**Composing declaratively.** `Waffle:Flex(options)` positions `options.children` in a row or column within `options.parent`, and returns a container. Nothing runs until `Layout()` is called on it.
 
 ```lua
 Waffle:Flex({
@@ -63,7 +63,7 @@ Waffle:Flex({
 }):Layout()
 ```
 
-**The builder API.** The same tree, composed fluently instead of as one large nested table. `AddRow`/`AddColumn` append a nested container and return a new builder scoped to it; `Layout()` only needs to be called once, on the root.
+**The fluent API.** The same tree, composed fluently instead of as one large nested table. `AddRow`/`AddColumn` append a nested container and return a new container scoped to it; `Layout()` only needs to be called once, on the root.
 
 ```lua
 local root = Waffle:Flex({ parent = frame, width = 400, height = 300, direction = "COLUMN" })
@@ -121,24 +121,24 @@ root:AddChild({
 
 `onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once.
 
-**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, then call `Layout()` again on the same root builder to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Removing children and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
+**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Removing children and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
 
-**Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root builder or from any other builder or handle in the tree, they all share the same lookup. Duplicate or invalid keys will throw an error.
+**Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root container or from any other container or leaf in the tree, they all share the same lookup. Duplicate or invalid keys will throw an error.
 
 ```lua
 root:AddChild({ frame = content, key = "content" })
 
 -- from anywhere else with a reference into this tree:
-local contentHandle = root:GetChild("content")
+local contentLeaf = root:GetChild("content")
 ```
 
 ## API
 
-- **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexContainerBuilder`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
-- **`Builder:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns a handle to it.
-- **`Builder:AddRow(child?)`** / **`Builder:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new builder scoped to it.
-- **`Builder:Layout()`** — Runs the layout for everything composed so far. Call only on the root builder, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
-- **`Builder:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested builder/handle. Errors if no child was registered under `key`.
+- **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexNodeContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
+- **`Container:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns its leaf.
+- **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it.
+- **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
+- **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
 
 The options (`WaffleFlexOptions`) passed to `Waffle:Flex()` accept:
 
