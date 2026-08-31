@@ -33,13 +33,13 @@ local Waffle = Addon.Waffle
 --- @field padding? integer Space between this node's edge and its children, on all four sides, if it has any. Default `0`.
 --- @field children? WaffleFlexNodeChild[] Children positioned within this node, in a row or column depending on `direction`.
 --- @field hidden? boolean Excludes this node from the layout flow entirely, its siblings reflow to fill the space. Default `false`. Set directly or via `Hide()`/`Show()`. No effect on the tree's actual root, nothing lays it out.
+--- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its own parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
 
 --- A single child of a `Flex` container.
 --- @class WaffleFlexNodeChild : WaffleFlexNode
 --- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this child's own frame, once. Cannot be given together with `frame`.
 --- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
---- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omitted children split the remaining space evenly.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion.
 
 --- @class WaffleFlexNodeParent : WaffleFlexNode
@@ -192,6 +192,17 @@ function FlexComponent:Show()
   end
 end
 
+--- Sets the fixed size this node takes up within its own parent. Pass
+--- `nil` to remove a fixed size and let it flex again. No-ops if already
+--- that size.
+--- @param size? integer
+function FlexComponent:SetSize(size)
+  if self.node.size ~= size then
+    self.node.size = size
+    self.root.isDirty = true
+  end
+end
+
 -- =============================================================================
 -- FlexComponentLeaf
 -- =============================================================================
@@ -282,6 +293,26 @@ function FlexComponentContainer:AddColumn(child)
   table.insert(self.node.children, child)
   self.root.isDirty = true
   return newFlexComponentContainer(child, self.root)
+end
+
+--- Sets the space between this container's own children. No-ops if
+--- already that gap.
+--- @param gap? integer
+function FlexComponentContainer:SetGap(gap)
+  if self.node.gap ~= gap then
+    self.node.gap = gap
+    self.root.isDirty = true
+  end
+end
+
+--- Sets the space between this container's edge and its children, on all
+--- four sides. No-ops if already that padding.
+--- @param padding? integer
+function FlexComponentContainer:SetPadding(padding)
+  if self.node.padding ~= padding then
+    self.node.padding = padding
+    self.root.isDirty = true
+  end
 end
 
 --- Runs the layout for everything composed so far. Call only on the root
