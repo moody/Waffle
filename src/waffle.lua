@@ -131,15 +131,40 @@ local function flexLayout(options)
 end
 
 -- =============================================================================
+-- FlexNode
+-- =============================================================================
+
+--- Shared behavior between `WaffleFlexContainerBuilder` and `WaffleFlexLeafHandle`.
+--- @class WaffleFlexNode
+--- @field package root WaffleFlexContainerBuilder
+local FlexNode = {}
+FlexNode.__index = FlexNode
+
+--- Returns a table whose missing methods fall back to `FlexNode`.
+--- @return WaffleFlexNode
+local function newFlexNode()
+  return setmetatable({}, FlexNode)
+end
+
+--- Looks up a child anywhere in the tree by its `key`. Errors if none was
+--- registered under it.
+--- @param key string
+--- @return WaffleFlexContainerBuilder | WaffleFlexLeafHandle
+function FlexNode:GetChild(key)
+  local found = self.root.keyed[key]
+  assert(found, "Waffle: no child registered under key '" .. key .. "'")
+  return found
+end
+
+-- =============================================================================
 -- FlexLeafHandle
 -- =============================================================================
 
 --- Returned by `AddChild`. A handle to a single leaf child; can't have
 --- children of its own.
---- @class WaffleFlexLeafHandle
+--- @class WaffleFlexLeafHandle : WaffleFlexNode
 --- @field package node WaffleFlexChild
---- @field package root WaffleFlexContainerBuilder
-local FlexLeafHandle = {}
+local FlexLeafHandle = newFlexNode()
 FlexLeafHandle.__index = FlexLeafHandle
 
 --- @param node WaffleFlexChild
@@ -154,29 +179,17 @@ local function newFlexLeafHandle(node, root)
   return handle
 end
 
---- Looks up a child anywhere in the tree by the `key` it was given when
---- added. Works from any builder or handle in the tree. Errors if no
---- child was registered under `key`.
---- @param key string
---- @return WaffleFlexContainerBuilder | WaffleFlexLeafHandle
-function FlexLeafHandle:GetChild(key)
-  local found = self.root.keyed[key]
-  assert(found, "Waffle: no child registered under key '" .. key .. "'")
-  return found
-end
-
 -- =============================================================================
 -- FlexContainerBuilder
 -- =============================================================================
 
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
 --- nothing runs until `Layout()` is called on the root builder.
---- @class WaffleFlexContainerBuilder
+--- @class WaffleFlexContainerBuilder : WaffleFlexNode
 --- @field package node WaffleFlexOptions | WaffleFlexChild
---- @field package root WaffleFlexContainerBuilder
 --- @field package keyed table<string, WaffleFlexContainerBuilder | WaffleFlexLeafHandle>
 --- @field package isDirty boolean Root only. Set by builder methods; cleared by `Layout()`.
-local FlexContainerBuilder = {}
+local FlexContainerBuilder = newFlexNode()
 FlexContainerBuilder.__index = FlexContainerBuilder
 
 --- Constructs a container builder for `node`, and recursively creates
@@ -204,17 +217,6 @@ local function newFlexContainerBuilder(node, root)
     end
   end
   return builder
-end
-
---- Looks up a child anywhere in the tree by the `key` it was given when
---- added. Works from any builder or handle in the tree. Errors if no
---- child was registered under `key`.
---- @param key string
---- @return WaffleFlexContainerBuilder | WaffleFlexLeafHandle
-function FlexContainerBuilder:GetChild(key)
-  local found = self.root.keyed[key]
-  assert(found, "Waffle: no child registered under key '" .. key .. "'")
-  return found
 end
 
 --- Appends a child as-is, returning a handle to it.
