@@ -16,10 +16,12 @@ local Waffle = Addon.Waffle
 
 --- @class WaffleFrame
 --- @field ClearAllPoints fun(self: WaffleFrame)
+--- @field Hide fun(self: WaffleFrame)
 --- @field SetHeight fun(self: WaffleFrame, height: integer)
 --- @field SetParent fun(self: WaffleFrame, parent: WaffleFrame)
 --- @field SetPoint fun(self: WaffleFrame, point: WafflePoint, parent: WaffleFrame, relativePoint: WafflePoint, offsetX: integer, offsetY: integer)
 --- @field SetWidth fun(self: WaffleFrame, width: integer)
+--- @field Show fun(self: WaffleFrame)
 
 --- @alias WaffleFlexDirection "ROW" | "COLUMN"
 
@@ -28,6 +30,7 @@ local Waffle = Addon.Waffle
 --- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this child's own frame, once. Cannot be given together with `frame`.
 --- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
+--- @field hidden? boolean Excludes this child from the layout flow entirely, its siblings reflow to fill the space. Default `false`. Set directly or via `Hide()`/`Show()`.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omitted children split the remaining space evenly.
 --- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container.
 --- @field direction? WaffleFlexDirection Default `ROW`.
@@ -38,6 +41,7 @@ local Waffle = Addon.Waffle
 --- @class WaffleFlexOptions
 --- @field parent WaffleFrame
 --- @field direction? WaffleFlexDirection Default `ROW`.
+--- @field hidden? boolean No effect at the root, `parent`'s own visibility isn't Waffle's concern. Present for type compatibility with `WaffleFlexChild` only.
 --- @field width integer The container's available width.
 --- @field height integer The container's available height.
 --- @field children? WaffleFlexChild[]
@@ -64,69 +68,82 @@ local function flexLayout(options)
   local mainSize = (isRow and options.width or options.height) - (padding * 2)
   local crossSize = (isRow and options.height or options.width) - (padding * 2)
 
-  -- Sum fixed sizes and count flexible children to find out how much space
-  -- is left over, then split it evenly among the flexible ones.
+  -- Sum fixed sizes and count flexible children among the visible ones, to
+  -- find out how much space is left over, then split it evenly. A hidden
+  -- child is excluded from the layout flow entirely, its siblings reflow
+  -- to fill the space.
   local fixedTotal = 0
   local flexCount = 0
+  local visibleCount = 0
   for _, child in ipairs(children) do
-    if child.size then
-      fixedTotal = fixedTotal + child.size
-    else
-      flexCount = flexCount + 1
+    if not child.hidden then
+      visibleCount = visibleCount + 1
+      if child.size then
+        fixedTotal = fixedTotal + child.size
+      else
+        flexCount = flexCount + 1
+      end
     end
   end
 
-  local totalGap = gap * math.max(#children - 1, 0)
+  local totalGap = gap * math.max(visibleCount - 1, 0)
   local remaining = mainSize - fixedTotal - totalGap
   local flexSize = flexCount > 0 and math.max(remaining / flexCount, 0) or 0
 
   local mainOffset = padding
   for _, child in ipairs(children) do
-    assert(not (child.frame and child.frameFactory),
-      "Waffle: child cannot have both `frame` and `frameFactory`")
-
-    local frame = child.frame
-    if not frame then
-      local factory = child.frameFactory or options.defaultFrameFactory
-      assert(factory, "Waffle: child has no `frame` and no `frameFactory`/`defaultFrameFactory` was provided")
-      frame = factory(options.parent)
-      child.frame = frame
-      child.frameFactory = nil
-    end
-
-    frame:ClearAllPoints()
-    frame:SetParent(options.parent)
-
-    local size = child.size or flexSize
-    local width, height
-
-    if isRow then
-      width, height = size, crossSize
-      frame:SetPoint("TOPLEFT", options.parent, "TOPLEFT", mainOffset, -padding)
+    if child.hidden then
+      if child.frame then
+        child.frame:Hide()
+      end
     else
-      width, height = crossSize, size
-      frame:SetPoint("TOPLEFT", options.parent, "TOPLEFT", padding, -mainOffset)
+      assert(not (child.frame and child.frameFactory),
+        "Waffle: child cannot have both `frame` and `frameFactory`")
+
+      local frame = child.frame
+      if not frame then
+        local factory = child.frameFactory or options.defaultFrameFactory
+        assert(factory, "Waffle: child has no `frame` and no `frameFactory`/`defaultFrameFactory` was provided")
+        frame = factory(options.parent)
+        child.frame = frame
+        child.frameFactory = nil
+      end
+
+      frame:Show()
+      frame:ClearAllPoints()
+      frame:SetParent(options.parent)
+
+      local size = child.size or flexSize
+      local width, height
+
+      if isRow then
+        width, height = size, crossSize
+        frame:SetPoint("TOPLEFT", options.parent, "TOPLEFT", mainOffset, -padding)
+      else
+        width, height = crossSize, size
+        frame:SetPoint("TOPLEFT", options.parent, "TOPLEFT", padding, -mainOffset)
+      end
+
+      frame:SetWidth(width)
+      frame:SetHeight(height)
+
+      if child.onLayout then
+        child.onLayout(frame, width, height)
+      elseif child.children then
+        flexLayout({
+          parent = frame,
+          width = width,
+          height = height,
+          direction = child.direction,
+          gap = child.gap,
+          padding = child.padding,
+          defaultFrameFactory = options.defaultFrameFactory,
+          children = child.children,
+        })
+      end
+
+      mainOffset = mainOffset + size + gap
     end
-
-    frame:SetWidth(width)
-    frame:SetHeight(height)
-
-    if child.onLayout then
-      child.onLayout(frame, width, height)
-    elseif child.children then
-      flexLayout({
-        parent = frame,
-        width = width,
-        height = height,
-        direction = child.direction,
-        gap = child.gap,
-        padding = child.padding,
-        defaultFrameFactory = options.defaultFrameFactory,
-        children = child.children,
-      })
-    end
-
-    mainOffset = mainOffset + size + gap
   end
 end
 
@@ -137,6 +154,7 @@ end
 --- Shared behavior between `WaffleFlexNodeContainer` and `WaffleFlexNodeLeaf`.
 --- @class WaffleFlexNode
 --- @field package root WaffleFlexNodeContainer
+--- @field package node WaffleFlexOptions | WaffleFlexChild
 local FlexNode = {}
 FlexNode.__index = FlexNode
 
@@ -154,6 +172,24 @@ function FlexNode:GetChild(key)
   local found = self.root.keyed[key]
   assert(found, "Waffle: no child registered under key '" .. key .. "'")
   return found
+end
+
+--- Removes this node from the layout flow entirely, its siblings reflow to
+--- fill the space. Its position in the tree is preserved, `Show()` brings
+--- it back.
+function FlexNode:Hide()
+  if not self.node.hidden then
+    self.node.hidden = true
+    self.root.isDirty = true
+  end
+end
+
+--- Reverses `Hide()`. No-ops if not currently hidden.
+function FlexNode:Show()
+  if self.node.hidden then
+    self.node.hidden = false
+    self.root.isDirty = true
+  end
 end
 
 -- =============================================================================
