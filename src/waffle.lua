@@ -25,28 +25,27 @@ local Waffle = Addon.Waffle
 
 --- @alias WaffleFlexDirection "ROW" | "COLUMN"
 
+--- Layout properties shared by `WaffleFlexNodeChild` and `WaffleFlexNodeParent`,
+--- the plain data tables Waffle operates on.
+--- @class WaffleFlexNode
+--- @field direction? WaffleFlexDirection Default `ROW`.
+--- @field gap? integer Space between consecutive children, if this node has any. Default `0`.
+--- @field padding? integer Space between this node's edge and its children, on all four sides, if it has any. Default `0`.
+--- @field children? WaffleFlexNodeChild[] Children positioned within this node, in a row or column depending on `direction`.
+--- @field hidden? boolean Excludes this node from the layout flow entirely, its siblings reflow to fill the space. Default `false`. Set directly or via `Hide()`/`Show()`. No effect on the tree's actual root, nothing lays it out.
+
 --- A single child of a `Flex` container.
---- @class WaffleFlexChild
+--- @class WaffleFlexNodeChild : WaffleFlexNode
 --- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this child's own frame, once. Cannot be given together with `frame`.
 --- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
---- @field hidden? boolean Excludes this child from the layout flow entirely, its siblings reflow to fill the space. Default `false`. Set directly or via `Hide()`/`Show()`.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`). Omitted children split the remaining space evenly.
---- @field children? WaffleFlexChild[] Makes this child a nested `Flex` container.
---- @field direction? WaffleFlexDirection Default `ROW`.
---- @field gap? integer Gap between children, once this becomes a nested container.
---- @field padding? integer Padding around children, once this becomes a nested container.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion.
 
---- @class WaffleFlexOptions
+--- @class WaffleFlexNodeParent : WaffleFlexNode
 --- @field parent WaffleFrame
---- @field direction? WaffleFlexDirection Default `ROW`.
---- @field hidden? boolean No effect at the root, `parent`'s own visibility isn't Waffle's concern. Present for type compatibility with `WaffleFlexChild` only.
 --- @field width integer The container's available width.
 --- @field height integer The container's available height.
---- @field children? WaffleFlexChild[]
---- @field gap? integer Space between consecutive children. Default `0`.
---- @field padding? integer Space between the container's edge and its children, on all four sides. Default `0`.
 --- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`.
 
 -- =============================================================================
@@ -55,7 +54,7 @@ local Waffle = Addon.Waffle
 
 --- Positions `options.children` in a row or column within `options.parent`.
 --- Children stretch to fill the cross axis (height for `ROW`, width for `COLUMN`).
---- @param options WaffleFlexOptions
+--- @param options WaffleFlexNodeParent
 local function flexLayout(options)
   options.parent:SetWidth(options.width)
   options.parent:SetHeight(options.height)
@@ -148,27 +147,28 @@ local function flexLayout(options)
 end
 
 -- =============================================================================
--- FlexNode
+-- FlexComponent
 -- =============================================================================
 
---- Shared behavior between `WaffleFlexNodeContainer` and `WaffleFlexNodeLeaf`.
---- @class WaffleFlexNode
---- @field package root WaffleFlexNodeContainer
---- @field package node WaffleFlexOptions | WaffleFlexChild
-local FlexNode = {}
-FlexNode.__index = FlexNode
+--- Shared behavior between `WaffleFlexComponentContainer` and
+--- `WaffleFlexComponentLeaf`.
+--- @class WaffleFlexComponent
+--- @field package root WaffleFlexComponentContainer
+--- @field package node WaffleFlexNodeParent | WaffleFlexNodeChild
+local FlexComponent = {}
+FlexComponent.__index = FlexComponent
 
---- Returns a table whose missing methods fall back to `FlexNode`.
---- @return WaffleFlexNode
-local function newFlexNode()
-  return setmetatable({}, FlexNode)
+--- Returns a table whose missing methods fall back to `FlexComponent`.
+--- @return WaffleFlexComponent
+local function newFlexComponent()
+  return setmetatable({}, FlexComponent)
 end
 
 --- Looks up a child anywhere in the tree by its `key`. Errors if none was
 --- registered under it.
 --- @param key string
---- @return WaffleFlexNodeContainer | WaffleFlexNodeLeaf
-function FlexNode:GetChild(key)
+--- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
+function FlexComponent:GetChild(key)
   local found = self.root.keyed[key]
   assert(found, "Waffle: no child registered under key '" .. key .. "'")
   return found
@@ -177,7 +177,7 @@ end
 --- Removes this node from the layout flow entirely, its siblings reflow to
 --- fill the space. Its position in the tree is preserved, `Show()` brings
 --- it back.
-function FlexNode:Hide()
+function FlexComponent:Hide()
   if not self.node.hidden then
     self.node.hidden = true
     self.root.isDirty = true
@@ -185,7 +185,7 @@ function FlexNode:Hide()
 end
 
 --- Reverses `Hide()`. No-ops if not currently hidden.
-function FlexNode:Show()
+function FlexComponent:Show()
   if self.node.hidden then
     self.node.hidden = false
     self.root.isDirty = true
@@ -193,20 +193,20 @@ function FlexNode:Show()
 end
 
 -- =============================================================================
--- FlexNodeLeaf
+-- FlexComponentLeaf
 -- =============================================================================
 
 --- Returned by `AddChild`. A leaf child; cannot have children of its own.
---- @class WaffleFlexNodeLeaf : WaffleFlexNode
---- @field package node WaffleFlexChild
-local FlexNodeLeaf = newFlexNode()
-FlexNodeLeaf.__index = FlexNodeLeaf
+--- @class WaffleFlexComponentLeaf : WaffleFlexComponent
+--- @field package node WaffleFlexNodeChild
+local FlexComponentLeaf = newFlexComponent()
+FlexComponentLeaf.__index = FlexComponentLeaf
 
---- @param node WaffleFlexChild
---- @param root WaffleFlexNodeContainer
---- @return WaffleFlexNodeLeaf
-local function newFlexNodeLeaf(node, root)
-  local leaf = setmetatable({ node = node, root = root }, FlexNodeLeaf)
+--- @param node WaffleFlexNodeChild
+--- @param root WaffleFlexComponentContainer
+--- @return WaffleFlexComponentLeaf
+local function newFlexComponentLeaf(node, root)
+  local leaf = setmetatable({ node = node, root = root }, FlexComponentLeaf)
   if node.key then
     assert(not root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
     root.keyed[node.key] = leaf
@@ -215,26 +215,25 @@ local function newFlexNodeLeaf(node, root)
 end
 
 -- =============================================================================
--- FlexNodeContainer
+-- FlexComponentContainer
 -- =============================================================================
 
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
 --- nothing runs until `Layout()` is called on the root container.
---- @class WaffleFlexNodeContainer : WaffleFlexNode
---- @field package node WaffleFlexOptions | WaffleFlexChild
---- @field package keyed table<string, WaffleFlexNodeContainer | WaffleFlexNodeLeaf>
+--- @class WaffleFlexComponentContainer : WaffleFlexComponent
+--- @field package keyed table<string, WaffleFlexComponentContainer | WaffleFlexComponentLeaf>
 --- @field package isDirty boolean Root only. Set by `AddChild`/`AddRow`/`AddColumn`; cleared by `Layout()`.
-local FlexNodeContainer = newFlexNode()
-FlexNodeContainer.__index = FlexNodeContainer
+local FlexComponentContainer = newFlexComponent()
+FlexComponentContainer.__index = FlexComponentContainer
 
 --- Constructs a container for `node`, and recursively creates
 --- containers/leaves for its children as necessary.
---- @param node WaffleFlexOptions | WaffleFlexChild
---- @param root? WaffleFlexNodeContainer Omit for the root itself.
---- @return WaffleFlexNodeContainer
-local function newFlexNodeContainer(node, root)
+--- @param node WaffleFlexNodeParent | WaffleFlexNodeChild
+--- @param root? WaffleFlexComponentContainer Omit for the root itself.
+--- @return WaffleFlexComponentContainer
+local function newFlexComponentContainer(node, root)
   node.children = node.children or {}
-  local container = setmetatable({ node = node }, FlexNodeContainer)
+  local container = setmetatable({ node = node }, FlexComponentContainer)
   container.root = root or container
   if not root then
     container.keyed = {}
@@ -246,49 +245,49 @@ local function newFlexNodeContainer(node, root)
   end
   for _, child in ipairs(node.children) do
     if child.children then
-      newFlexNodeContainer(child, container.root)
+      newFlexComponentContainer(child, container.root)
     else
-      newFlexNodeLeaf(child, container.root)
+      newFlexComponentLeaf(child, container.root)
     end
   end
   return container
 end
 
 --- Appends a child as-is, returning its leaf.
---- @param child WaffleFlexChild
---- @return WaffleFlexNodeLeaf
-function FlexNodeContainer:AddChild(child)
+--- @param child WaffleFlexNodeChild
+--- @return WaffleFlexComponentLeaf
+function FlexComponentContainer:AddChild(child)
   table.insert(self.node.children, child)
   self.root.isDirty = true
-  return newFlexNodeLeaf(child, self.root)
+  return newFlexComponentLeaf(child, self.root)
 end
 
 --- Appends a new ROW container as a child, returning its container for further composition.
---- @param child? WaffleFlexChild
---- @return WaffleFlexNodeContainer
-function FlexNodeContainer:AddRow(child)
+--- @param child? WaffleFlexNodeChild
+--- @return WaffleFlexComponentContainer
+function FlexComponentContainer:AddRow(child)
   child = child or {}
   child.direction = "ROW"
   table.insert(self.node.children, child)
   self.root.isDirty = true
-  return newFlexNodeContainer(child, self.root)
+  return newFlexComponentContainer(child, self.root)
 end
 
 --- Appends a new COLUMN container as a child, returning its container for further composition.
---- @param child? WaffleFlexChild
---- @return WaffleFlexNodeContainer
-function FlexNodeContainer:AddColumn(child)
+--- @param child? WaffleFlexNodeChild
+--- @return WaffleFlexComponentContainer
+function FlexComponentContainer:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
   table.insert(self.node.children, child)
   self.root.isDirty = true
-  return newFlexNodeContainer(child, self.root)
+  return newFlexComponentContainer(child, self.root)
 end
 
 --- Runs the layout for everything composed so far. Call only on the root
 --- container, nested `AddRow`/`AddColumn` containers are laid out
 --- automatically as part of it. No-ops if nothing changed since the last call.
-function FlexNodeContainer:Layout()
+function FlexComponentContainer:Layout()
   if self.root.isDirty then
     flexLayout(self.node)
     self.root.isDirty = false
@@ -302,8 +301,8 @@ end
 --- Starts composing a `Flex` container and returns it: call
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
 --- For a fully declarative style, `options.children` may be given directly.
---- @param options WaffleFlexOptions
---- @return WaffleFlexNodeContainer
+--- @param options WaffleFlexNodeParent
+--- @return WaffleFlexComponentContainer
 function Waffle:Flex(options)
-  return newFlexNodeContainer(options)
+  return newFlexComponentContainer(options)
 end
