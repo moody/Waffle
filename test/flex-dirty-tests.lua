@@ -10,17 +10,17 @@ do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
     height = 50,
     children = { { frame = a } }
   })
-  assert(builder.isDirty == true)
+  assert(container.isDirty == true)
 
-  builder:Layout()
-  assert(builder.isDirty == false)
+  container:Layout()
+  assert(container.isDirty == false)
   assert(a._test.clearedPoints == 1)
 end
 
@@ -30,7 +30,7 @@ do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
@@ -38,11 +38,11 @@ do
     children = { { frame = a } }
   })
 
-  builder:Layout()
-  assert(builder.isDirty == false)
+  container:Layout()
+  assert(container.isDirty == false)
   assert(a._test.clearedPoints == 1)
 
-  builder:Layout()
+  container:Layout()
   assert(a._test.clearedPoints == 1)
 end
 
@@ -52,16 +52,16 @@ do
   local a = Mocks:CreateFrame()
   local b = Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
-  builder:AddChild({ frame = a })
-  builder:Layout()
-  assert(builder.isDirty == false)
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  container:AddChild({ frame = a })
+  container:Layout()
+  assert(container.isDirty == false)
 
-  builder:AddChild({ frame = b })
-  assert(builder.isDirty == true)
+  container:AddChild({ frame = b })
+  assert(container.isDirty == true)
 
-  builder:Layout()
-  assert(builder.isDirty == false)
+  container:Layout()
+  assert(container.isDirty == false)
   assert(a._test.clearedPoints == 2)
   assert(b._test.clearedPoints == 1)
 end
@@ -71,43 +71,43 @@ do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
-  builder:AddChild({ frame = a })
-  builder:Layout()
-  assert(builder.isDirty == false)
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  container:AddChild({ frame = a })
+  container:Layout()
+  assert(container.isDirty == false)
 
-  builder:AddRow({ frame = Mocks:CreateFrame() })
-  assert(builder.isDirty == true)
+  container:AddRow({ frame = Mocks:CreateFrame() })
+  assert(container.isDirty == true)
 
-  builder:Layout()
-  assert(builder.isDirty == false)
+  container:Layout()
+  assert(container.isDirty == false)
   assert(a._test.clearedPoints == 2)
 
-  builder:AddColumn({ frame = Mocks:CreateFrame() })
-  assert(builder.isDirty == true)
+  container:AddColumn({ frame = Mocks:CreateFrame() })
+  assert(container.isDirty == true)
 
-  builder:Layout()
-  assert(builder.isDirty == false)
+  container:Layout()
+  assert(container.isDirty == false)
   assert(a._test.clearedPoints == 3)
 end
 
--- Test: mutating through a nested builder marks the root's dirty flag (not
--- the nested builder itself), so the root's next `Layout()` still picks it up.
+-- Test: mutating through a nested container marks the root's dirty flag (not
+-- the nested container itself), so the root's next `Layout()` still picks it up.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
   local b = Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
-  local row = builder:AddRow({ frame = a })
-  builder:Layout()
-  assert(builder.isDirty == false)
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local row = container:AddRow({ frame = a })
+  container:Layout()
+  assert(container.isDirty == false)
 
   row:AddChild({ frame = b })
-  assert(builder.isDirty == true)
+  assert(container.isDirty == true)
 
-  builder:Layout()
-  assert(builder.isDirty == false)
+  container:Layout()
+  assert(container.isDirty == false)
   assert(b._test.clearedPoints == 1)
 end
 
@@ -116,15 +116,15 @@ do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
-  builder:AddChild({ frame = a, key = "a" })
-  builder:Layout()
-  assert(builder.isDirty == false)
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  container:AddChild({ frame = a, key = "a" })
+  container:Layout()
+  assert(container.isDirty == false)
 
-  builder:GetChild("a")
-  assert(builder.isDirty == false)
+  container:GetChild("a")
+  assert(container.isDirty == false)
 
-  builder:Layout()
+  container:Layout()
   assert(a._test.clearedPoints == 1)
 end
 

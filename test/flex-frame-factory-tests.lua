@@ -7,7 +7,7 @@ do
   local root = Mocks:CreateFrame()
   local created
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
@@ -17,8 +17,8 @@ do
       return created
     end
   })
-  builder:AddRow()
-  builder:Layout()
+  container:AddRow()
+  container:Layout()
 
   assert(created ~= nil)
   assert(created._test.width == 200 and created._test.height == 50)
@@ -29,7 +29,7 @@ do
   local root = Mocks:CreateFrame()
   local created
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
@@ -39,8 +39,8 @@ do
       return created
     end
   })
-  builder:AddColumn()
-  builder:Layout()
+  container:AddColumn()
+  container:Layout()
 
   assert(created ~= nil)
 end
@@ -51,7 +51,7 @@ do
   local root = Mocks:CreateFrame()
   local createCount = 0
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
@@ -61,9 +61,9 @@ do
       return Mocks:CreateFrame()
     end
   })
-  local row = builder:AddRow()
+  local row = container:AddRow()
   row:AddColumn()
-  builder:Layout()
+  container:Layout()
 
   assert(createCount == 2) -- the row itself, and its nested column
 end
@@ -74,7 +74,7 @@ do
   local explicit = Mocks:CreateFrame()
   local createCount = 0
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
@@ -84,8 +84,8 @@ do
       return Mocks:CreateFrame()
     end
   })
-  builder:AddChild({ frame = explicit })
-  builder:Layout()
+  container:AddChild({ frame = explicit })
+  container:Layout()
 
   assert(createCount == 0)
   assert(explicit._test.width == 200)
@@ -97,7 +97,7 @@ do
   local root = Mocks:CreateFrame()
   local rootCreateCount, overrideCreateCount = 0, 0
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
@@ -107,7 +107,7 @@ do
       return Mocks:CreateFrame()
     end
   })
-  local row = builder:AddRow({
+  local row = container:AddRow({
     frameFactory = function()
       overrideCreateCount = overrideCreateCount + 1
       return Mocks:CreateFrame()
@@ -115,7 +115,7 @@ do
   })
   row:AddColumn() -- no frame/frameFactory: falls back to the root default
 
-  builder:Layout()
+  container:Layout()
 
   assert(overrideCreateCount == 1) -- only the row itself used its own override
   assert(rootCreateCount == 1)     -- the row's nested column fell back to the root default
@@ -124,10 +124,10 @@ end
 -- Test: a child with neither `frame` nor an available factory errors clearly.
 do
   local root = Mocks:CreateFrame()
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
-  builder:AddRow()
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  container:AddRow()
 
-  local ok, err = pcall(function() builder:Layout() end)
+  local ok, err = pcall(function() container:Layout() end)
   assert(not ok)
   assert(tostring(err):find("frameFactory"))
 end
@@ -135,13 +135,13 @@ end
 -- Test: giving both `frame` and `frameFactory` on the same child throws an error.
 do
   local root = Mocks:CreateFrame()
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
-  builder:AddChild({
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  container:AddChild({
     frame = Mocks:CreateFrame(),
     frameFactory = function() return Mocks:CreateFrame() end
   })
 
-  local ok, err = pcall(function() builder:Layout() end)
+  local ok, err = pcall(function() container:Layout() end)
   assert(not ok)
   assert(tostring(err):find("frame"))
 end
@@ -152,7 +152,7 @@ do
   local root = Mocks:CreateFrame()
   local defaultReceivedParent, ownReceivedParent
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
@@ -162,14 +162,14 @@ do
       return Mocks:CreateFrame()
     end
   })
-  builder:AddRow() -- uses the default factory
-  builder:AddChild({
+  container:AddRow() -- uses the default factory
+  container:AddChild({
     frameFactory = function(parent)
       ownReceivedParent = parent
       return Mocks:CreateFrame()
     end
   })
-  builder:Layout()
+  container:Layout()
 
   assert(defaultReceivedParent == root)
   assert(ownReceivedParent == root)
@@ -182,7 +182,7 @@ do
   local middle = Mocks:CreateFrame()
   local receivedParent
 
-  local builder = Waffle:Flex({
+  local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
@@ -192,10 +192,10 @@ do
       return Mocks:CreateFrame()
     end
   })
-  local row = builder:AddRow({ frame = middle })
+  local row = container:AddRow({ frame = middle })
   row:AddColumn() -- two levels deep, no frame/frameFactory of its own
 
-  builder:Layout()
+  container:Layout()
 
   assert(receivedParent == middle)
 end
@@ -205,22 +205,22 @@ do
   local root = Mocks:CreateFrame()
   local createCount = 0
 
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
-  builder:AddChild({
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  container:AddChild({
     frameFactory = function()
       createCount = createCount + 1
       return Mocks:CreateFrame()
     end
   })
 
-  builder:Layout()
-  builder:Layout()
+  container:Layout()
+  container:Layout()
 
   assert(createCount == 1)
 end
 
 -- Test: the same defaulting works for the fully declarative style too, not
--- just children added through the builder.
+-- just children added through the container.
 do
   local root = Mocks:CreateFrame()
   local created
