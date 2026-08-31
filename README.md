@@ -121,7 +121,7 @@ root:AddChild({
 
 `onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once.
 
-**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, hide or show one with `Hide()`/`Show()`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Genuinely detaching a child (not just hiding it) and mutating an existing one's `gap`/`padding` aren't first-class yet, that's still ahead.
+**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, hide or show one with `Hide()`/`Show()`, resize or respace one with `SetSize()`/`SetGap()`/`SetPadding()`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Genuinely detaching a child (not just hiding it) isn't first-class yet, that's still ahead.
 
 **Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root container or from any other container or leaf in the tree, they all share the same lookup. Duplicate or invalid keys will throw an error.
 
@@ -146,6 +146,18 @@ root:Layout() -- sidebar is back, content shrinks to make room again
 
 `hidden = true` can also be given up front, declaratively, instead of calling `Hide()` after the fact.
 
+**Mutating size, gap, and padding.** `SetSize()` works on any container or leaf; `SetGap()`/`SetPadding()` only make sense on a container, since only a container has children to space out. All three no-op if given the same value they already have.
+
+```lua
+local sidebarLeaf = root:AddChild({ frame = sidebar, size = 100 })
+
+sidebarLeaf:SetSize(150) -- sidebar grows, content shrinks to make room
+root:Layout()
+
+root:SetGap(20) -- more space between the root's own children
+root:Layout()
+```
+
 ## API
 
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexComponentContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
@@ -155,6 +167,9 @@ root:Layout() -- sidebar is back, content shrinks to make room again
 - **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
 - **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space. Works from a container or a leaf. No-ops if already hidden.
 - **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
+- **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its own parent. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
+- **`Container:SetGap(gap?)`** — Sets the space between this container's own children. Container-only. No-ops if already that gap.
+- **`Container:SetPadding(padding?)`** — Sets the space between this container's edge and its children, on all four sides. Container-only. No-ops if already that padding.
 
 The options (`WaffleFlexNodeParent`) passed to `Waffle:Flex()` accept:
 
@@ -162,7 +177,7 @@ The options (`WaffleFlexNodeParent`) passed to `Waffle:Flex()` accept:
 - **`width`** / **`height`** — The container's available size.
 - **`children`** — Can be given directly for a fully declarative style, instead of `AddChild`/`AddRow`/`AddColumn`.
 - **`direction`** — `"ROW"` or `"COLUMN"`. Defaults to `"ROW"`.
-- **`gap`** / **`padding`** — Space between/around children.
+- **`gap`** / **`padding`** — Space between/around children. Can also be toggled after the fact with `SetGap()`/`SetPadding()`.
 - **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Reaches every level, receives the resolved parent as an argument.
 
 A child (`WaffleFlexNodeChild`), whether given via `options.children` or `AddChild`/`AddRow`/`AddColumn`, accepts the same `direction`, `gap`, and `padding` as above (they apply to the nested container this child becomes), plus:
@@ -171,7 +186,7 @@ A child (`WaffleFlexNodeChild`), whether given via `options.children` or `AddChi
 - **`frameFactory`** — Creates this child's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`.
 - **`hidden`** — Excludes this child from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
-- **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly.
+- **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly. Can also be toggled after the fact with `SetSize()`.
 - **`onLayout`** — Called with this child's frame and resolved width/height, once assigned.
 
 ## Testing
