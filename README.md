@@ -40,7 +40,7 @@ Waffle:Flex({
 }):Layout()
 ```
 
-`direction` defaults to `"ROW"`. Children stretch to fill the cross axis. A child with `size` takes exactly that much space along the main axis; a child without one splits whatever's left over evenly with any other flexible siblings, here that's `content` getting the full 300 left after `sidebar`'s 100.
+`direction` defaults to `"ROW"`. Children stretch to fill the cross axis, unless a child gives its own `crossSize`. A child with `size` takes exactly that much space along the main axis; a child without one splits whatever's left over evenly with any other flexible siblings, here that's `content` getting the full 300 left after `sidebar`'s 100.
 
 The root is a container like any other: `frame`, `frameFactory`, `key`, `hidden`, and `onLayout` all work the same way they do for a child, and a root's own `frameFactory` just has no parent to receive as an argument, since nothing sits above it.
 
@@ -187,12 +187,15 @@ rightPanel:AddChild(sidebarOptions) -- moved into a different tree entirely
 rightPanel:Layout()
 ```
 
-**Mutating size, gap, and padding.** `SetSize()` works on any container or leaf; `SetGap()`/`SetPadding()` only make sense on a container, since only a container has children to space out. All three no-op if given the same value they already have.
+**Mutating size, gap, and padding.** `SetSize()`/`SetCrossSize()` work on any container or leaf; `SetGap()`/`SetPadding()` only make sense on a container, since only a container has children to space out. All four no-op if given the same value they already have.
 
 ```lua
 local sidebarLeaf = root:AddChild({ frame = sidebar, size = 100 })
 
-sidebarLeaf:SetSize(150) -- sidebar grows, content shrinks to make room
+sidebarLeaf:SetSize(150) -- sidebar grows along the main axis, content shrinks to make room
+root:Layout()
+
+sidebarLeaf:SetCrossSize(40) -- sidebar stops stretching along the cross axis, sized to 40 instead
 root:Layout()
 
 root:SetGap(20) -- more space between the root's own children
@@ -226,7 +229,8 @@ root:Layout()
 - **`Container:IsContainer()`** — Returns `true` if this node is a container. Works from a container or a leaf.
 - **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space, and hides its own frame. Works from a container or a leaf. No-ops if already hidden.
 - **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
-- **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its parent. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
+- **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its parent, along the main axis. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
+- **`Container:SetCrossSize(crossSize?)`** — Sets the fixed size this node takes up within its parent, along the cross axis. Works from a container or a leaf. Pass `nil` to remove a fixed cross size and let it stretch again. No-ops if already that size.
 - **`Container:SetGap(gap?)`** — Sets the space between this container's children. Container-only. No-ops if already that gap.
 - **`Container:SetPadding(padding?)`** — Sets the space between this container's edge and its children, on all four sides. Container-only. No-ops if already that padding.
 - **`Container:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that order.
@@ -242,10 +246,11 @@ A child (`WaffleFlexNode`), whether given via `options.children` or `AddChild`/`
 - **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 - **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. Can also be toggled after the fact with `SetOrder()`.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly. Can also be toggled after the fact with `SetSize()`.
+- **`crossSize`** — Fixed size along the cross axis. Omitted children stretch to fill it. Can also be toggled after the fact with `SetCrossSize()`.
 - **`onLayout`** — Called with this child's frame and resolved width/height, after its `children` (if any) are laid out.
 - **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node; even the tree's actual root needs its own `frame`/`frameFactory`, nothing above it to inherit a fallback from.
 
-The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above. `size`/`order` have no effect there, there's nothing above the root to resize or reorder among siblings; everything else, `hidden`/`onLayout`/`defaultFrameFactory` included, still applies, same as for any child. It also has its own width/height, nothing above it can resolve that automatically:
+The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above. `size`/`crossSize`/`order` have no effect there, there's nothing above the root to resize or reorder among siblings; everything else, `hidden`/`onLayout`/`defaultFrameFactory` included, still applies, same as for any child. It also has its own width/height, nothing above it can resolve that automatically:
 
 - **`width`** / **`height`** — The root's available size.
 
