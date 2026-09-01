@@ -121,7 +121,7 @@ root:AddChild({
 
 `onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once.
 
-**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, hide or show one with `Hide()`/`Show()`, resize or respace one with `SetSize()`/`SetGap()`/`SetPadding()`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Genuinely detaching a child (not just hiding it) isn't first-class yet, that's still ahead.
+**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, remove one with `RemoveChild()`/`Clear()`, hide or show one with `Hide()`/`Show()`, resize or respace one with `SetSize()`/`SetGap()`/`SetPadding()`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame.
 
 **Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root container or from any other container or leaf in the tree, they all share the same lookup. An unregistered key throws an error; a duplicate key doesn't, the first match found wins. Keep your keys unique!
 
@@ -145,6 +145,18 @@ root:Layout() -- sidebar is back, content shrinks to make room again
 ```
 
 `hidden = true` can also be given up front, declaratively, instead of calling `Hide()` after the fact.
+
+**Removing a child.** `RemoveChild(child)` detaches a child from the tree entirely, not just excluding it from layout the way `Hide()` does, returning whether it was actually found and removed. `Clear()` removes every child at once. Neither touches the removed child's own frame, only Waffle's own tracking of it.
+
+```lua
+local sidebarLeaf = root:AddChild({ frame = sidebar, size = 100 })
+
+root:RemoveChild(sidebarLeaf)
+root:Layout() -- content gets the full width, sidebar's frame is untouched
+
+root:Clear()
+root:Layout() -- root has no children left at all
+```
 
 **Mutating size, gap, and padding.** `SetSize()` works on any container or leaf; `SetGap()`/`SetPadding()` only make sense on a container, since only a container has children to space out. All three no-op if given the same value they already have.
 
@@ -175,6 +187,8 @@ root:Layout()
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexComponentContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
 - **`Container:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns its leaf.
 - **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it.
+- **`Container:RemoveChild(child)`** — Removes `child` from this container's own children entirely, detaching it (and its own children, if it's itself a container) from the tree rather than just excluding it from layout. Doesn't touch `child`'s own frame. Container-only. Returns `true` if `child` was actually found and removed.
+- **`Container:Clear()`** — Removes every child from this container, same as calling `RemoveChild` on each one. Container-only. No-ops if already empty.
 - **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
 - **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
 - **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space. Works from a container or a leaf. No-ops if already hidden.
