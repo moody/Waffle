@@ -274,6 +274,12 @@ function _W.FlexComponent:GetChild(key)
   end
 end
 
+--- Returns `true` if this node is a container.
+--- @return boolean
+function _W.FlexComponent:IsContainer()
+  return self.node.children ~= nil
+end
+
 --- Returns this node's own frame. `nil` if not resolved yet, e.g. a
 --- `frameFactory` that hasn't been laid out for the first time.
 --- @return WaffleFrame?
