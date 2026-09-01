@@ -5,15 +5,18 @@ local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
 -- Test: `AddChild` with a `key` registers a leaf, retrievable via
--- `GetChild` on the root, and it's the same leaf `AddChild` returned.
+-- `GetChild` on the root. `GetChild` returns a fresh handle each call, not
+-- the identical object `AddChild` returned, but both wrap the same node.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a, key = "sidebar" })
+  local wrapper = container:GetChild("sidebar")
 
-  assert(container:GetChild("sidebar") == leaf)
+  assert(wrapper ~= leaf)
+  assert(wrapper.node == leaf.node)
 end
 
 -- Test: `AddRow`/`AddColumn` with a `key` register the returned container
@@ -25,8 +28,8 @@ do
   local row = container:AddRow({ frame = Mocks:CreateFrame(), key = "toolbar" })
   local col = container:AddColumn({ frame = Mocks:CreateFrame(), key = "sidebar" })
 
-  assert(container:GetChild("toolbar") == row)
-  assert(container:GetChild("sidebar") == col)
+  assert(container:GetChild("toolbar").node == row.node)
+  assert(container:GetChild("sidebar").node == col.node)
 end
 
 -- Test: `GetChild` works from anywhere in the tree, not just the root,
@@ -40,8 +43,8 @@ do
 
   local target = container:AddChild({ frame = Mocks:CreateFrame(), key = "target" })
 
-  assert(row:GetChild("target") == target)
-  assert(leaf:GetChild("target") == target)
+  assert(row:GetChild("target").node == target.node)
+  assert(leaf:GetChild("target").node == target.node)
 end
 
 -- Test: an unknown key throws an error.
@@ -54,18 +57,16 @@ do
   assert(tostring(err):find("nope"))
 end
 
--- Test: a duplicate key throws an error.
+-- Test: a duplicate key doesn't error, the first match found wins.
 do
   local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
   local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
 
-  container:AddChild({ frame = Mocks:CreateFrame(), key = "dup" })
+  container:AddChild({ frame = a, key = "dup" })
+  container:AddChild({ frame = b, key = "dup" })
 
-  local ok, err = pcall(function()
-    container:AddChild({ frame = Mocks:CreateFrame(), key = "dup" })
-  end)
-  assert(not ok)
-  assert(tostring(err):find("dup"))
+  assert(container:GetChild("dup").node.frame == a)
 end
 
 -- Test: a leaf child's `key`, written directly into a declarative
@@ -92,6 +93,7 @@ do
   local root = Mocks:CreateFrame()
   local rowFrame = Mocks:CreateFrame()
   local leaf = Mocks:CreateFrame()
+  local newLeaf = Mocks:CreateFrame()
 
   local container = Waffle:Flex({
     parent = root,
@@ -104,10 +106,11 @@ do
   })
 
   local row = container:GetChild("row")
-  row:AddChild({ frame = Mocks:CreateFrame() })
+  row:AddChild({ frame = newLeaf })
   container:Layout()
 
-  assert(leaf._test.width ~= nil) -- the row's declarative child still laid out
+  assert(leaf._test.width ~= nil)    -- the row's declarative child still laid out
+  assert(newLeaf._test.width ~= nil) -- and the newly added child too
 end
 
 -- Test: a `key` nested two levels deep in a declarative tree is still found.
@@ -132,24 +135,23 @@ do
   assert(container:GetChild("deep").node.frame == leaf)
 end
 
--- Test: a declarative key colliding with a later container-added key errors,
--- same as two container-added keys colliding.
+-- Test: a declarative key colliding with a later container-added key
+-- doesn't error, the first match (the declarative one) wins.
 do
   local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   local container = Waffle:Flex({
     parent = root,
     direction = "ROW",
     width = 200,
     height = 50,
-    children = { { frame = Mocks:CreateFrame(), key = "dup" } }
+    children = { { frame = a, key = "dup" } }
   })
 
-  local ok, err = pcall(function()
-    container:AddChild({ frame = Mocks:CreateFrame(), key = "dup" })
-  end)
-  assert(not ok)
-  assert(tostring(err):find("dup"))
+  container:AddChild({ frame = b, key = "dup" })
+
+  assert(container:GetChild("dup").node.frame == a)
 end
 
 -- Test: a keyed grandchild inside a declarative subtree handed to `AddRow`
