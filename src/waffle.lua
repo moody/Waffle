@@ -394,6 +394,21 @@ function _W.FlexComponentContainer:AddColumn(child)
   return _W.newFlexComponentContainer(child, self.root)
 end
 
+--- Returns every one of this container's own children, wrapped, in
+--- declaration order. Doesn't recurse into grandchildren.
+--- @return (WaffleFlexComponentContainer | WaffleFlexComponentLeaf)[]
+function _W.FlexComponentContainer:GetChildren()
+  local children = {}
+  for i, node in ipairs(self.node.children) do
+    if node.children then
+      children[i] = _W.newFlexComponentContainer(node, self.root)
+    else
+      children[i] = _W.newFlexComponentLeaf(node, self.root)
+    end
+  end
+  return children
+end
+
 --- Removes `child` from this container's own children entirely, detaching
 --- it from the tree rather than just excluding it from layout, the way
 --- `Hide()` does. Doesn't touch `child`'s own `frame`. Returns `true` if
