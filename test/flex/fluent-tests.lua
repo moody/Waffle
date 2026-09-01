@@ -1,3 +1,5 @@
+--- @diagnostic disable: invisible, undefined-field
+
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -7,24 +9,27 @@ do
   local parent = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  Waffle:Flex({ parent = parent, direction = "ROW", width = 200, height = 50 })
-      :AddChild({ frame = a, size = 50 })
-      :AddChild({ frame = b })
-      :Layout()
+  local container = Waffle:Flex({ frame = parent, direction = "ROW", width = 200, height = 50 })
+  container:AddChild({ frame = a, size = 50 })
+  container:AddChild({ frame = b })
+  container:Layout()
 
   assert(a._test.width == 50 and a._test.point.offsetX == 0)
   assert(b._test.width == 150 and b._test.point.offsetX == 50) -- 200 - 50
 end
 
--- Test: `AddChild` returns the same builder, so calls chain.
+-- Test: `AddChild` returns the leaf just added, not the same container, a
+-- leaf cannot add children of its own.
 do
   local parent = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({ parent = parent, direction = "ROW", width = 100, height = 50 })
-  local returned = builder:AddChild({ frame = a })
+  local container = Waffle:Flex({ frame = parent, direction = "ROW", width = 100, height = 50 })
+  local leaf = container:AddChild({ frame = a })
 
-  assert(returned == builder)
+  assert(leaf ~= container)
+  assert(leaf.node.frame == a)
+  assert(leaf.AddChild == nil)
 end
 
 -- Test: children from `options.children` and children added via `AddChild`
@@ -33,19 +38,21 @@ do
   local parent = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  Waffle:Flex({
-    parent = parent,
+  local container = Waffle:Flex({
+    frame = parent,
     direction = "ROW",
     width = 200,
     height = 50,
     children = { { frame = a, size = 50 } }
-  }):AddChild({ frame = b }):Layout()
+  })
+  container:AddChild({ frame = b })
+  container:Layout()
 
   assert(a._test.width == 50 and a._test.point.offsetX == 0)
   assert(b._test.width == 150 and b._test.point.offsetX == 50)
 end
 
--- Test: `AddRow` returns a builder scoped to a nested ROW container; one
+-- Test: `AddRow` returns the new ROW container, for further composition; one
 -- root `Layout()` lays out the whole tree.
 do
   local root = Mocks:CreateFrame()
@@ -53,14 +60,14 @@ do
   local rowFrame = Mocks:CreateFrame()
   local left, right = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({ parent = root, direction = "COLUMN", width = 400, height = 300 })
-  builder:AddChild({ frame = titleBar, size = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "COLUMN", width = 400, height = 300 })
+  container:AddChild({ frame = titleBar, size = 50 })
 
-  local row = builder:AddRow({ frame = rowFrame })
+  local row = container:AddRow({ frame = rowFrame })
   row:AddChild({ frame = left, size = 150 })
   row:AddChild({ frame = right })
 
-  builder:Layout()
+  container:Layout()
 
   assert(rowFrame._test.width == 400 and rowFrame._test.height == 250) -- 300 - 50
   assert(left._test.width == 150 and left._test.height == 250)
@@ -76,31 +83,31 @@ do
   local colFrame = Mocks:CreateFrame()
   local top, bottom = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 100 })
-  local col = builder:AddColumn({ frame = colFrame })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
+  local col = container:AddColumn({ frame = colFrame })
   col:AddChild({ frame = top, size = 30 })
   col:AddChild({ frame = bottom })
 
-  builder:Layout()
+  container:Layout()
 
   assert(colFrame._test.width == 200 and colFrame._test.height == 100)
   assert(top._test.point.offsetX == 0 and top._test.point.offsetY == 0)
   assert(bottom._test.point.offsetX == 0 and bottom._test.point.offsetY == -30)
 end
 
--- Test: nested builders keep nesting (AddRow -> AddColumn), still resolving
--- from one root `Layout()`.
+-- Test: nested containers keep nesting (AddRow -> AddColumn), still
+-- resolving from one root `Layout()`.
 do
   local root = Mocks:CreateFrame()
   local rowFrame, colFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
   local leaf = Mocks:CreateFrame()
 
-  local builder = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 100 })
-  local row = builder:AddRow({ frame = rowFrame, size = 100 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
+  local row = container:AddRow({ frame = rowFrame, size = 100 })
   local col = row:AddColumn({ frame = colFrame })
   col:AddChild({ frame = leaf, size = 40 })
 
-  builder:Layout()
+  container:Layout()
 
   assert(rowFrame._test.width == 100 and rowFrame._test.height == 100)
   assert(colFrame._test.width == 100 and colFrame._test.height == 100)

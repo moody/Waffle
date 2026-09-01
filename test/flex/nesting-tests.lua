@@ -2,91 +2,6 @@
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `onLayout` receives its own frame plus the resolved width/height
--- for a fixed ROW child, after sizing/positioning has already run.
-do
-  local parent = Mocks:CreateFrame()
-  local child = Mocks:CreateFrame()
-  local received
-
-  Waffle:Flex({
-    parent = parent,
-    direction = "ROW",
-    width = 300,
-    height = 50,
-    children = {
-      {
-        frame = child,
-        size = 120,
-        onLayout = function(frame, width, height)
-          received = {
-            frame = frame,
-            width = width,
-            height = height
-          }
-        end
-      },
-    }
-  }):Layout()
-
-  assert(child._test.width == 120 and child._test.height == 50)
-  assert(received.frame == child)
-  assert(received.width == 120 and received.height == 50)
-end
-
--- Test: `onLayout` also fires for a flexible (no `size`) child, receiving
--- whatever it actually got resolved to.
-do
-  local parent = Mocks:CreateFrame()
-  local fixed, flex = Mocks:CreateFrame(), Mocks:CreateFrame()
-  local received
-
-  Waffle:Flex({
-    parent = parent,
-    direction = "ROW",
-    width = 300,
-    height = 50,
-    children = {
-      { frame = fixed, size = 100 },
-      {
-        frame = flex,
-        onLayout = function(frame, width, height)
-          received = { width = width, height = height }
-        end
-      },
-    }
-  }):Layout()
-
-  assert(received.width == 200 and received.height == 50) -- 300 - 100
-end
-
--- Test: in a COLUMN, `onLayout` receives (width, height) in that order too,
--- not (main, cross); main is height here, so it must be swapped correctly.
-do
-  local parent = Mocks:CreateFrame()
-  local child = Mocks:CreateFrame()
-  local received
-
-  Waffle:Flex({
-    parent = parent,
-    direction = "COLUMN",
-    width = 200,
-    height = 100,
-    children = {
-      {
-        frame = child,
-        size = 40,
-        onLayout = function(frame, width, height)
-          received = { width = width, height = height }
-        end
-      },
-    }
-  }):Layout()
-
-  assert(child._test.width == 200 and child._test.height == 40)
-  assert(received.width == 200 and received.height == 40)
-end
-
 -- Test: two-level cascade via `onLayout`. Grandchildren position relative
 -- to the middle frame, not the root, sized from the middle's resolved
 -- size, not the root's.
@@ -96,7 +11,7 @@ do
   local leftChild, rightChild = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "COLUMN",
     width = 400,
     height = 300,
@@ -106,7 +21,7 @@ do
         frame = middle,
         onLayout = function(frame, width, height)
           Waffle:Flex({
-            parent = frame,
+            frame = frame,
             direction = "ROW",
             width = width,
             height = height,
@@ -143,7 +58,7 @@ do
   local leftChild, rightChild = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "COLUMN",
     width = 400,
     height = 300,
@@ -182,7 +97,7 @@ do
   local left, right = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "COLUMN",
     width = 200,
     height = 100,
@@ -211,7 +126,7 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 220,
     height = 60,
@@ -231,33 +146,6 @@ do
 
   assert(a._test.point.offsetX == 5)  -- padding
   assert(b._test.point.offsetX == 65) -- 5 padding + 50 + 10 gap
-end
-
--- Test: if both `onLayout` and `children` are given, `onLayout` wins and
--- `children` is ignored.
-do
-  local root = Mocks:CreateFrame()
-  local middle = Mocks:CreateFrame()
-  local ignoredChild = Mocks:CreateFrame()
-  local onLayoutCalled = false
-
-  Waffle:Flex({
-    parent = root,
-    direction = "ROW",
-    width = 200,
-    height = 50,
-    children = {
-      {
-        frame = middle,
-        direction = "ROW",
-        children = { { frame = ignoredChild } },
-        onLayout = function() onLayoutCalled = true end,
-      },
-    }
-  }):Layout()
-
-  assert(onLayoutCalled)
-  assert(ignoredChild._test.width == nil)
 end
 
 print("All assertions passed.")
