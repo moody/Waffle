@@ -387,6 +387,35 @@ function _W.FlexComponentContainer:AddColumn(child)
   return _W.newFlexComponentContainer(child, self.root)
 end
 
+--- Removes `child` from this container's own children entirely, detaching
+--- it from the tree rather than just excluding it from layout, the way
+--- `Hide()` does. Doesn't touch `child`'s own `frame`. Returns `true` if
+--- found and removed.
+--- @param child WaffleFlexComponentContainer | WaffleFlexComponentLeaf
+--- @return boolean removed
+function _W.FlexComponentContainer:RemoveChild(child)
+  for i, node in ipairs(self.node.children) do
+    if node == child.node then
+      table.remove(self.node.children, i)
+      _W.DeclarationOrder:Unassign(node)
+      self.root.isDirty = true
+      return true
+    end
+  end
+  return false
+end
+
+--- Removes every child from this container, same as calling `RemoveChild`
+--- on each one. No-ops if already empty.
+function _W.FlexComponentContainer:Clear()
+  if #self.node.children == 0 then return end
+  for _, node in ipairs(self.node.children) do
+    _W.DeclarationOrder:Unassign(node)
+  end
+  self.node.children = {}
+  self.root.isDirty = true
+end
+
 --- Sets the space between this container's own children. No-ops if
 --- already that gap.
 --- @param gap? integer
