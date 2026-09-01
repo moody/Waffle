@@ -233,12 +233,12 @@ do
   assert(b._test.point.offsetX == 65) -- 5 padding + 50 + 10 gap
 end
 
--- Test: if both `onLayout` and `children` are given, `onLayout` wins and
--- `children` is ignored.
+-- Test: if both `onLayout` and `children` are given, both fire, `onLayout`
+-- doesn't suppress its `children` being laid out.
 do
   local root = Mocks:CreateFrame()
   local middle = Mocks:CreateFrame()
-  local ignoredChild = Mocks:CreateFrame()
+  local nestedChild = Mocks:CreateFrame()
   local onLayoutCalled = false
 
   Waffle:Flex({
@@ -250,14 +250,42 @@ do
       {
         frame = middle,
         direction = "ROW",
-        children = { { frame = ignoredChild } },
+        children = { { frame = nestedChild } },
         onLayout = function() onLayoutCalled = true end,
       },
     }
   }):Layout()
 
   assert(onLayoutCalled)
-  assert(ignoredChild._test.width == nil)
+  assert(nestedChild._test.width == 200)
+end
+
+-- Test: `onLayout` fires after its `children` are laid out, not before,
+-- they're already sized by the time it runs.
+do
+  local root = Mocks:CreateFrame()
+  local middle = Mocks:CreateFrame()
+  local nestedChild = Mocks:CreateFrame()
+  local nestedChildWidthDuringOnLayout
+
+  Waffle:Flex({
+    frame = root,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    children = {
+      {
+        frame = middle,
+        direction = "ROW",
+        children = { { frame = nestedChild } },
+        onLayout = function()
+          nestedChildWidthDuringOnLayout = nestedChild._test.width
+        end,
+      },
+    }
+  }):Layout()
+
+  assert(nestedChildWidthDuringOnLayout == 200)
 end
 
 print("All assertions passed.")
