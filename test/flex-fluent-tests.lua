@@ -9,7 +9,7 @@ do
   local parent = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = parent, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = parent, direction = "ROW", width = 200, height = 50 })
   container:AddChild({ frame = a, size = 50 })
   container:AddChild({ frame = b })
   container:Layout()
@@ -24,7 +24,7 @@ do
   local parent = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = parent, direction = "ROW", width = 100, height = 50 })
+  local container = Waffle:Flex({ frame = parent, direction = "ROW", width = 100, height = 50 })
   local leaf = container:AddChild({ frame = a })
 
   assert(leaf ~= container)
@@ -39,7 +39,7 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   local container = Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -60,7 +60,7 @@ do
   local rowFrame = Mocks:CreateFrame()
   local left, right = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "COLUMN", width = 400, height = 300 })
+  local container = Waffle:Flex({ frame = root, direction = "COLUMN", width = 400, height = 300 })
   container:AddChild({ frame = titleBar, size = 50 })
 
   local row = container:AddRow({ frame = rowFrame })
@@ -83,7 +83,7 @@ do
   local colFrame = Mocks:CreateFrame()
   local top, bottom = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 100 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
   local col = container:AddColumn({ frame = colFrame })
   col:AddChild({ frame = top, size = 30 })
   col:AddChild({ frame = bottom })
@@ -102,7 +102,7 @@ do
   local rowFrame, colFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
   local leaf = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 100 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
   local row = container:AddRow({ frame = rowFrame, size = 100 })
   local col = row:AddColumn({ frame = colFrame })
   col:AddChild({ frame = leaf, size = 40 })

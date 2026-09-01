@@ -9,7 +9,7 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -37,7 +37,7 @@ do
   local fixed1, flex, fixed2 = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -61,7 +61,7 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -83,7 +83,7 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "COLUMN",
     width = 200,
     height = 100,
@@ -106,7 +106,7 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 340,
     height = 50,
@@ -130,7 +130,7 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 220,
     height = 60,
@@ -150,7 +150,7 @@ end
 -- Test: an empty children list is a safe no-op, doesn't error.
 do
   local parent = Mocks:CreateFrame()
-  Waffle:Flex({ parent = parent, direction = "ROW", width = 100, height = 50, children = {} }):Layout()
+  Waffle:Flex({ frame = parent, direction = "ROW", width = 100, height = 50, children = {} }):Layout()
 end
 
 -- Test: fixed children that overflow the container clamp the flex size to
@@ -160,7 +160,7 @@ do
   local fixed, flex = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 100,
     height = 50,
@@ -173,14 +173,14 @@ do
   assert(flex._test.width == 0)
 end
 
--- Test: the container itself (`options.parent`) is sized to the given
+-- Test: the container itself (`options.frame`) is sized to the given
 -- width/height, not just its children.
 do
   local parent = Mocks:CreateFrame()
   local child = Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -196,7 +196,7 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     width = 200,
     height = 50,
     children = {

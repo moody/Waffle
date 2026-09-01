@@ -9,7 +9,7 @@ do
   local root = Mocks:CreateFrame()
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 300, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
   container:AddChild({ frame = a })
   container:AddChild({ frame = b })
   container:AddChild({ frame = c })
@@ -27,7 +27,7 @@ do
   local root = Mocks:CreateFrame()
   local nested = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 300, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
   container:AddRow({ frame = Mocks:CreateFrame() })
 
   local row = container:GetChildren()[1]
@@ -41,7 +41,7 @@ end
 do
   local root = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 300, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
   local row = container:AddRow({ frame = Mocks:CreateFrame() })
   row:AddChild({ frame = Mocks:CreateFrame() })
   row:AddChild({ frame = Mocks:CreateFrame() })
@@ -53,7 +53,7 @@ end
 -- Test: `GetChildren` on an empty container returns an empty array.
 do
   local root = Mocks:CreateFrame()
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
 
   assert(#container:GetChildren() == 0)
 end
@@ -64,7 +64,7 @@ do
   local root = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leafA = container:AddChild({ frame = a })
   assert(#container:GetChildren() == 1)
 
@@ -82,7 +82,7 @@ end
 do
   local root = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 300, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
   local leaf = container:AddChild({ frame = Mocks:CreateFrame() })
   local row = container:AddRow({ frame = Mocks:CreateFrame() })
 

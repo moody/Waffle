@@ -10,7 +10,7 @@ do
   local received
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -42,7 +42,7 @@ do
   local received
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -68,7 +68,7 @@ do
   local received
 
   Waffle:Flex({
-    parent = parent,
+    frame = parent,
     direction = "COLUMN",
     width = 200,
     height = 100,
@@ -96,7 +96,7 @@ do
   local leftChild, rightChild = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "COLUMN",
     width = 400,
     height = 300,
@@ -106,7 +106,7 @@ do
         frame = middle,
         onLayout = function(frame, width, height)
           Waffle:Flex({
-            parent = frame,
+            frame = frame,
             direction = "ROW",
             width = width,
             height = height,
@@ -143,7 +143,7 @@ do
   local leftChild, rightChild = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "COLUMN",
     width = 400,
     height = 300,
@@ -182,7 +182,7 @@ do
   local left, right = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "COLUMN",
     width = 200,
     height = 100,
@@ -211,7 +211,7 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 220,
     height = 60,
@@ -242,7 +242,7 @@ do
   local onLayoutCalled = false
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,

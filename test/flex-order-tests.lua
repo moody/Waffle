@@ -11,7 +11,7 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -34,7 +34,7 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -56,7 +56,7 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 300,
     height = 50,
@@ -78,7 +78,7 @@ do
   local root = Mocks:CreateFrame()
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 300, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
   local leafA = container:AddChild({ frame = a, size = 100 })
   container:AddChild({ frame = b, size = 100 })
   container:AddChild({ frame = c, size = 100 })
@@ -103,7 +103,7 @@ do
   local root = Mocks:CreateFrame()
   local a, b, c, d = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 400, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 400, height = 50 })
   container:AddChild({ frame = a, size = 100 })
   local leafB = container:AddChild({ frame = b, size = 100 })
   container:AddChild({ frame = c, size = 100 })
@@ -128,7 +128,7 @@ do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a })
   container:Layout()
   assert(container.isDirty == false)
@@ -152,7 +152,7 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 210,
     height = 50,
@@ -174,7 +174,7 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 300,
     height = 50,

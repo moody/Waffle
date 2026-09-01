@@ -13,7 +13,7 @@ do
   local c = Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -38,7 +38,7 @@ do
   local b = Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -59,7 +59,7 @@ do
   local a = Mocks:CreateFrame()
   local b = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   container:AddChild({ frame = a })
   local leaf = container:AddChild({ frame = b })
   container:Layout()
@@ -84,7 +84,7 @@ do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a })
   container:Layout()
   assert(container.isDirty == false)
@@ -113,7 +113,7 @@ do
   local factoryCalls = 0
   local created
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({
     hidden = true,
     frameFactory = function(parent)
@@ -141,7 +141,7 @@ do
   local rowFrame = Mocks:CreateFrame()
   local childFrame = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local row = container:AddRow({ frame = rowFrame, hidden = true })
   row:AddChild({ frame = childFrame })
   container:Layout()
@@ -159,7 +159,7 @@ do
   local c = Mocks:CreateFrame()
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 210,
     height = 50,

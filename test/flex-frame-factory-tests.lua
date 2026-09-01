@@ -8,7 +8,7 @@ do
   local created
 
   local container = Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -30,7 +30,7 @@ do
   local created
 
   local container = Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -52,7 +52,7 @@ do
   local createCount = 0
 
   local container = Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 100,
@@ -75,7 +75,7 @@ do
   local createCount = 0
 
   local container = Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -98,7 +98,7 @@ do
   local rootCreateCount, overrideCreateCount = 0, 0
 
   local container = Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -124,7 +124,7 @@ end
 -- Test: a child with neither `frame` nor an available factory errors clearly.
 do
   local root = Mocks:CreateFrame()
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   container:AddRow()
 
   local ok, err = pcall(function() container:Layout() end)
@@ -135,7 +135,7 @@ end
 -- Test: giving both `frame` and `frameFactory` on the same child throws an error.
 do
   local root = Mocks:CreateFrame()
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   container:AddChild({
     frame = Mocks:CreateFrame(),
     frameFactory = function() return Mocks:CreateFrame() end
@@ -153,7 +153,7 @@ do
   local defaultReceivedParent, ownReceivedParent
 
   local container = Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -183,7 +183,7 @@ do
   local receivedParent
 
   local container = Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 100,
@@ -205,7 +205,7 @@ do
   local root = Mocks:CreateFrame()
   local createCount = 0
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   container:AddChild({
     frameFactory = function()
       createCount = createCount + 1
@@ -226,7 +226,7 @@ do
   local created
 
   Waffle:Flex({
-    parent = root,
+    frame = root,
     direction = "ROW",
     width = 200,
     height = 50,
@@ -245,7 +245,7 @@ do
   local root = Mocks:CreateFrame()
   local explicit = Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = explicit })
 
   assert(leaf:GetFrame() == explicit)
@@ -257,7 +257,7 @@ do
   local root = Mocks:CreateFrame()
   local created
 
-  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({
     frameFactory = function()
       created = Mocks:CreateFrame()
