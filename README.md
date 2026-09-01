@@ -146,6 +146,15 @@ root:Layout() -- sidebar is back, content shrinks to make room again
 
 `hidden = true` can also be given up front, declaratively, instead of calling `Hide()` after the fact.
 
+**Getting a frame back, and walking a container's children.** `GetFrame()` returns a node's own frame, `nil` if it hasn't been resolved yet (a `frameFactory` that hasn't laid out for the first time). `GetChildren()` returns every one of a container's direct children, wrapped, in declaration order, without recursing into grandchildren. Useful together for walking a tree to do something with each child, e.g. pooling frames before `Clear()` discards them:
+
+```lua
+for _, child in ipairs(root:GetChildren()) do
+  pool:Release(child:GetFrame())
+end
+root:Clear()
+```
+
 **Removing a child.** `RemoveChild(child)` detaches a child from the tree entirely, not just excluding it from layout the way `Hide()` does, returning whether it was actually found and removed. `Clear()` removes every child at once. Neither touches the removed child's own frame, only Waffle's own tracking of it.
 
 ```lua
@@ -187,6 +196,7 @@ root:Layout()
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexComponentContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
 - **`Container:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns its leaf.
 - **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it.
+- **`Container:GetChildren()`** — Returns every one of this container's own children, wrapped, in declaration order. Container-only. Doesn't recurse into grandchildren.
 - **`Container:RemoveChild(child)`** — Removes `child` from this container's own children entirely, detaching it (and its own children, if it's itself a container) from the tree rather than just excluding it from layout. Doesn't touch `child`'s own frame. Container-only. Returns `true` if `child` was actually found and removed.
 - **`Container:Clear()`** — Removes every child from this container, same as calling `RemoveChild` on each one. Container-only. No-ops if already empty.
 - **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
