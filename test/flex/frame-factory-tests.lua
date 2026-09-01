@@ -132,6 +132,22 @@ do
   assert(tostring(err):find("frameFactory"))
 end
 
+-- Test: a root with only its own `defaultFrameFactory`, no `frame` or
+-- `frameFactory` of its own, errors too, `defaultFrameFactory` never
+-- resolves the node that declares it, root included.
+do
+  local container = Waffle:Flex({
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    defaultFrameFactory = function() return Mocks:CreateFrame() end
+  })
+
+  local ok, err = pcall(function() container:Layout() end)
+  assert(not ok)
+  assert(tostring(err):find("frameFactory"))
+end
+
 -- Test: giving both `frame` and `frameFactory` on the same child throws an error.
 do
   local root = Mocks:CreateFrame()
@@ -198,6 +214,34 @@ do
   container:Layout()
 
   assert(receivedParent == middle)
+end
+
+-- Test: a nested container's own `defaultFrameFactory` overrides the
+-- root's, for everything below it; the root's default doesn't reach past it.
+do
+  local root = Mocks:CreateFrame()
+  local rootDefaultFrame, rowDefaultFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({
+    frame = root,
+    direction = "ROW",
+    width = 200,
+    height = 100,
+    defaultFrameFactory = function()
+      return rootDefaultFrame
+    end
+  })
+  local row = container:AddRow({
+    defaultFrameFactory = function()
+      return rowDefaultFrame
+    end
+  })
+  local column = row:AddColumn()
+
+  container:Layout()
+
+  assert(row:GetFrame() == rootDefaultFrame)   -- the row resolved from the root's default
+  assert(column:GetFrame() == rowDefaultFrame) -- the column resolved from the row's default
 end
 
 -- Test: a factory only runs once, even across repeated `Layout()` calls.
