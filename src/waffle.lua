@@ -98,23 +98,19 @@ _W.NodeParent = {
   byNode = setmetatable({}, { __mode = "k" })
 }
 
---- Records `parent` as `node`'s current parent, overwriting any previous
---- one, kept correct internally wherever the tree is walked. Doesn't guard
---- against a node genuinely belonging to two trees at once, `Claim` does.
---- @param node WaffleFlexNode
---- @param parent WaffleFlexNode
-function _W.NodeParent:Set(node, parent)
-  self.byNode[node] = parent
-end
-
 --- Claims `node` as a child of `parent`. Errors if it already belongs to
 --- a different one; call `RemoveChild()` on that one first to move it.
+--- No-ops if `parent` already owns it, safe to call repeatedly, whether
+--- that's `AddChild` called twice or the tree just being walked again.
 --- @param node WaffleFlexNode
 --- @param parent WaffleFlexNode
+--- @return boolean claimed `true` if `node` wasn't already `parent`'s, `false` if this was a no-op.
 function _W.NodeParent:Claim(node, parent)
-  assert(not self.byNode[node],
+  local currentParent = self.byNode[node]
+  assert(not currentParent or currentParent == parent,
     "Waffle: child already belongs to another container, call RemoveChild() on it first to move it")
   self.byNode[node] = parent
+  return currentParent == nil
 end
 
 --- Releases `node`, so it can be claimed by another parent.
@@ -242,7 +238,7 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   local visibleCount = 0
   for _, child in ipairs(children) do
     _W.DeclarationOrder:Assign(child)
-    _W.NodeParent:Set(child, node)
+    _W.NodeParent:Claim(child, node)
     if not child.hidden then
       visibleCount = visibleCount + 1
       if child.size then
@@ -328,7 +324,7 @@ function _W.findFlexNodeByKey(node, key)
   end
   if node.children then
     for _, child in ipairs(node.children) do
-      _W.NodeParent:Set(child, node)
+      _W.NodeParent:Claim(child, node)
       local found = _W.findFlexNodeByKey(child, key)
       if found then
         return found
@@ -474,14 +470,16 @@ end
 
 --- Appends a child as-is, returning its wrapper: a container if `child`
 --- already has its own `children`, a leaf otherwise. Errors if `child`
---- already belongs to another container, call `RemoveChild()` on that one
---- first to move it here.
+--- already belongs to a different container, call `RemoveChild()` on that
+--- one first to move it here. No-ops (beyond returning a fresh wrapper) if
+--- `child` is already this container's own.
 --- @param child WaffleFlexNode
 --- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 function _W.FlexComponentContainer:AddChild(child)
-  _W.NodeParent:Claim(child, self.node)
-  table.insert(self.node.children, child)
-  _W.markDirty(self.node)
+  if _W.NodeParent:Claim(child, self.node) then
+    table.insert(self.node.children, child)
+    _W.markDirty(self.node)
+  end
   if child.children then
     return _W.newFlexComponentContainer(child)
   else
@@ -490,30 +488,36 @@ function _W.FlexComponentContainer:AddChild(child)
 end
 
 --- Appends a new ROW container as a child, returning its container for
---- further composition. Errors if `child` already belongs to another
+--- further composition. Errors if `child` already belongs to a different
 --- container, call `RemoveChild()` on that one first to move it here.
+--- No-ops (beyond returning a fresh wrapper) if `child` is already this
+--- container's own.
 --- @param child? WaffleFlexNode
 --- @return WaffleFlexComponentContainer
 function _W.FlexComponentContainer:AddRow(child)
   child = child or {}
   child.direction = "ROW"
-  _W.NodeParent:Claim(child, self.node)
-  table.insert(self.node.children, child)
-  _W.markDirty(self.node)
+  if _W.NodeParent:Claim(child, self.node) then
+    table.insert(self.node.children, child)
+    _W.markDirty(self.node)
+  end
   return _W.newFlexComponentContainer(child)
 end
 
 --- Appends a new COLUMN container as a child, returning its container for
---- further composition. Errors if `child` already belongs to another
+--- further composition. Errors if `child` already belongs to a different
 --- container, call `RemoveChild()` on that one first to move it here.
+--- No-ops (beyond returning a fresh wrapper) if `child` is already this
+--- container's own.
 --- @param child? WaffleFlexNode
 --- @return WaffleFlexComponentContainer
 function _W.FlexComponentContainer:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
-  _W.NodeParent:Claim(child, self.node)
-  table.insert(self.node.children, child)
-  _W.markDirty(self.node)
+  if _W.NodeParent:Claim(child, self.node) then
+    table.insert(self.node.children, child)
+    _W.markDirty(self.node)
+  end
   return _W.newFlexComponentContainer(child)
 end
 
@@ -523,7 +527,7 @@ end
 function _W.FlexComponentContainer:GetChildren()
   local children = {}
   for i, node in ipairs(self.node.children) do
-    _W.NodeParent:Set(node, self.node)
+    _W.NodeParent:Claim(node, self.node)
     if node.children then
       children[i] = _W.newFlexComponentContainer(node)
     else
