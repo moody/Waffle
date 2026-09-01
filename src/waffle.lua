@@ -274,6 +274,13 @@ function _W.FlexComponent:GetChild(key)
   end
 end
 
+--- Returns this node's own frame. `nil` if not resolved yet, e.g. a
+--- `frameFactory` that hasn't been laid out for the first time.
+--- @return WaffleFrame?
+function _W.FlexComponent:GetFrame()
+  return self.node.frame
+end
+
 --- Removes this node from the layout flow entirely, its siblings reflow to
 --- fill the space. Its position in the tree is preserved, `Show()` brings
 --- it back.
