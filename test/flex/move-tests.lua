@@ -128,6 +128,41 @@ do
   assert(nestedFrame._test.width == 200) -- rootBOptions' own children laid out too, as containerA's child now
 end
 
+-- Test: a node's own `defaultFrameFactory`, set from when it was its own
+-- root, keeps applying to its descendants after being grafted into a
+-- different tree, the new tree's own default doesn't take over for it.
+do
+  local rootAFrame = Mocks:CreateFrame()
+  local rootBFrame = Mocks:CreateFrame()
+  local aDefaultFrame, bDefaultFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local rootBOptions = {
+    frame = rootBFrame,
+    direction = "ROW",
+    defaultFrameFactory = function()
+      return bDefaultFrame
+    end,
+    children = { {} }, -- no frame/frameFactory of its own
+  }
+  Waffle:Flex(rootBOptions) -- rootBOptions is the root of its own tree, never laid out
+
+  local containerA = Waffle:Flex({
+    frame = rootAFrame,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    defaultFrameFactory = function()
+      return aDefaultFrame
+    end
+  })
+  local graftedB = containerA:AddChild(rootBOptions) -- grafted in as a child, no error
+
+  containerA:Layout()
+
+  local graftedBChild = graftedB:GetChildren()[1]
+  assert(graftedBChild:GetFrame() == bDefaultFrame) -- rootBOptions' own child used rootBOptions' own default, not containerA's
+end
+
 -- Test: calling `Layout()` on a node nested deep in the tree, not the root
 -- container itself, still lays out the whole tree from its actual root.
 do
