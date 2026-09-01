@@ -191,6 +191,7 @@ root:Layout()
 - **`Container:Clear()`** — Removes every child from this container, same as calling `RemoveChild` on each one. Container-only. No-ops if already empty.
 - **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
 - **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
+- **`Container:GetFrame()`** — Returns this node's own frame. Works from a container or a leaf. `nil` if not resolved yet, e.g. a `frameFactory` that hasn't been laid out for the first time.
 - **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space. Works from a container or a leaf. No-ops if already hidden.
 - **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
 - **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its own parent. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
