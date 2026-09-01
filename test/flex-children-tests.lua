@@ -76,4 +76,22 @@ do
   assert(container:GetChildren()[1].node.frame == b)
 end
 
+-- Test: `IsContainer` returns `false` for a leaf and `true` for a
+-- container, whether the wrapper came from `AddChild`/`AddRow` directly
+-- or from `GetChildren()`.
+do
+  local root = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 300, height = 50 })
+  local leaf = container:AddChild({ frame = Mocks:CreateFrame() })
+  local row = container:AddRow({ frame = Mocks:CreateFrame() })
+
+  assert(leaf:IsContainer() == false)
+  assert(row:IsContainer() == true)
+
+  local children = container:GetChildren()
+  assert(children[1]:IsContainer() == false)
+  assert(children[2]:IsContainer() == true)
+end
+
 print("All assertions passed.")
