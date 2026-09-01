@@ -39,12 +39,12 @@ local Waffle = Addon.Waffle
 --- @field key? string Registers this node for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. Set directly or via `SetOrder()`. No effect on the tree's actual root, nothing orders it among siblings.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this node's frame and resolved width/height, after its `children` (if any) are laid out.
+--- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node.
 
 --- The root passed to `Waffle:Flex()`.
 --- @class WaffleFlexRootNode : WaffleFlexNode
 --- @field width integer The root's available width.
 --- @field height integer The root's available height.
---- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Creates a frame for any descendant (the root included) that gives neither `frame` nor its own `frameFactory`. `parent` is `nil` for the tree's actual root, nothing sits above it to pass in.
 
 -- =============================================================================
 -- Internal Data Table
@@ -283,7 +283,7 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
       childFrame:SetHeight(childHeight)
 
       if child.children then
-        _W.flexLayout(child, childFrame, childWidth, childHeight, defaultFrameFactory)
+        _W.flexLayout(child, childFrame, childWidth, childHeight, child.defaultFrameFactory or defaultFrameFactory)
       end
 
       if child.onLayout then
@@ -419,7 +419,7 @@ function _W.FlexComponent:Layout()
         root.frame:Hide()
       end
     else
-      local frame = _W.resolveFrame(root, nil, root.defaultFrameFactory)
+      local frame = _W.resolveFrame(root)
       frame:Show()
       frame:SetWidth(root.width)
       frame:SetHeight(root.height)
