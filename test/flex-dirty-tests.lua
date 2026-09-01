@@ -1,5 +1,3 @@
---- @diagnostic disable: invisible
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -17,10 +15,10 @@ do
     height = 50,
     children = { { frame = a } }
   })
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
 
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   assert(a._test.clearedPoints == 1)
 end
 
@@ -39,7 +37,7 @@ do
   })
 
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   assert(a._test.clearedPoints == 1)
 
   container:Layout()
@@ -55,13 +53,13 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   container:AddChild({ frame = a })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   container:AddChild({ frame = b })
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
 
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   assert(a._test.clearedPoints == 2)
   assert(b._test.clearedPoints == 1)
 end
@@ -74,20 +72,20 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   container:AddChild({ frame = a })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   container:AddRow({ frame = Mocks:CreateFrame() })
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
 
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   assert(a._test.clearedPoints == 2)
 
   container:AddColumn({ frame = Mocks:CreateFrame() })
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
 
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   assert(a._test.clearedPoints == 3)
 end
 
@@ -101,13 +99,13 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local row = container:AddRow({ frame = a })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   row:AddChild({ frame = b })
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
 
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   assert(b._test.clearedPoints == 1)
 end
 
@@ -119,10 +117,10 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   container:AddChild({ frame = a, key = "a" })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   container:GetChild("a")
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   container:Layout()
   assert(a._test.clearedPoints == 1)

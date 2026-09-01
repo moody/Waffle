@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible, undefined-field
+--- @diagnostic disable: undefined-field
 
 --- @type Waffle
 local Waffle = require("test/waffle")
@@ -95,28 +95,28 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50, gap = 5, padding = 5 })
   local leaf = container:AddChild({ frame = a, size = 50 })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   container:SetGap(5)
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   container:SetGap(10)
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   container:SetPadding(5)
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   container:SetPadding(10)
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   leaf:SetSize(50)
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
   leaf:SetSize(60)
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 end
 
 -- Test: `SetGap`/`SetPadding` are container-only, a leaf can never have

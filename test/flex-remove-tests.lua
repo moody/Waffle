@@ -102,12 +102,12 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   container:RemoveChild(leaf)
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 end
 
 -- Test: a removed child added again later gets a fresh declaration order,
@@ -158,10 +158,10 @@ do
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   container:Clear()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 end
 
 print("All assertions passed.")

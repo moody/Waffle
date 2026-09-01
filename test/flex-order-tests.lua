@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible, undefined-field
+--- @diagnostic disable: undefined-field
 
 --- @type Waffle
 local Waffle = require("test/waffle")
@@ -131,18 +131,18 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   leaf:SetOrder(nil) -- already nil, no-op
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   leaf:SetOrder(5)
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   leaf:SetOrder(5) -- same value, no-op
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 end
 
 -- Test: gap applies between visually adjacent siblings after reordering,

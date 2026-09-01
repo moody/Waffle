@@ -87,23 +87,23 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a })
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   leaf:Hide()
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   leaf:Hide() -- already hidden, no-op
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   leaf:Show()
-  assert(container.isDirty == true)
+  assert(container:IsDirty() == true)
   container:Layout()
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 
   leaf:Show() -- already shown, no-op
-  assert(container.isDirty == false)
+  assert(container:IsDirty() == false)
 end
 
 -- Test: a child hidden before its first `Layout()` never gets a frame
