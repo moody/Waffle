@@ -123,7 +123,7 @@ root:AddChild({
 
 **Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, hide or show one with `Hide()`/`Show()`, resize or respace one with `SetSize()`/`SetGap()`/`SetPadding()`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. Genuinely detaching a child (not just hiding it) isn't first-class yet, that's still ahead.
 
-**Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root container or from any other container or leaf in the tree, they all share the same lookup. Duplicate or invalid keys will throw an error.
+**Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root container or from any other container or leaf in the tree, they all share the same lookup. An unregistered key throws an error; a duplicate key doesn't, the first match found wins. Keep your keys unique!
 
 ```lua
 root:AddChild({ frame = content, key = "content" })
@@ -198,7 +198,7 @@ A child (`WaffleFlexNodeChild`), whether given via `options.children` or `AddChi
 - **`frame`** — An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 - **`frameFactory`** — Creates this child's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`.
 - **`hidden`** — Excludes this child from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
-- **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
+- **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 - **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. Can also be toggled after the fact with `SetOrder()`.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly. Can also be toggled after the fact with `SetSize()`.
 - **`onLayout`** — Called with this child's frame and resolved width/height, once assigned.
