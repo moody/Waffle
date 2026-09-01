@@ -146,11 +146,17 @@ root:Layout() -- sidebar is back, content shrinks to make room again
 
 `hidden = true` can also be given up front, declaratively, instead of calling `Hide()` after the fact.
 
-**Getting a frame back, and walking a container's children.** `GetFrame()` returns a node's own frame, `nil` if it hasn't been resolved yet (a `frameFactory` that hasn't laid out for the first time). `GetChildren()` returns every one of a container's direct children, wrapped, in declaration order, without recursing into grandchildren. Useful together for walking a tree to do something with each child, e.g. pooling frames before `Clear()` discards them:
+**Getting a frame back, walking a container's children, and telling them apart.** `GetFrame()` returns a node's own frame, `nil` if it hasn't been resolved yet (a `frameFactory` that hasn't laid out for the first time). `GetChildren()` returns every one of a container's direct children, wrapped, in declaration order, without recursing into grandchildren. `IsContainer()` tells you which kind of node you're holding. Useful together for walking a tree and handling each child differently, e.g. recursing into containers while pooling leaf frames before `Clear()` discards them:
 
 ```lua
 for _, child in ipairs(root:GetChildren()) do
-  pool:Release(child:GetFrame())
+  if child:IsContainer() then
+    --- @cast child WaffleFlexComponentContainer
+    -- recurse, e.g. walk child:GetChildren() the same way
+  else
+    local frame = child:GetFrame()
+    if frame then pool:Release(frame) end
+  end
 end
 root:Clear()
 ```
@@ -202,6 +208,7 @@ root:Layout()
 - **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
 - **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
 - **`Container:GetFrame()`** — Returns this node's own frame. Works from a container or a leaf. `nil` if not resolved yet, e.g. a `frameFactory` that hasn't been laid out for the first time.
+- **`Container:IsContainer()`** — Returns `true` if this node is a container. Works from a container or a leaf.
 - **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space. Works from a container or a leaf. No-ops if already hidden.
 - **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
 - **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its own parent. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
