@@ -42,7 +42,7 @@ Waffle:Flex({
 
 `direction` defaults to `"ROW"`. Children stretch to fill the cross axis. A child with `size` takes exactly that much space along the main axis; a child without one splits whatever's left over evenly with any other flexible siblings, here that's `content` getting the full 300 left after `sidebar`'s 100.
 
-The root is a container like any other: `frame`, `frameFactory`, and `key` all work the same way they do for a child, and a root's own `frameFactory` just has no parent to receive as an argument, since nothing sits above it. `onLayout` is accepted too, but never actually called for the root, there's nothing above it to call it.
+The root is a container like any other: `frame`, `frameFactory`, `key`, `hidden`, and `onLayout` all work the same way they do for a child, and a root's own `frameFactory` just has no parent to receive as an argument, since nothing sits above it.
 
 **Nesting.** A child with its own `children` becomes a nested container, laid out within its own resolved width/height once the parent knows it.
 
@@ -110,7 +110,7 @@ root:AddChild({
 })
 ```
 
-**Reacting to resolved size.** `onLayout` fires with a child's own frame and its resolved width/height, right after they're assigned. Use it instead of `children` for anything beyond "just recurse."
+**Reacting to resolved size.** `onLayout` fires with a child's own frame and its resolved width/height, after its `children` (if any) are laid out. Use it for anything a plain `children` tree can't express on its own.
 
 ```lua
 root:AddChild({
@@ -211,7 +211,7 @@ root:Layout()
 - **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
 - **`Container:GetFrame()`** — Returns this node's frame. Works from a container or a leaf. `nil` if not resolved yet, e.g. a `frameFactory` not yet laid out.
 - **`Container:IsContainer()`** — Returns `true` if this node is a container. Works from a container or a leaf.
-- **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space. Works from a container or a leaf. No-ops if already hidden.
+- **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space, and hides its own frame. Works from a container or a leaf. No-ops if already hidden.
 - **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
 - **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its parent. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
 - **`Container:SetGap(gap?)`** — Sets the space between this container's children. Container-only. No-ops if already that gap.
@@ -229,9 +229,9 @@ A child (`WaffleFlexNode`), whether given via `options.children` or `AddChild`/`
 - **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 - **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. Can also be toggled after the fact with `SetOrder()`.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly. Can also be toggled after the fact with `SetSize()`.
-- **`onLayout`** — Called with this child's frame and resolved width/height, once assigned.
+- **`onLayout`** — Called with this child's frame and resolved width/height, after its `children` (if any) are laid out.
 
-The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above, `hidden`/`size`/`order`/`onLayout` just have no effect there, there's nothing above the root to exclude, resize, reorder, or call `onLayout` on it. It also has its own width/height and `defaultFrameFactory`, nothing above it can resolve those automatically:
+The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above. `size`/`order` have no effect there, there's nothing above the root to resize or reorder among siblings; `hidden`/`onLayout` still apply, same as for any child. It also has its own width/height and `defaultFrameFactory`, nothing above it can resolve those automatically:
 
 - **`width`** / **`height`** — The root's available size.
 - **`defaultFrameFactory`** — Creates a frame for any descendant (the root included) that gives neither `frame` nor its own `frameFactory`. `parent` is `nil` for the tree's actual root, nothing sits above it to pass in.
