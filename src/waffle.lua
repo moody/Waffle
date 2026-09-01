@@ -35,10 +35,10 @@ local Waffle = Addon.Waffle
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
 --- @field gap? integer Space between consecutive children, if this node has any. Default `0`.
 --- @field padding? integer Space between this node's edge and its children, on all four sides, if it has any. Default `0`.
---- @field hidden? boolean Excludes this node from the layout flow entirely, its siblings reflow to fill the space. Default `false`. Set directly or via `Hide()`/`Show()`. No effect on the tree's actual root, nothing lays it out.
+--- @field hidden? boolean Excludes this node from the layout flow entirely, its siblings reflow to fill the space, and its own frame is hidden. Default `false`. Set directly or via `Hide()`/`Show()`.
 --- @field key? string Registers this node for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. Set directly or via `SetOrder()`. No effect on the tree's actual root, nothing orders it among siblings.
---- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this node's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion. No effect on the tree's actual root, nothing calls it there.
+--- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this node's frame and resolved width/height, after its `children` (if any) are laid out.
 
 --- The root passed to `Waffle:Flex()`.
 --- @class WaffleFlexRootNode : WaffleFlexNode
@@ -216,9 +216,7 @@ function _W.flexLayout(options)
       frame:SetWidth(width)
       frame:SetHeight(height)
 
-      if child.onLayout then
-        child.onLayout(frame, width, height)
-      elseif child.children then
+      if child.children then
         _W.flexLayout({
           frame = frame,
           width = width,
@@ -229,6 +227,10 @@ function _W.flexLayout(options)
           defaultFrameFactory = options.defaultFrameFactory,
           children = child.children,
         })
+      end
+
+      if child.onLayout then
+        child.onLayout(frame, width, height)
       end
 
       mainOffset = mainOffset + size + gap
@@ -483,10 +485,24 @@ end
 function _W.FlexComponentContainer:Layout()
   if self.root.isDirty then
     local node = self.node
-    local frame = _W.resolveFrame(node, nil, node.defaultFrameFactory)
-    frame:SetWidth(node.width)
-    frame:SetHeight(node.height)
-    _W.flexLayout(node)
+
+    if node.hidden then
+      if node.frame then
+        node.frame:Hide()
+      end
+    else
+      local frame = _W.resolveFrame(node, nil, node.defaultFrameFactory)
+      frame:Show()
+      frame:SetWidth(node.width)
+      frame:SetHeight(node.height)
+
+      _W.flexLayout(node)
+
+      if node.onLayout then
+        node.onLayout(frame, node.width, node.height)
+      end
+    end
+
     self.root.isDirty = false
   end
 end
