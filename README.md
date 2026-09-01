@@ -258,3 +258,7 @@ Waffle includes a test suite under `test/`, run against Lua 5.1:
 ```
 
 Tests run automatically via GitHub Actions on every push and pull request to `main`.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a history of what's changed.
