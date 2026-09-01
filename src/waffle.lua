@@ -88,6 +88,71 @@ function _W.DeclarationOrder:Unassign(child)
 end
 
 -- =============================================================================
+-- NodeParent
+-- =============================================================================
+
+--- Tracks each node's current parent, so its root can be found by walking
+--- up live, instead of caching one and trusting it forever. Weak keys, an
+--- unreferenced node can still be garbage collected.
+_W.NodeParent = {
+  byNode = setmetatable({}, { __mode = "k" })
+}
+
+--- Records `parent` as `node`'s current parent, overwriting any previous
+--- one, kept correct internally wherever the tree is walked. Doesn't guard
+--- against a node genuinely belonging to two trees at once, `Claim` does.
+--- @param node WaffleFlexNode
+--- @param parent WaffleFlexNode
+function _W.NodeParent:Set(node, parent)
+  self.byNode[node] = parent
+end
+
+--- Claims `node` as a child of `parent`. Errors if it already belongs to
+--- a different one; call `RemoveChild()` on that one first to move it.
+--- @param node WaffleFlexNode
+--- @param parent WaffleFlexNode
+function _W.NodeParent:Claim(node, parent)
+  assert(not self.byNode[node],
+    "Waffle: child already belongs to another container, call RemoveChild() on it first to move it")
+  self.byNode[node] = parent
+end
+
+--- Releases `node`, so it can be claimed by another parent.
+--- @param node WaffleFlexNode
+function _W.NodeParent:Release(node)
+  self.byNode[node] = nil
+end
+
+--- Walks up from `node` to the tree's actual root node, the one with no
+--- parent of its own.
+--- @param node WaffleFlexNode
+--- @return WaffleFlexRootNode
+function _W.NodeParent:FindRoot(node)
+  local parent = self.byNode[node]
+  while parent do
+    node = parent
+    parent = self.byNode[node]
+  end
+  --- @cast node WaffleFlexRootNode
+  return node
+end
+
+-- =============================================================================
+-- DirtyRoots
+-- =============================================================================
+
+--- Which root nodes have changed since their last `Layout()` call. Weak
+--- keys, an unreferenced root can still be garbage collected.
+_W.DirtyRoots = setmetatable({}, { __mode = "k" })
+
+--- Marks the tree containing `node` dirty, wherever its current root
+--- actually is.
+--- @param node WaffleFlexNode
+function _W.markDirty(node)
+  _W.DirtyRoots[_W.NodeParent:FindRoot(node)] = true
+end
+
+-- =============================================================================
 -- Sort Functions
 -- =============================================================================
 
@@ -149,30 +214,35 @@ end
 -- Layout Functions
 -- =============================================================================
 
---- Positions `options.children` in a row or column within `options.frame`.
---- Children stretch to fill the cross axis (height for `ROW`, width for `COLUMN`).
---- `options.frame` must already be resolved and sized, the caller's
---- responsibility: `Layout()` for the tree's actual root, this same loop
+--- Positions `node.children` in a row or column within `frame`, sized to
+--- `width`/`height`. Children stretch to fill the cross axis (height for
+--- `ROW`, width for `COLUMN`). `frame` must already be resolved and sized
+--- by the caller: `Layout()` for the tree's actual root, this same loop
 --- for every other node, right before recursing into it.
---- @param options WaffleFlexRootNode
-function _W.flexLayout(options)
-  local children = options.children
-  local gap = options.gap or 0
-  local padding = options.padding or 0
-  local isRow = (options.direction or "ROW"):upper() == "ROW"
+--- @param node WaffleFlexNode
+--- @param frame WaffleFrame
+--- @param width integer
+--- @param height integer
+--- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
+  local children = node.children
+  local gap = node.gap or 0
+  local padding = node.padding or 0
+  local isRow = (node.direction or "ROW"):upper() == "ROW"
 
-  local mainSize = (isRow and options.width or options.height) - (padding * 2)
-  local crossSize = (isRow and options.height or options.width) - (padding * 2)
+  local mainSize = (isRow and width or height) - (padding * 2)
+  local crossSize = (isRow and height or width) - (padding * 2)
 
   -- Sum fixed sizes and count flexible children among the visible ones, to
   -- split the space left over evenly. A hidden child is excluded from the
   -- layout flow entirely, its siblings reflow to fill the space. Also
-  -- assigns a declaration order to new children.
+  -- assigns a declaration order and current parent to new children.
   local fixedTotal = 0
   local flexCount = 0
   local visibleCount = 0
   for _, child in ipairs(children) do
     _W.DeclarationOrder:Assign(child)
+    _W.NodeParent:Set(child, node)
     if not child.hidden then
       visibleCount = visibleCount + 1
       if child.size then
@@ -196,41 +266,32 @@ function _W.flexLayout(options)
         child.frame:Hide()
       end
     else
-      local frame = _W.resolveFrame(child, options.frame, options.defaultFrameFactory)
+      local childFrame = _W.resolveFrame(child, frame, defaultFrameFactory)
 
-      frame:Show()
-      frame:ClearAllPoints()
-      frame:SetParent(options.frame)
+      childFrame:Show()
+      childFrame:ClearAllPoints()
+      childFrame:SetParent(frame)
 
       local size = child.size or flexSize
-      local width, height
+      local childWidth, childHeight
 
       if isRow then
-        width, height = size, crossSize
-        frame:SetPoint("TOPLEFT", options.frame, "TOPLEFT", mainOffset, -padding)
+        childWidth, childHeight = size, crossSize
+        childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", mainOffset, -padding)
       else
-        width, height = crossSize, size
-        frame:SetPoint("TOPLEFT", options.frame, "TOPLEFT", padding, -mainOffset)
+        childWidth, childHeight = crossSize, size
+        childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -mainOffset)
       end
 
-      frame:SetWidth(width)
-      frame:SetHeight(height)
+      childFrame:SetWidth(childWidth)
+      childFrame:SetHeight(childHeight)
 
       if child.children then
-        _W.flexLayout({
-          frame = frame,
-          width = width,
-          height = height,
-          direction = child.direction,
-          gap = child.gap,
-          padding = child.padding,
-          defaultFrameFactory = options.defaultFrameFactory,
-          children = child.children,
-        })
+        _W.flexLayout(child, childFrame, childWidth, childHeight, defaultFrameFactory)
       end
 
       if child.onLayout then
-        child.onLayout(frame, width, height)
+        child.onLayout(childFrame, childWidth, childHeight)
       end
 
       mainOffset = mainOffset + size + gap
@@ -245,7 +306,6 @@ end
 --- Shared behavior between `WaffleFlexComponentContainer` and
 --- `WaffleFlexComponentLeaf`.
 --- @class WaffleFlexComponent
---- @field package root WaffleFlexComponentContainer
 --- @field package node WaffleFlexNode
 _W.FlexComponent = {}
 _W.FlexComponent.__index = _W.FlexComponent
@@ -257,7 +317,8 @@ function _W.newFlexComponent()
 end
 
 --- Recursively searches `node` and its descendants, depth-first, for one
---- whose `key` matches, returning the first found.
+--- whose `key` matches, returning the first found. Records itself as the
+--- current parent of every node it visits along the way.
 --- @param node WaffleFlexNode
 --- @param key string
 --- @return WaffleFlexNode?
@@ -267,6 +328,7 @@ function _W.findFlexNodeByKey(node, key)
   end
   if node.children then
     for _, child in ipairs(node.children) do
+      _W.NodeParent:Set(child, node)
       local found = _W.findFlexNodeByKey(child, key)
       if found then
         return found
@@ -280,12 +342,13 @@ end
 --- @param key string
 --- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 function _W.FlexComponent:GetChild(key)
-  local found = _W.findFlexNodeByKey(self.root.node, key)
+  local root = _W.NodeParent:FindRoot(self.node)
+  local found = _W.findFlexNodeByKey(root, key)
   assert(found, "Waffle: no child registered under key '" .. key .. "'")
   if found.children then
-    return _W.newFlexComponentContainer(found, self.root)
+    return _W.newFlexComponentContainer(found)
   else
-    return _W.newFlexComponentLeaf(found, self.root)
+    return _W.newFlexComponentLeaf(found)
   end
 end
 
@@ -302,13 +365,20 @@ function _W.FlexComponent:GetFrame()
   return self.node.frame
 end
 
+--- Returns `true` if this node's tree has changed since its last
+--- `Layout()` call.
+--- @return boolean
+function _W.FlexComponent:IsDirty()
+  return _W.DirtyRoots[_W.NodeParent:FindRoot(self.node)] == true
+end
+
 --- Removes this node from the layout flow entirely, its siblings reflow to
 --- fill the space. Its position in the tree is preserved, `Show()` brings
 --- it back.
 function _W.FlexComponent:Hide()
   if not self.node.hidden then
     self.node.hidden = true
-    self.root.isDirty = true
+    _W.markDirty(self.node)
   end
 end
 
@@ -316,7 +386,7 @@ end
 function _W.FlexComponent:Show()
   if self.node.hidden then
     self.node.hidden = false
-    self.root.isDirty = true
+    _W.markDirty(self.node)
   end
 end
 
@@ -327,7 +397,7 @@ end
 function _W.FlexComponent:SetSize(size)
   if self.node.size ~= size then
     self.node.size = size
-    self.root.isDirty = true
+    _W.markDirty(self.node)
   end
 end
 
@@ -338,7 +408,34 @@ end
 function _W.FlexComponent:SetOrder(order)
   if self.node.order ~= order then
     self.node.order = order
-    self.root.isDirty = true
+    _W.markDirty(self.node)
+  end
+end
+
+--- Runs the layout for the tree containing this node, starting from its
+--- actual current root, wherever that currently is. No-ops if nothing's
+--- changed since the last call.
+function _W.FlexComponent:Layout()
+  local root = _W.NodeParent:FindRoot(self.node)
+  if _W.DirtyRoots[root] then
+    if root.hidden then
+      if root.frame then
+        root.frame:Hide()
+      end
+    else
+      local frame = _W.resolveFrame(root, nil, root.defaultFrameFactory)
+      frame:Show()
+      frame:SetWidth(root.width)
+      frame:SetHeight(root.height)
+
+      _W.flexLayout(root, frame, root.width, root.height, root.defaultFrameFactory)
+
+      if root.onLayout then
+        root.onLayout(frame, root.width, root.height)
+      end
+    end
+
+    _W.DirtyRoots[root] = nil
   end
 end
 
@@ -346,16 +443,15 @@ end
 -- FlexComponentLeaf
 -- =============================================================================
 
---- Returned by `AddChild`. A leaf child; cannot have children of its own.
+--- Returned by `AddChild`. A leaf child; cannot have children.
 --- @class WaffleFlexComponentLeaf : WaffleFlexComponent
 _W.FlexComponentLeaf = _W.newFlexComponent()
 _W.FlexComponentLeaf.__index = _W.FlexComponentLeaf
 
 --- @param node WaffleFlexNode
---- @param root WaffleFlexComponentContainer
 --- @return WaffleFlexComponentLeaf
-function _W.newFlexComponentLeaf(node, root)
-  return setmetatable({ node = node, root = root }, _W.FlexComponentLeaf)
+function _W.newFlexComponentLeaf(node)
+  return setmetatable({ node = node }, _W.FlexComponentLeaf)
 end
 
 -- =============================================================================
@@ -363,56 +459,62 @@ end
 -- =============================================================================
 
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
---- nothing runs until `Layout()` is called on the root container.
+--- nothing runs until `Layout()` is called.
 --- @class WaffleFlexComponentContainer : WaffleFlexComponent
---- @field package node WaffleFlexRootNode | WaffleFlexNode The full root shape, but only when this container is the tree's actual root.
---- @field package isDirty boolean Root only. Set by `AddChild`/`AddRow`/`AddColumn`; cleared by `Layout()`.
 _W.FlexComponentContainer = _W.newFlexComponent()
 _W.FlexComponentContainer.__index = _W.FlexComponentContainer
 
 --- Constructs a container wrapping `node` as-is.
 --- @param node WaffleFlexNode
---- @param root? WaffleFlexComponentContainer Omit for the root itself.
 --- @return WaffleFlexComponentContainer
-function _W.newFlexComponentContainer(node, root)
+function _W.newFlexComponentContainer(node)
   node.children = node.children or {}
-  local container = setmetatable({ node = node }, _W.FlexComponentContainer)
-  container.root = root or container
-  if root == nil then
-    container.isDirty = true
-  end
-  return container
+  return setmetatable({ node = node }, _W.FlexComponentContainer)
 end
 
---- Appends a child as-is, returning its leaf.
+--- Appends a child as-is, returning its wrapper: a container if `child`
+--- already has its own `children`, a leaf otherwise. Errors if `child`
+--- already belongs to another container, call `RemoveChild()` on that one
+--- first to move it here.
 --- @param child WaffleFlexNode
---- @return WaffleFlexComponentLeaf
+--- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 function _W.FlexComponentContainer:AddChild(child)
+  _W.NodeParent:Claim(child, self.node)
   table.insert(self.node.children, child)
-  self.root.isDirty = true
-  return _W.newFlexComponentLeaf(child, self.root)
+  _W.markDirty(self.node)
+  if child.children then
+    return _W.newFlexComponentContainer(child)
+  else
+    return _W.newFlexComponentLeaf(child)
+  end
 end
 
---- Appends a new ROW container as a child, returning its container for further composition.
+--- Appends a new ROW container as a child, returning its container for
+--- further composition. Errors if `child` already belongs to another
+--- container, call `RemoveChild()` on that one first to move it here.
 --- @param child? WaffleFlexNode
 --- @return WaffleFlexComponentContainer
 function _W.FlexComponentContainer:AddRow(child)
   child = child or {}
   child.direction = "ROW"
+  _W.NodeParent:Claim(child, self.node)
   table.insert(self.node.children, child)
-  self.root.isDirty = true
-  return _W.newFlexComponentContainer(child, self.root)
+  _W.markDirty(self.node)
+  return _W.newFlexComponentContainer(child)
 end
 
---- Appends a new COLUMN container as a child, returning its container for further composition.
+--- Appends a new COLUMN container as a child, returning its container for
+--- further composition. Errors if `child` already belongs to another
+--- container, call `RemoveChild()` on that one first to move it here.
 --- @param child? WaffleFlexNode
 --- @return WaffleFlexComponentContainer
 function _W.FlexComponentContainer:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
+  _W.NodeParent:Claim(child, self.node)
   table.insert(self.node.children, child)
-  self.root.isDirty = true
-  return _W.newFlexComponentContainer(child, self.root)
+  _W.markDirty(self.node)
+  return _W.newFlexComponentContainer(child)
 end
 
 --- Returns every one of this container's children, wrapped, in
@@ -421,10 +523,11 @@ end
 function _W.FlexComponentContainer:GetChildren()
   local children = {}
   for i, node in ipairs(self.node.children) do
+    _W.NodeParent:Set(node, self.node)
     if node.children then
-      children[i] = _W.newFlexComponentContainer(node, self.root)
+      children[i] = _W.newFlexComponentContainer(node)
     else
-      children[i] = _W.newFlexComponentLeaf(node, self.root)
+      children[i] = _W.newFlexComponentLeaf(node)
     end
   end
   return children
@@ -441,7 +544,8 @@ function _W.FlexComponentContainer:RemoveChild(child)
     if node == child.node then
       table.remove(self.node.children, i)
       _W.DeclarationOrder:Unassign(node)
-      self.root.isDirty = true
+      _W.NodeParent:Release(node)
+      _W.markDirty(self.node)
       return true
     end
   end
@@ -454,9 +558,10 @@ function _W.FlexComponentContainer:Clear()
   if #self.node.children == 0 then return end
   for _, node in ipairs(self.node.children) do
     _W.DeclarationOrder:Unassign(node)
+    _W.NodeParent:Release(node)
   end
   self.node.children = {}
-  self.root.isDirty = true
+  _W.markDirty(self.node)
 end
 
 --- Sets the space between this container's children. No-ops if already
@@ -465,7 +570,7 @@ end
 function _W.FlexComponentContainer:SetGap(gap)
   if self.node.gap ~= gap then
     self.node.gap = gap
-    self.root.isDirty = true
+    _W.markDirty(self.node)
   end
 end
 
@@ -475,35 +580,7 @@ end
 function _W.FlexComponentContainer:SetPadding(padding)
   if self.node.padding ~= padding then
     self.node.padding = padding
-    self.root.isDirty = true
-  end
-end
-
---- Runs the layout for everything composed so far. Call only on the root
---- container, nested `AddRow`/`AddColumn` containers are laid out
---- automatically. No-ops if nothing changed since the last call.
-function _W.FlexComponentContainer:Layout()
-  if self.root.isDirty then
-    local node = self.node
-
-    if node.hidden then
-      if node.frame then
-        node.frame:Hide()
-      end
-    else
-      local frame = _W.resolveFrame(node, nil, node.defaultFrameFactory)
-      frame:Show()
-      frame:SetWidth(node.width)
-      frame:SetHeight(node.height)
-
-      _W.flexLayout(node)
-
-      if node.onLayout then
-        node.onLayout(frame, node.width, node.height)
-      end
-    end
-
-    self.root.isDirty = false
+    _W.markDirty(self.node)
   end
 end
 
@@ -513,9 +590,10 @@ end
 
 --- Starts composing a `Flex` container and returns it: call
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
---- For a fully declarative style, `options.children` may be given directly.
---- @param options WaffleFlexRootNode
+--- For a fully declarative style, `rootNode.children` may be given directly.
+--- @param rootNode WaffleFlexRootNode
 --- @return WaffleFlexComponentContainer
-function Waffle:Flex(options)
-  return _W.newFlexComponentContainer(options)
+function Waffle:Flex(rootNode)
+  _W.DirtyRoots[rootNode] = true
+  return _W.newFlexComponentContainer(rootNode)
 end
