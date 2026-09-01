@@ -26,11 +26,11 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 
 ## Usage
 
-**Composing declaratively.** `Waffle:Flex(options)` positions `options.children` in a row or column within `options.parent`, and returns a container. Nothing runs until `Layout()` is called on it.
+**Composing declaratively.** `Waffle:Flex(options)` positions `options.children` in a row or column within `options.frame`, and returns a container. Nothing runs until `Layout()` is called on it.
 
 ```lua
 Waffle:Flex({
-  parent = frame,
+  frame = frame,
   width = 400,
   height = 300,
   children = {
@@ -42,11 +42,13 @@ Waffle:Flex({
 
 `direction` defaults to `"ROW"`. Children stretch to fill the cross axis. A child with `size` takes exactly that much space along the main axis; a child without one splits whatever's left over evenly with any other flexible siblings, here that's `content` getting the full 300 left after `sidebar`'s 100.
 
+The root is a container like any other: `frame`, `frameFactory`, and `key` all work the same way they do for a child, and a root's own `frameFactory` just has no parent to receive as an argument, since nothing sits above it. `onLayout` is accepted too, but never actually called for the root, there's nothing above it to call it.
+
 **Nesting.** A child with its own `children` becomes a nested container, laid out within its own resolved width/height once the parent knows it.
 
 ```lua
 Waffle:Flex({
-  parent = frame,
+  frame = frame,
   width = 400,
   height = 300,
   direction = "COLUMN",
@@ -66,7 +68,7 @@ Waffle:Flex({
 **The fluent API.** The same tree, composed fluently instead of as one large nested table. `AddRow`/`AddColumn` append a nested container and return a new container scoped to it; `Layout()` only needs to be called once, on the root.
 
 ```lua
-local root = Waffle:Flex({ parent = frame, width = 400, height = 300, direction = "COLUMN" })
+local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "COLUMN" })
 root:AddChild({ frame = header, size = 40 })
 
 local body = root:AddRow({ frame = CreateFrame("Frame") })
@@ -80,7 +82,7 @@ root:Layout()
 
 ```lua
 local root = Waffle:Flex({
-  parent = frame,
+  frame = frame,
   width = 400,
   height = 300,
   direction = "COLUMN",
@@ -146,7 +148,7 @@ root:Layout() -- sidebar is back, content shrinks to make room again
 
 `hidden = true` can also be given up front, declaratively, instead of calling `Hide()` after the fact.
 
-**Getting a frame back, walking a container's children, and telling them apart.** `GetFrame()` returns a node's own frame, `nil` if it hasn't been resolved yet (a `frameFactory` that hasn't laid out for the first time). `GetChildren()` returns every one of a container's direct children, wrapped, in declaration order, without recursing into grandchildren. `IsContainer()` tells you which kind of node you're holding. Useful together for walking a tree and handling each child differently, e.g. recursing into containers while pooling leaf frames before `Clear()` discards them:
+**Getting a frame back, walking a container's children, and telling them apart.** `GetFrame()` returns a node's frame, `nil` if it hasn't been resolved yet (a `frameFactory` not yet laid out). `GetChildren()` returns every one of a container's direct children, wrapped, in declaration order, without recursing into grandchildren. `IsContainer()` tells you which kind of node you're holding. Useful together for walking a tree and handling each child differently, e.g. recursing into containers while pooling leaf frames before `Clear()` discards them:
 
 ```lua
 for _, child in ipairs(root:GetChildren()) do
@@ -161,7 +163,7 @@ end
 root:Clear()
 ```
 
-**Removing a child.** `RemoveChild(child)` detaches a child from the tree entirely, not just excluding it from layout the way `Hide()` does, returning whether it was actually found and removed. `Clear()` removes every child at once. Neither touches the removed child's own frame, only Waffle's own tracking of it.
+**Removing a child.** `RemoveChild(child)` detaches a child from the tree entirely, not excluding it from layout the way `Hide()` does, returning whether it was actually found and removed. `Clear()` removes every child at once. Neither touches the removed child's own frame, only Waffle's own tracking of it.
 
 ```lua
 local sidebarLeaf = root:AddChild({ frame = sidebar, size = 100 })
@@ -202,38 +204,37 @@ root:Layout()
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexComponentContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
 - **`Container:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns its leaf.
 - **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it.
-- **`Container:GetChildren()`** — Returns every one of this container's own children, wrapped, in declaration order. Container-only. Doesn't recurse into grandchildren.
-- **`Container:RemoveChild(child)`** — Removes `child` from this container's own children entirely, detaching it (and its own children, if it's itself a container) from the tree rather than just excluding it from layout. Doesn't touch `child`'s own frame. Container-only. Returns `true` if `child` was actually found and removed.
+- **`Container:GetChildren()`** — Returns every one of this container's children, wrapped, in declaration order. Container-only. Doesn't recurse into grandchildren.
+- **`Container:RemoveChild(child)`** — Removes `child` from this container's children entirely, detaching it (and its own children, if it's itself a container) from the tree rather than excluding it from layout the way `Hide()` does. Doesn't touch `child`'s own frame. Container-only. Returns `true` if `child` was actually found and removed.
 - **`Container:Clear()`** — Removes every child from this container, same as calling `RemoveChild` on each one. Container-only. No-ops if already empty.
-- **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested containers are laid out automatically as part of it. Safe to call again later; no-ops unless something changed since the last call.
+- **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested `AddRow`/`AddColumn` containers are laid out automatically. Safe to call again later; no-ops unless something changed since the last call.
 - **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
-- **`Container:GetFrame()`** — Returns this node's own frame. Works from a container or a leaf. `nil` if not resolved yet, e.g. a `frameFactory` that hasn't been laid out for the first time.
+- **`Container:GetFrame()`** — Returns this node's frame. Works from a container or a leaf. `nil` if not resolved yet, e.g. a `frameFactory` not yet laid out.
 - **`Container:IsContainer()`** — Returns `true` if this node is a container. Works from a container or a leaf.
 - **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space. Works from a container or a leaf. No-ops if already hidden.
 - **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
-- **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its own parent. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
-- **`Container:SetGap(gap?)`** — Sets the space between this container's own children. Container-only. No-ops if already that gap.
+- **`Container:SetSize(size?)`** — Sets the fixed size this node takes up within its parent. Works from a container or a leaf. Pass `nil` to remove a fixed size and let it flex again. No-ops if already that size.
+- **`Container:SetGap(gap?)`** — Sets the space between this container's children. Container-only. No-ops if already that gap.
 - **`Container:SetPadding(padding?)`** — Sets the space between this container's edge and its children, on all four sides. Container-only. No-ops if already that padding.
 - **`Container:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that order.
 
-The options (`WaffleFlexNodeParent`) passed to `Waffle:Flex()` accept:
-
-- **`parent`** — The frame `children` are positioned within.
-- **`width`** / **`height`** — The container's available size.
-- **`children`** — Can be given directly for a fully declarative style, instead of `AddChild`/`AddRow`/`AddColumn`.
-- **`direction`** — `"ROW"` or `"COLUMN"`. Defaults to `"ROW"`.
-- **`gap`** / **`padding`** — Space between/around children. Can also be toggled after the fact with `SetGap()`/`SetPadding()`.
-- **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Reaches every level, receives the resolved parent as an argument.
-
-A child (`WaffleFlexNodeChild`), whether given via `options.children` or `AddChild`/`AddRow`/`AddColumn`, accepts the same `direction`, `gap`, and `padding` as above (they apply to the nested container this child becomes), plus:
+A child (`WaffleFlexNode`), whether given via `options.children` or `AddChild`/`AddRow`/`AddColumn`, accepts:
 
 - **`frame`** — An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 - **`frameFactory`** — Creates this child's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`.
+- **`direction`** — `"ROW"` or `"COLUMN"`. Defaults to `"ROW"`. Applies to the nested container this child becomes, if it has `children`.
+- **`gap`** / **`padding`** — Space between/around this child's children, if it has any. Can also be toggled after the fact with `SetGap()`/`SetPadding()`.
+- **`children`** — Can be given directly for a fully declarative style, instead of `AddChild`/`AddRow`/`AddColumn`.
 - **`hidden`** — Excludes this child from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 - **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. Can also be toggled after the fact with `SetOrder()`.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly. Can also be toggled after the fact with `SetSize()`.
 - **`onLayout`** — Called with this child's frame and resolved width/height, once assigned.
+
+The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above, `hidden`/`size`/`order`/`onLayout` just have no effect there, there's nothing above the root to exclude, resize, reorder, or call `onLayout` on it. It also has its own width/height and `defaultFrameFactory`, nothing above it can resolve those automatically:
+
+- **`width`** / **`height`** — The root's available size.
+- **`defaultFrameFactory`** — Creates a frame for any descendant (the root included) that gives neither `frame` nor its own `frameFactory`. `parent` is `nil` for the tree's actual root, nothing sits above it to pass in.
 
 ## Testing
 
