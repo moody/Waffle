@@ -65,7 +65,7 @@ Waffle:Flex({
 }):Layout()
 ```
 
-**The fluent API.** The same tree, composed fluently instead of as one large nested table. `AddRow`/`AddColumn` append a nested container and return a new container scoped to it; `Layout()` only needs to be called once, on the root.
+**The fluent API.** The same tree, composed fluently instead of as one large nested table. `AddRow`/`AddColumn` append a nested container and return a new container scoped to it; `Layout()` only needs to be called once, and works the same regardless of which node in the tree you call it from.
 
 ```lua
 local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "COLUMN" })
@@ -123,7 +123,7 @@ root:AddChild({
 
 `onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once.
 
-**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, remove one with `RemoveChild()`/`Clear()`, hide or show one with `Hide()`/`Show()`, resize or respace one with `SetSize()`/`SetGap()`/`SetPadding()`, then call `Layout()` again on the same root container to bring the frames in line. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame.
+**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Add another child with `AddChild`/`AddRow`/`AddColumn`, remove one with `RemoveChild()`/`Clear()`, hide or show one with `Hide()`/`Show()`, resize or respace one with `SetSize()`/`SetGap()`/`SetPadding()`, then call `Layout()` again to bring the frames in line, from any node in the tree, not just the root, it always resolves and lays out the whole tree from its actual current root. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. `IsDirty()` tells you whether a call would actually do anything, without triggering one.
 
 **Looking up a child by key.** Give a child a `key` when adding it, and retrieve it later with `GetChild(key)`, from the root container or from any other container or leaf in the tree, they all share the same lookup. An unregistered key throws an error; a duplicate key doesn't, the first match found wins. Keep your keys unique!
 
@@ -175,6 +175,18 @@ root:Clear()
 root:Layout() -- root has no children left at all
 ```
 
+**Moving a child to a different container.** A node can only belong to one container's children at a time, whether it got there through `AddChild()`/`AddRow()`/`AddColumn()` or was just written directly into a `children` table. Adding a node that's still attached elsewhere throws. `RemoveChild()` it from its current container first, then add it wherever it goes next, even a completely different `Waffle:Flex()` tree, it reparents cleanly.
+
+```lua
+local sidebarOptions = { frame = sidebar, size = 100 }
+local sidebarLeaf = leftPanel:AddChild(sidebarOptions)
+leftPanel:Layout()
+
+leftPanel:RemoveChild(sidebarLeaf)
+rightPanel:AddChild(sidebarOptions) -- moved into a different tree entirely
+rightPanel:Layout()
+```
+
 **Mutating size, gap, and padding.** `SetSize()` works on any container or leaf; `SetGap()`/`SetPadding()` only make sense on a container, since only a container has children to space out. All three no-op if given the same value they already have.
 
 ```lua
@@ -202,12 +214,13 @@ root:Layout()
 ## API
 
 - **`Waffle:Flex(options)`** — Starts composing a container, returns a `WaffleFlexComponentContainer`. `options.children` can be given directly for a fully declarative style. Nothing runs until `Layout()` is called.
-- **`Container:AddChild(child)`** — Appends a child as-is, a leaf frame or a manually composed subtree via its own `children`/`onLayout`. Returns its leaf.
-- **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it.
+- **`Container:AddChild(child)`** — Appends a child as-is, returning its wrapper: a container if `child` already has its own `children`, a leaf otherwise. Errors if `child` already belongs to a different container, call `RemoveChild()` on that one first to move it here. No-ops if `child` is already this container's own.
+- **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it. Errors if `child` already belongs to a different container, call `RemoveChild()` on that one first to move it here. No-ops if `child` is already this container's own.
 - **`Container:GetChildren()`** — Returns every one of this container's children, wrapped, in declaration order. Container-only. Doesn't recurse into grandchildren.
 - **`Container:RemoveChild(child)`** — Removes `child` from this container's children entirely, detaching it (and its own children, if it's itself a container) from the tree rather than excluding it from layout the way `Hide()` does. Doesn't touch `child`'s own frame. Container-only. Returns `true` if `child` was actually found and removed.
 - **`Container:Clear()`** — Removes every child from this container, same as calling `RemoveChild` on each one. Container-only. No-ops if already empty.
-- **`Container:Layout()`** — Runs the layout for everything composed so far. Call only on the root container, nested `AddRow`/`AddColumn` containers are laid out automatically. Safe to call again later; no-ops unless something changed since the last call.
+- **`Container:Layout()`** — Runs the layout for the tree containing this node, starting from its actual current root. Works from any container or leaf, not just the root container. No-ops unless something changed since the last call.
+- **`Container:IsDirty()`** — Returns `true` if this node's tree has changed since its last `Layout()` call. Works from a container or a leaf.
 - **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
 - **`Container:GetFrame()`** — Returns this node's frame. Works from a container or a leaf. `nil` if not resolved yet, e.g. a `frameFactory` not yet laid out.
 - **`Container:IsContainer()`** — Returns `true` if this node is a container. Works from a container or a leaf.
