@@ -241,14 +241,37 @@ function _W.newFlexComponent()
   return setmetatable({}, _W.FlexComponent)
 end
 
---- Looks up a child anywhere in the tree by its `key`. Errors if none was
---- registered under it.
+--- Recursively searches `node` and its descendants, depth-first, for one
+--- whose `key` matches. Returns the first match found.
+--- @param node WaffleFlexNodeParent | WaffleFlexNodeChild
+--- @param key string
+--- @return (WaffleFlexNodeParent | WaffleFlexNodeChild)?
+function _W.findFlexNodeByKey(node, key)
+  if node.key == key then
+    return node
+  end
+  if node.children then
+    for _, child in ipairs(node.children) do
+      local found = _W.findFlexNodeByKey(child, key)
+      if found then
+        return found
+      end
+    end
+  end
+end
+
+--- Looks up a child anywhere in the tree by its `key`. Errors if none is found.
+--- A duplicate key isn't validated against, the first match encountered wins silently.
 --- @param key string
 --- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 function _W.FlexComponent:GetChild(key)
-  local found = self.root.keyed[key]
+  local found = _W.findFlexNodeByKey(self.root.node, key)
   assert(found, "Waffle: no child registered under key '" .. key .. "'")
-  return found
+  if found.children then
+    return _W.newFlexComponentContainer(found, self.root)
+  else
+    return _W.newFlexComponentLeaf(found, self.root)
+  end
 end
 
 --- Removes this node from the layout flow entirely, its siblings reflow to
@@ -305,12 +328,7 @@ _W.FlexComponentLeaf.__index = _W.FlexComponentLeaf
 --- @param root WaffleFlexComponentContainer
 --- @return WaffleFlexComponentLeaf
 function _W.newFlexComponentLeaf(node, root)
-  local leaf = setmetatable({ node = node, root = root }, _W.FlexComponentLeaf)
-  if node.key then
-    assert(not root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
-    root.keyed[node.key] = leaf
-  end
-  return leaf
+  return setmetatable({ node = node, root = root }, _W.FlexComponentLeaf)
 end
 
 -- =============================================================================
@@ -320,13 +338,11 @@ end
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
 --- nothing runs until `Layout()` is called on the root container.
 --- @class WaffleFlexComponentContainer : WaffleFlexComponent
---- @field package keyed table<string, WaffleFlexComponentContainer | WaffleFlexComponentLeaf>
 --- @field package isDirty boolean Root only. Set by `AddChild`/`AddRow`/`AddColumn`; cleared by `Layout()`.
 _W.FlexComponentContainer = _W.newFlexComponent()
 _W.FlexComponentContainer.__index = _W.FlexComponentContainer
 
---- Constructs a container for `node`, and recursively creates
---- containers/leaves for its children as necessary.
+--- Constructs a container wrapping `node` as-is.
 --- @param node WaffleFlexNodeParent | WaffleFlexNodeChild
 --- @param root? WaffleFlexComponentContainer Omit for the root itself.
 --- @return WaffleFlexComponentContainer
@@ -335,19 +351,7 @@ function _W.newFlexComponentContainer(node, root)
   local container = setmetatable({ node = node }, _W.FlexComponentContainer)
   container.root = root or container
   if not root then
-    container.keyed = {}
     container.isDirty = true
-  end
-  if node.key then
-    assert(not container.root.keyed[node.key], "Waffle: duplicate key '" .. node.key .. "'")
-    container.root.keyed[node.key] = container
-  end
-  for _, child in ipairs(node.children) do
-    if child.children then
-      _W.newFlexComponentContainer(child, container.root)
-    else
-      _W.newFlexComponentLeaf(child, container.root)
-    end
   end
   return container
 end
