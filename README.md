@@ -78,7 +78,7 @@ body:AddChild({ frame = content })
 root:Layout()
 ```
 
-**Frame factory.** Give the root a `defaultFrameFactory` and any child that omits both `frame` and its own `frameFactory` gets one automatically, reaching every level of nesting. Handy for wrapper containers that don't need to be anything but a positioning box. It receives the frame's resolved parent as an argument.
+**Frame factory.** Give a node a `defaultFrameFactory` and any descendant below it that omits both `frame` and its own `frameFactory` gets one automatically, reaching every level of nesting below that point. Handy for wrapper containers that don't need to be anything but a positioning box. It receives the frame's resolved parent as an argument.
 
 ```lua
 local root = Waffle:Flex({
@@ -243,11 +243,11 @@ A child (`WaffleFlexNode`), whether given via `options.children` or `AddChild`/`
 - **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. Can also be toggled after the fact with `SetOrder()`.
 - **`size`** — Fixed size along the main axis. Omitted children split the remaining space evenly. Can also be toggled after the fact with `SetSize()`.
 - **`onLayout`** — Called with this child's frame and resolved width/height, after its `children` (if any) are laid out.
+- **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node; even the tree's actual root needs its own `frame`/`frameFactory`, nothing above it to inherit a fallback from.
 
-The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above. `size`/`order` have no effect there, there's nothing above the root to resize or reorder among siblings; `hidden`/`onLayout` still apply, same as for any child. It also has its own width/height and `defaultFrameFactory`, nothing above it can resolve those automatically:
+The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above. `size`/`order` have no effect there, there's nothing above the root to resize or reorder among siblings; everything else, `hidden`/`onLayout`/`defaultFrameFactory` included, still applies, same as for any child. It also has its own width/height, nothing above it can resolve that automatically:
 
 - **`width`** / **`height`** — The root's available size.
-- **`defaultFrameFactory`** — Creates a frame for any descendant (the root included) that gives neither `frame` nor its own `frameFactory`. `parent` is `nil` for the tree's actual root, nothing sits above it to pass in.
 
 ## Testing
 
