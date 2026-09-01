@@ -240,4 +240,36 @@ do
   assert(created ~= nil)
 end
 
+-- Test: `GetFrame()` returns an explicit `frame` immediately, no `Layout()` needed.
+do
+  local root = Mocks:CreateFrame()
+  local explicit = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = explicit })
+
+  assert(leaf:GetFrame() == explicit)
+end
+
+-- Test: `GetFrame()` on a `frameFactory` child is `nil` until the first
+-- `Layout()` actually resolves it, then returns the resolved frame.
+do
+  local root = Mocks:CreateFrame()
+  local created
+
+  local container = Waffle:Flex({ parent = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({
+    frameFactory = function()
+      created = Mocks:CreateFrame()
+      return created
+    end
+  })
+
+  assert(leaf:GetFrame() == nil)
+
+  container:Layout()
+
+  assert(leaf:GetFrame() == created)
+end
+
 print("All assertions passed.")
