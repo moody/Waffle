@@ -25,29 +25,26 @@ local Waffle = Addon.Waffle
 
 --- @alias WaffleFlexDirection "ROW" | "COLUMN"
 
---- Layout properties shared by `WaffleFlexNodeChild` and `WaffleFlexNodeParent`,
---- the plain data tables Waffle operates on.
+--- Properties shared by every node in the tree, root included. The plain
+--- data tables Waffle operates on.
 --- @class WaffleFlexNode
+--- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
+--- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this node's own frame, once. Cannot be given together with `frame`. `parent` is `nil` for the tree's actual root, nothing sits above it to pass in.
+--- @field children? WaffleFlexNode[] Children positioned within this node, in a row or column depending on `direction`.
 --- @field direction? WaffleFlexDirection Default `ROW`.
+--- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
 --- @field gap? integer Space between consecutive children, if this node has any. Default `0`.
 --- @field padding? integer Space between this node's edge and its children, on all four sides, if it has any. Default `0`.
---- @field children? WaffleFlexNodeChild[] Children positioned within this node, in a row or column depending on `direction`.
 --- @field hidden? boolean Excludes this node from the layout flow entirely, its siblings reflow to fill the space. Default `false`. Set directly or via `Hide()`/`Show()`. No effect on the tree's actual root, nothing lays it out.
---- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its own parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
---- @field order? integer Visual position among siblings, independent of declaration order. Default `0`. Ties broken by declaration order. Set directly or via `SetOrder()`. No effect on the tree's actual root, nothing orders it among siblings.
+--- @field key? string Registers this node for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
+--- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. Set directly or via `SetOrder()`. No effect on the tree's actual root, nothing orders it among siblings.
+--- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this node's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion. No effect on the tree's actual root, nothing calls it there.
 
---- A single child of a `Flex` container.
---- @class WaffleFlexNodeChild : WaffleFlexNode
---- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
---- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this child's own frame, once. Cannot be given together with `frame`.
---- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
---- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion.
-
---- @class WaffleFlexNodeParent : WaffleFlexNode
---- @field parent WaffleFrame
---- @field width integer The container's available width.
---- @field height integer The container's available height.
---- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`.
+--- The root passed to `Waffle:Flex()`.
+--- @class WaffleFlexRootNode : WaffleFlexNode
+--- @field width integer The root's available width.
+--- @field height integer The root's available height.
+--- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Creates a frame for any descendant (the root included) that gives neither `frame` nor its own `frameFactory`. `parent` is `nil` for the tree's actual root, nothing sits above it to pass in.
 
 -- =============================================================================
 -- Internal Data Table
@@ -68,14 +65,14 @@ _W.DeclarationOrder = {
 }
 
 --- Returns `child`'s declaration order, `0` if not yet assigned.
---- @param child WaffleFlexNodeChild
+--- @param child WaffleFlexNode
 --- @return integer
 function _W.DeclarationOrder:Get(child)
   return self.byChild[child] or 0
 end
 
 --- Assigns `child` the next declaration order. No-ops if it already has one.
---- @param child WaffleFlexNodeChild
+--- @param child WaffleFlexNode
 function _W.DeclarationOrder:Assign(child)
   if not self.byChild[child] then
     self.next = self.next + 1
@@ -85,7 +82,7 @@ end
 
 --- Clears `child`'s declaration order, so it's assigned a fresh one if
 --- added again later.
---- @param child WaffleFlexNodeChild
+--- @param child WaffleFlexNode
 function _W.DeclarationOrder:Unassign(child)
   self.byChild[child] = nil
 end
@@ -95,8 +92,8 @@ end
 -- =============================================================================
 
 --- Whether `childA` sorts before `childB`, by `order` then declaration order.
---- @param childA WaffleFlexNodeChild
---- @param childB WaffleFlexNodeChild
+--- @param childA WaffleFlexNode
+--- @param childB WaffleFlexNode
 --- @return boolean
 function _W.isFlexChildBefore(childA, childB)
   local orderA, orderB = childA.order or 0, childB.order or 0
@@ -109,7 +106,7 @@ end
 
 --- Sorts `children` in place by `order`, ties broken by declaration order.
 --- Stable insertion sort.
---- @param children WaffleFlexNodeChild[]
+--- @param children WaffleFlexNode[]
 function _W.sortFlexChildren(children)
   for i = 2, #children do
     local child = children[i]
@@ -123,16 +120,42 @@ function _W.sortFlexChildren(children)
 end
 
 -- =============================================================================
+-- Frame Resolution
+-- =============================================================================
+
+--- Resolves `node.frame` in place, creating it via `frameFactory`/
+--- `defaultFrameFactory` if neither was already given. `parent` is the
+--- frame to hand the factory; `nil` for the tree's actual root, nothing
+--- sits above it to pass in.
+--- @param node WaffleFlexNode
+--- @param parent WaffleFrame?
+--- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+--- @return WaffleFrame
+function _W.resolveFrame(node, parent, defaultFrameFactory)
+  assert(not (node.frame and node.frameFactory),
+    "Waffle: node cannot have both `frame` and `frameFactory`")
+
+  if not node.frame then
+    local factory = node.frameFactory or defaultFrameFactory
+    assert(factory, "Waffle: node has no `frame` and no `frameFactory`/`defaultFrameFactory` was provided")
+    node.frame = factory(parent)
+    node.frameFactory = nil
+  end
+
+  return node.frame
+end
+
+-- =============================================================================
 -- Layout Functions
 -- =============================================================================
 
---- Positions `options.children` in a row or column within `options.parent`.
+--- Positions `options.children` in a row or column within `options.frame`.
 --- Children stretch to fill the cross axis (height for `ROW`, width for `COLUMN`).
---- @param options WaffleFlexNodeParent
+--- `options.frame` must already be resolved and sized, the caller's
+--- responsibility: `Layout()` for the tree's actual root, this same loop
+--- for every other node, right before recursing into it.
+--- @param options WaffleFlexRootNode
 function _W.flexLayout(options)
-  options.parent:SetWidth(options.width)
-  options.parent:SetHeight(options.height)
-
   local children = options.children
   local gap = options.gap or 0
   local padding = options.padding or 0
@@ -142,9 +165,9 @@ function _W.flexLayout(options)
   local crossSize = (isRow and options.height or options.width) - (padding * 2)
 
   -- Sum fixed sizes and count flexible children among the visible ones, to
-  -- find out how much space is left over, then split it evenly. A hidden
-  -- child is excluded from the layout flow entirely, its siblings reflow
-  -- to fill the space. Also assigns a declaration order to new children.
+  -- split the space left over evenly. A hidden child is excluded from the
+  -- layout flow entirely, its siblings reflow to fill the space. Also
+  -- assigns a declaration order to new children.
   local fixedTotal = 0
   local flexCount = 0
   local visibleCount = 0
@@ -173,31 +196,21 @@ function _W.flexLayout(options)
         child.frame:Hide()
       end
     else
-      assert(not (child.frame and child.frameFactory),
-        "Waffle: child cannot have both `frame` and `frameFactory`")
-
-      local frame = child.frame
-      if not frame then
-        local factory = child.frameFactory or options.defaultFrameFactory
-        assert(factory, "Waffle: child has no `frame` and no `frameFactory`/`defaultFrameFactory` was provided")
-        frame = factory(options.parent)
-        child.frame = frame
-        child.frameFactory = nil
-      end
+      local frame = _W.resolveFrame(child, options.frame, options.defaultFrameFactory)
 
       frame:Show()
       frame:ClearAllPoints()
-      frame:SetParent(options.parent)
+      frame:SetParent(options.frame)
 
       local size = child.size or flexSize
       local width, height
 
       if isRow then
         width, height = size, crossSize
-        frame:SetPoint("TOPLEFT", options.parent, "TOPLEFT", mainOffset, -padding)
+        frame:SetPoint("TOPLEFT", options.frame, "TOPLEFT", mainOffset, -padding)
       else
         width, height = crossSize, size
-        frame:SetPoint("TOPLEFT", options.parent, "TOPLEFT", padding, -mainOffset)
+        frame:SetPoint("TOPLEFT", options.frame, "TOPLEFT", padding, -mainOffset)
       end
 
       frame:SetWidth(width)
@@ -207,7 +220,7 @@ function _W.flexLayout(options)
         child.onLayout(frame, width, height)
       elseif child.children then
         _W.flexLayout({
-          parent = frame,
+          frame = frame,
           width = width,
           height = height,
           direction = child.direction,
@@ -231,7 +244,7 @@ end
 --- `WaffleFlexComponentLeaf`.
 --- @class WaffleFlexComponent
 --- @field package root WaffleFlexComponentContainer
---- @field package node WaffleFlexNodeParent | WaffleFlexNodeChild
+--- @field package node WaffleFlexNode
 _W.FlexComponent = {}
 _W.FlexComponent.__index = _W.FlexComponent
 
@@ -242,10 +255,10 @@ function _W.newFlexComponent()
 end
 
 --- Recursively searches `node` and its descendants, depth-first, for one
---- whose `key` matches. Returns the first match found.
---- @param node WaffleFlexNodeParent | WaffleFlexNodeChild
+--- whose `key` matches, returning the first found.
+--- @param node WaffleFlexNode
 --- @param key string
---- @return (WaffleFlexNodeParent | WaffleFlexNodeChild)?
+--- @return WaffleFlexNode?
 function _W.findFlexNodeByKey(node, key)
   if node.key == key then
     return node
@@ -260,8 +273,8 @@ function _W.findFlexNodeByKey(node, key)
   end
 end
 
---- Looks up a child anywhere in the tree by its `key`. Errors if none is found.
---- A duplicate key isn't validated against, the first match encountered wins silently.
+--- Looks up a child anywhere in the tree by its `key`, erroring if none is found.
+--- A duplicate key isn't validated against, the first match found wins.
 --- @param key string
 --- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 function _W.FlexComponent:GetChild(key)
@@ -280,8 +293,8 @@ function _W.FlexComponent:IsContainer()
   return self.node.children ~= nil
 end
 
---- Returns this node's own frame. `nil` if not resolved yet, e.g. a
---- `frameFactory` that hasn't been laid out for the first time.
+--- Returns this node's frame, `nil` if not resolved yet, e.g. a
+--- `frameFactory` not yet laid out.
 --- @return WaffleFrame?
 function _W.FlexComponent:GetFrame()
   return self.node.frame
@@ -305,7 +318,7 @@ function _W.FlexComponent:Show()
   end
 end
 
---- Sets the fixed size this node takes up within its own parent. Pass
+--- Sets the fixed size this node takes up within its parent. Pass
 --- `nil` to remove a fixed size and let it flex again. No-ops if already
 --- that size.
 --- @param size? integer
@@ -333,11 +346,10 @@ end
 
 --- Returned by `AddChild`. A leaf child; cannot have children of its own.
 --- @class WaffleFlexComponentLeaf : WaffleFlexComponent
---- @field package node WaffleFlexNodeChild
 _W.FlexComponentLeaf = _W.newFlexComponent()
 _W.FlexComponentLeaf.__index = _W.FlexComponentLeaf
 
---- @param node WaffleFlexNodeChild
+--- @param node WaffleFlexNode
 --- @param root WaffleFlexComponentContainer
 --- @return WaffleFlexComponentLeaf
 function _W.newFlexComponentLeaf(node, root)
@@ -351,26 +363,27 @@ end
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
 --- nothing runs until `Layout()` is called on the root container.
 --- @class WaffleFlexComponentContainer : WaffleFlexComponent
+--- @field package node WaffleFlexRootNode | WaffleFlexNode The full root shape, but only when this container is the tree's actual root.
 --- @field package isDirty boolean Root only. Set by `AddChild`/`AddRow`/`AddColumn`; cleared by `Layout()`.
 _W.FlexComponentContainer = _W.newFlexComponent()
 _W.FlexComponentContainer.__index = _W.FlexComponentContainer
 
 --- Constructs a container wrapping `node` as-is.
---- @param node WaffleFlexNodeParent | WaffleFlexNodeChild
+--- @param node WaffleFlexNode
 --- @param root? WaffleFlexComponentContainer Omit for the root itself.
 --- @return WaffleFlexComponentContainer
 function _W.newFlexComponentContainer(node, root)
   node.children = node.children or {}
   local container = setmetatable({ node = node }, _W.FlexComponentContainer)
   container.root = root or container
-  if not root then
+  if root == nil then
     container.isDirty = true
   end
   return container
 end
 
 --- Appends a child as-is, returning its leaf.
---- @param child WaffleFlexNodeChild
+--- @param child WaffleFlexNode
 --- @return WaffleFlexComponentLeaf
 function _W.FlexComponentContainer:AddChild(child)
   table.insert(self.node.children, child)
@@ -379,7 +392,7 @@ function _W.FlexComponentContainer:AddChild(child)
 end
 
 --- Appends a new ROW container as a child, returning its container for further composition.
---- @param child? WaffleFlexNodeChild
+--- @param child? WaffleFlexNode
 --- @return WaffleFlexComponentContainer
 function _W.FlexComponentContainer:AddRow(child)
   child = child or {}
@@ -390,7 +403,7 @@ function _W.FlexComponentContainer:AddRow(child)
 end
 
 --- Appends a new COLUMN container as a child, returning its container for further composition.
---- @param child? WaffleFlexNodeChild
+--- @param child? WaffleFlexNode
 --- @return WaffleFlexComponentContainer
 function _W.FlexComponentContainer:AddColumn(child)
   child = child or {}
@@ -400,7 +413,7 @@ function _W.FlexComponentContainer:AddColumn(child)
   return _W.newFlexComponentContainer(child, self.root)
 end
 
---- Returns every one of this container's own children, wrapped, in
+--- Returns every one of this container's children, wrapped, in
 --- declaration order. Doesn't recurse into grandchildren.
 --- @return (WaffleFlexComponentContainer | WaffleFlexComponentLeaf)[]
 function _W.FlexComponentContainer:GetChildren()
@@ -415,10 +428,10 @@ function _W.FlexComponentContainer:GetChildren()
   return children
 end
 
---- Removes `child` from this container's own children entirely, detaching
---- it from the tree rather than just excluding it from layout, the way
---- `Hide()` does. Doesn't touch `child`'s own `frame`. Returns `true` if
---- found and removed.
+--- Removes `child` from this container's children entirely, detaching it
+--- from the tree rather than excluding it from layout the way `Hide()`
+--- does. Doesn't touch `child`'s own `frame`. Returns `true` if found and
+--- removed.
 --- @param child WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 --- @return boolean removed
 function _W.FlexComponentContainer:RemoveChild(child)
@@ -444,8 +457,8 @@ function _W.FlexComponentContainer:Clear()
   self.root.isDirty = true
 end
 
---- Sets the space between this container's own children. No-ops if
---- already that gap.
+--- Sets the space between this container's children. No-ops if already
+--- that gap.
 --- @param gap? integer
 function _W.FlexComponentContainer:SetGap(gap)
   if self.node.gap ~= gap then
@@ -466,10 +479,14 @@ end
 
 --- Runs the layout for everything composed so far. Call only on the root
 --- container, nested `AddRow`/`AddColumn` containers are laid out
---- automatically as part of it. No-ops if nothing changed since the last call.
+--- automatically. No-ops if nothing changed since the last call.
 function _W.FlexComponentContainer:Layout()
   if self.root.isDirty then
-    _W.flexLayout(self.node)
+    local node = self.node
+    local frame = _W.resolveFrame(node, nil, node.defaultFrameFactory)
+    frame:SetWidth(node.width)
+    frame:SetHeight(node.height)
+    _W.flexLayout(node)
     self.root.isDirty = false
   end
 end
@@ -481,7 +498,7 @@ end
 --- Starts composing a `Flex` container and returns it: call
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
 --- For a fully declarative style, `options.children` may be given directly.
---- @param options WaffleFlexNodeParent
+--- @param options WaffleFlexRootNode
 --- @return WaffleFlexComponentContainer
 function Waffle:Flex(options)
   return _W.newFlexComponentContainer(options)
