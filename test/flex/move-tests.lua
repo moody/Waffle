@@ -37,6 +37,52 @@ do
   assert(tostring(err):find("already belongs"))
 end
 
+-- Test: calling `AddChild` twice with the same node on the same container
+-- is a harmless no-op, it doesn't duplicate the entry or error.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local child = { frame = a }
+
+  container:AddChild(child)
+  container:AddChild(child) -- same node, same container, again
+
+  assert(#container:GetChildren() == 1)
+end
+
+-- Test: a node shared between two purely declarative trees, never touching
+-- `AddChild`, still errors once both trees are actually walked.
+do
+  local rootAFrame = Mocks:CreateFrame()
+  local rootBFrame = Mocks:CreateFrame()
+  local sharedFrame = Mocks:CreateFrame()
+
+  local shared = { frame = sharedFrame }
+
+  local containerA = Waffle:Flex({
+    frame = rootAFrame,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    children = { shared },
+  })
+  containerA:Layout() -- shared's parent is now rootA's node
+
+  local containerB = Waffle:Flex({
+    frame = rootBFrame,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    children = { shared },
+  })
+
+  local ok, err = pcall(function() containerB:Layout() end)
+  assert(not ok)
+  assert(tostring(err):find("already belongs"))
+end
+
 -- Test: removing a child from its container first, then adding it to a
 -- different one, moves it there cleanly, laid out under the new parent.
 do
