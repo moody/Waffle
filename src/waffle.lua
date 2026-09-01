@@ -33,6 +33,7 @@ local Waffle = Addon.Waffle
 --- @field children? WaffleFlexNode[] Children positioned within this node, in a row or column depending on `direction`.
 --- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
+--- @field crossSize? integer Fixed size along the cross axis (height for `ROW`, width for `COLUMN`) this node takes up within its parent. Omitted nodes stretch to fill the full cross axis. Set directly or via `SetCrossSize()`. No effect on the tree's actual root, nothing sizes it from outside.
 --- @field gap? integer Space between consecutive children, if this node has any. Default `0`.
 --- @field padding? integer Space between this node's edge and its children, on all four sides, if it has any. Default `0`.
 --- @field hidden? boolean Excludes this node from the layout flow entirely, its siblings reflow to fill the space, and its own frame is hidden. Default `false`. Set directly or via `Hide()`/`Show()`.
@@ -211,10 +212,12 @@ end
 -- =============================================================================
 
 --- Positions `node.children` in a row or column within `frame`, sized to
---- `width`/`height`. Children stretch to fill the cross axis (height for
---- `ROW`, width for `COLUMN`). `frame` must already be resolved and sized
---- by the caller: `Layout()` for the tree's actual root, this same loop
---- for every other node, right before recursing into it.
+--- `width`/`height`. A child stretches to fill the cross axis (height for
+--- `ROW`, width for `COLUMN`) unless it gives its own fixed `crossSize`, in
+--- which case it's sized to that instead, still anchored at the cross
+--- axis's start. `frame` must already be resolved and sized by the caller:
+--- `Layout()` for the tree's actual root, this same loop for every other
+--- node, right before recursing into it.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param width integer
@@ -269,13 +272,14 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
       childFrame:SetParent(frame)
 
       local size = child.size or flexSize
+      local childCrossSize = child.crossSize or crossSize
       local childWidth, childHeight
 
       if isRow then
-        childWidth, childHeight = size, crossSize
+        childWidth, childHeight = size, childCrossSize
         childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", mainOffset, -padding)
       else
-        childWidth, childHeight = crossSize, size
+        childWidth, childHeight = childCrossSize, size
         childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -mainOffset)
       end
 
@@ -393,6 +397,17 @@ end
 function _W.FlexComponent:SetSize(size)
   if self.node.size ~= size then
     self.node.size = size
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets the fixed size this node takes up within its parent along the
+--- cross axis. Pass `nil` to remove a fixed cross size and let it stretch
+--- again. No-ops if already that size.
+--- @param crossSize? integer
+function _W.FlexComponent:SetCrossSize(crossSize)
+  if self.node.crossSize ~= crossSize then
+    self.node.crossSize = crossSize
     _W.markDirty(self.node)
   end
 end
