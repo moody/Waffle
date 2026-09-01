@@ -40,7 +40,7 @@ local Waffle = Addon.Waffle
 --- @class WaffleFlexNodeChild : WaffleFlexNode
 --- @field frame? WaffleFrame An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this child's own frame, once. Cannot be given together with `frame`.
---- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key errors.
+--- @field key? string Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this child's frame and resolved width/height, once assigned. Use instead of `children` for anything beyond simple recursion.
 
 --- @class WaffleFlexNodeParent : WaffleFlexNode
