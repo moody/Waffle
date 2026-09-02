@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `align`/`SetAlign()` (container) and `alignSelf`/`SetAlignSelf()` (any node, overriding the parent's `align`): cross-axis alignment, `"STRETCH"` (default, unchanged behavior), `"START"`, `"CENTER"`, or `"END"`. Anything other than `STRETCH` requires the node's own cross-axis dimension, errors otherwise, alignment never falls back to stretching.
 - `justify`/`SetJustify()` (container): main-axis distribution of leftover space, `"START"` (default, unchanged behavior), `"CENTER"`, `"END"`, `"SPACE_BETWEEN"`, `"SPACE_AROUND"`, or `"SPACE_EVENLY"`. Only has anything to distribute when nothing among the children is flexible, a flexible child already consumes all the leftover space.
-- `"AUTO"`, accepted by `width`/`height`: computes that dimension from the sum of this node's own children's own sizes along the same axis (plus `gap`/`padding`), instead of a fixed number. Only legal along a node's own main axis, given its own `direction`; every visible child needs its own number or `"AUTO"` of its own, a flexible child errors, there's no space yet to split.
+- `"AUTO"`, accepted by `width`/`height`: computes that dimension from this node's own children instead of a fixed number, a sum along a node's own main axis (plus `gap`/`padding`) or a max along its cross axis (plus `padding`), since children stack one after another along the main axis but share the same band along the cross axis. Works on the root too, on either axis. Every visible child needs its own number or `"AUTO"`, a flexible child errors.
 
 ### Changed
 
