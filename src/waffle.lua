@@ -36,8 +36,8 @@ local Waffle = Addon.Waffle
 --- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field align? WaffleFlexAlign How this node aligns its own children along the cross axis, if it has any. Default `STRETCH`. A child overrides this for itself via its own `alignSelf`. Set directly or via `SetAlign()`.
 --- @field justify? WaffleFlexJustify How this node distributes leftover main-axis space among its own children, if it has any and none of them are flexible (a flexible child already consumes all leftover space, there's nothing left for this to distribute). Default `START`. Set directly or via `SetJustify()`.
---- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
---- @field crossSize? integer Fixed size along the cross axis (height for `ROW`, width for `COLUMN`) this node takes up within its parent. Required if resolved to a non-`STRETCH` alignment; ignored (falls back to stretching) when `STRETCH`. Set directly or via `SetCrossSize()`. No effect on the tree's actual root, nothing sizes it from outside.
+--- @field width? integer | "AUTO" This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (`direction` is `ROW` there) or its cross-axis size (parent's `direction` is `COLUMN`; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it as the sum of this node's own children's own `width` (plus `gap`/`padding`), only legal when `width` is this node's own main axis (`direction` is `ROW`); every visible child needs its own number or `"AUTO"`, a flexible child errors, there's no space yet to split. Set directly or via `SetWidth()`.
+--- @field height? integer | "AUTO" This node's own physical height, always vertical. Same as `width` in every other respect; `"AUTO"` only legal when `direction` is `COLUMN`. Set directly or via `SetHeight()`.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align` for this node specifically. Unset, inherits the parent's `align` (`STRETCH` if that's also unset). Set directly or via `SetAlignSelf()`. No effect on the tree's actual root, nothing aligns it within a parent.
 --- @field gap? integer Space between consecutive children, if this node has any. Default `0`.
 --- @field padding? integer Space between this node's edge and its children, on all four sides, if it has any. Default `0`.
@@ -46,11 +46,6 @@ local Waffle = Addon.Waffle
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. Set directly or via `SetOrder()`. No effect on the tree's actual root, nothing orders it among siblings.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Called with this node's frame and resolved width/height, after its `children` (if any) are laid out.
 --- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node.
-
---- The root passed to `Waffle:Flex()`.
---- @class WaffleFlexRootNode : WaffleFlexNode
---- @field width integer The root's available width.
---- @field height integer The root's available height.
 
 -- =============================================================================
 -- Internal Data Table
@@ -128,14 +123,13 @@ end
 --- Walks up from `node` to the tree's actual root node, the one with no
 --- parent of its own.
 --- @param node WaffleFlexNode
---- @return WaffleFlexRootNode
+--- @return WaffleFlexNode
 function _W.NodeParent:FindRoot(node)
   local parent = self.byNode[node]
   while parent do
     node = parent
     parent = self.byNode[node]
   end
-  --- @cast node WaffleFlexRootNode
   return node
 end
 
@@ -213,22 +207,84 @@ function _W.resolveFrame(node, parent, defaultFrameFactory)
 end
 
 -- =============================================================================
+-- Auto Sizing
+-- =============================================================================
+
+--- Computes `node`'s own size along `axis` ("width" or "height", its own
+--- main axis, given its own `direction`) from its children: the sum of
+--- their own resolved sizes along that SAME physical axis (recursively
+--- resolving any child of its own that's also `"AUTO"` there), plus `gap`
+--- between them and `padding` on both ends. Errors if any visible child is
+--- flexible along `axis`, there's no space yet for it to split.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @return integer
+function _W.computeAutoSize(node, axis)
+  assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a size from")
+
+  local gap = node.gap or 0
+  local padding = node.padding or 0
+  local total = 0
+  local visibleCount = 0
+
+  for _, child in ipairs(node.children) do
+    if not child.hidden then
+      visibleCount = visibleCount + 1
+      local size = _W.resolveDimension(child, axis)
+      assert(size,
+        "Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
+        axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split")
+      total = total + size
+    end
+  end
+
+  return total + gap * math.max(visibleCount - 1, 0) + padding * 2
+end
+
+--- Resolves `node`'s own fixed size along the physical `axis` ("width" or
+--- "height"): the given number, computed from its children if `"AUTO"`
+--- (only legal when `axis` is `node`'s own main axis, given its own
+--- `direction`; errors otherwise, auto-sizing the cross axis isn't
+--- supported yet), or `nil` if `node` is flexible along `axis` instead,
+--- the normal case, splitting whatever's left over among the other
+--- flexible children of whoever's asking.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @return integer?
+function _W.resolveDimension(node, axis)
+  local value = node[axis]
+  if value == "AUTO" then
+    local isMainAxis = ((node.direction or "ROW"):upper() == "ROW") == (axis == "width")
+    assert(isMainAxis,
+      "Waffle: `\"AUTO\"` on `" ..
+      axis ..
+      "` needs it to be this node's own main axis (given its `direction`), auto-sizing the cross axis isn't supported yet")
+    return _W.computeAutoSize(node, axis)
+  end
+  return value
+end
+
+-- =============================================================================
 -- Layout Functions
 -- =============================================================================
 
 --- Positions `node.children` in a row or column within `frame`, sized to
---- `width`/`height`. A child's cross-axis alignment (its own `alignSelf`,
---- else `node.align`, else `STRETCH`) decides both its cross-axis size and
---- where it sits: `STRETCH` fills the cross axis, falling back to it only
---- when the child gives no `crossSize` of its own; any other alignment
---- requires the child's own `crossSize` (errors otherwise) and positions it
---- at the cross axis's start, center, or end accordingly. `node.justify`
---- distributes any leftover main-axis space (only meaningful when nothing
---- is flexible, a flexible child already consumes it all) among the
---- children instead of leaving it unused after the last one. `frame` must
---- already be resolved and sized by the caller: `Layout()` for the tree's
---- actual root, this same loop for every other node, right before
---- recursing into it.
+--- `width`/`height`. A child's own main-axis size (`resolveDimension`,
+--- along whichever physical axis `node`'s own `direction` treats as main)
+--- is either that axis's own number, computed from the child's own
+--- children if `"AUTO"`, or `nil`, flexible, splitting whatever's left
+--- over evenly with any other flexible siblings. A child's cross-axis
+--- alignment (its own `alignSelf`, else `node.align`, else `STRETCH`)
+--- decides both its cross-axis size and where it sits: `STRETCH` fills the
+--- cross axis, falling back to it only when the child gives no value of
+--- its own along that axis; any other alignment requires the child's own
+--- value there (errors otherwise) and positions it at the cross axis's
+--- start, center, or end accordingly. `node.justify` distributes any
+--- leftover main-axis space (only meaningful when nothing is flexible, a
+--- flexible child already consumes it all) among the children instead of
+--- leaving it unused after the last one. `frame` must already be resolved
+--- and sized by the caller: `Layout()` for the tree's actual root, this
+--- same loop for every other node, right before recursing into it.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param width integer
@@ -239,14 +295,17 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   local gap = node.gap or 0
   local padding = node.padding or 0
   local isRow = (node.direction or "ROW"):upper() == "ROW"
+  local mainAxis = isRow and "width" or "height"
+  local crossAxis = isRow and "height" or "width"
 
   local mainSize = (isRow and width or height) - (padding * 2)
   local crossSize = (isRow and height or width) - (padding * 2)
 
-  -- Sum fixed sizes and count flexible children among the visible ones, to
-  -- split the space left over evenly. A hidden child is excluded from the
-  -- layout flow entirely, its siblings reflow to fill the space. Also
-  -- assigns a declaration order and current parent to new children.
+  -- Sum fixed (or auto-computed) sizes and count flexible children among
+  -- the visible ones, to split the space left over evenly. A hidden child
+  -- is excluded from the layout flow entirely, its siblings reflow to fill
+  -- the space. Also assigns a declaration order and current parent to new
+  -- children.
   local fixedTotal = 0
   local flexCount = 0
   local visibleCount = 0
@@ -255,8 +314,9 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     _W.NodeParent:Claim(child, node)
     if not child.hidden then
       visibleCount = visibleCount + 1
-      if child.size then
-        fixedTotal = fixedTotal + child.size
+      local size = _W.resolveDimension(child, mainAxis)
+      if size then
+        fixedTotal = fixedTotal + size
       else
         flexCount = flexCount + 1
       end
@@ -304,16 +364,19 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
       childFrame:ClearAllPoints()
       childFrame:SetParent(frame)
 
-      local size = child.size or flexSize
+      local size = _W.resolveDimension(child, mainAxis) or flexSize
 
       local align = (child.alignSelf or node.align or "STRETCH"):upper()
       local childCrossSize
       if align == "STRETCH" then
-        childCrossSize = child.crossSize or crossSize
+        childCrossSize = _W.resolveDimension(child, crossAxis) or crossSize
       else
-        childCrossSize = child.crossSize
+        childCrossSize = _W.resolveDimension(child, crossAxis)
         assert(childCrossSize,
-          "Waffle: a child aligned '" .. align .. "' (not STRETCH) needs its own `crossSize`, alignment doesn't fall back to the container's cross size")
+          "Waffle: a child aligned '" ..
+          align ..
+          "' (not STRETCH) needs its own `" ..
+          crossAxis .. "`, alignment doesn't fall back to the container's cross size")
       end
 
       local crossOffset = padding
@@ -440,24 +503,25 @@ function _W.FlexComponent:Show()
   end
 end
 
---- Sets the fixed size this node takes up within its parent. Pass
---- `nil` to remove a fixed size and let it flex again. No-ops if already
---- that size.
---- @param size? integer
-function _W.FlexComponent:SetSize(size)
-  if self.node.size ~= size then
-    self.node.size = size
+--- Sets this node's own physical width. Pass `nil` to let it flex/stretch
+--- instead (whichever applies), or `"AUTO"` to compute it from this
+--- node's own children instead (only legal when `width` is this node's
+--- own main axis, `direction` is `ROW`). No-ops if already that value.
+--- @param width? integer | "AUTO"
+function _W.FlexComponent:SetWidth(width)
+  if self.node.width ~= width then
+    self.node.width = width
     _W.markDirty(self.node)
   end
 end
 
---- Sets the fixed size this node takes up within its parent along the
---- cross axis. Pass `nil` to remove a fixed cross size and let it stretch
---- again. No-ops if already that size.
---- @param crossSize? integer
-function _W.FlexComponent:SetCrossSize(crossSize)
-  if self.node.crossSize ~= crossSize then
-    self.node.crossSize = crossSize
+--- Sets this node's own physical height. Same as `SetWidth()`, the
+--- vertical axis instead; `"AUTO"` only legal when `direction` is
+--- `COLUMN`. No-ops if already that value.
+--- @param height? integer | "AUTO"
+function _W.FlexComponent:SetHeight(height)
+  if self.node.height ~= height then
+    self.node.height = height
     _W.markDirty(self.node)
   end
 end
@@ -497,13 +561,26 @@ function _W.FlexComponent:Layout()
     else
       local frame = _W.resolveFrame(root)
       frame:Show()
-      frame:SetWidth(root.width)
-      frame:SetHeight(root.height)
 
-      _W.flexLayout(root, frame, root.width, root.height, root.defaultFrameFactory)
+      -- The root resolves its own width/height exactly the same way any
+      -- node resolves a child's: `resolveDimension` already only allows
+      -- `"AUTO"` along a node's own main axis (given its own `direction`),
+      -- so the cross axis correctly stays a required real number here too,
+      -- with no root-specific logic needed to enforce that separately.
+      local width = _W.resolveDimension(root, "width")
+      local height = _W.resolveDimension(root, "height")
+      assert(width,
+        "Waffle: root needs its own `width`, or `\"AUTO\"` if `direction` is ROW, nothing above it to resolve one automatically")
+      assert(height,
+        "Waffle: root needs its own `height`, or `\"AUTO\"` if `direction` is COLUMN, nothing above it to resolve one automatically")
+
+      frame:SetWidth(width)
+      frame:SetHeight(height)
+
+      _W.flexLayout(root, frame, width, height, root.defaultFrameFactory)
 
       if root.onLayout then
-        root.onLayout(frame, root.width, root.height)
+        root.onLayout(frame, width, height)
       end
     end
 
@@ -693,10 +770,10 @@ end
 
 --- Starts composing a `Flex` container and returns it: call
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
---- For a fully declarative style, `rootNode.children` may be given directly.
---- @param rootNode WaffleFlexRootNode
+--- For a fully declarative style, `node.children` may be given directly.
+--- @param node WaffleFlexNode
 --- @return WaffleFlexComponentContainer
-function Waffle:Flex(rootNode)
-  _W.DirtyRoots[rootNode] = true
-  return _W.newFlexComponentContainer(rootNode)
+function Waffle:Flex(node)
+  _W.DirtyRoots[node] = true
+  return _W.newFlexComponentContainer(node)
 end
