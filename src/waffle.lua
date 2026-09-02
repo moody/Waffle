@@ -24,6 +24,7 @@ local Waffle = Addon.Waffle
 --- @field Show fun(self: WaffleFrame)
 
 --- @alias WaffleFlexDirection "ROW" | "COLUMN"
+--- @alias WaffleFlexAlign "START" | "CENTER" | "END" | "STRETCH"
 
 --- Properties shared by every node in the tree, root included. The plain
 --- data tables Waffle operates on.
@@ -32,8 +33,10 @@ local Waffle = Addon.Waffle
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Creates this node's own frame, once. Cannot be given together with `frame`. `parent` is `nil` for the tree's actual root, nothing sits above it to pass in.
 --- @field children? WaffleFlexNode[] Children positioned within this node, in a row or column depending on `direction`.
 --- @field direction? WaffleFlexDirection Default `ROW`.
+--- @field align? WaffleFlexAlign How this node aligns its own children along the cross axis, if it has any. Default `STRETCH`. A child overrides this for itself via its own `alignSelf`. Set directly or via `SetAlign()`.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
---- @field crossSize? integer Fixed size along the cross axis (height for `ROW`, width for `COLUMN`) this node takes up within its parent. Omitted nodes stretch to fill the full cross axis. Set directly or via `SetCrossSize()`. No effect on the tree's actual root, nothing sizes it from outside.
+--- @field crossSize? integer Fixed size along the cross axis (height for `ROW`, width for `COLUMN`) this node takes up within its parent. Required if resolved to a non-`STRETCH` alignment; ignored (falls back to stretching) when `STRETCH`. Set directly or via `SetCrossSize()`. No effect on the tree's actual root, nothing sizes it from outside.
+--- @field alignSelf? WaffleFlexAlign Overrides the parent's `align` for this node specifically. Unset, inherits the parent's `align` (`STRETCH` if that's also unset). Set directly or via `SetAlignSelf()`. No effect on the tree's actual root, nothing aligns it within a parent.
 --- @field gap? integer Space between consecutive children, if this node has any. Default `0`.
 --- @field padding? integer Space between this node's edge and its children, on all four sides, if it has any. Default `0`.
 --- @field hidden? boolean Excludes this node from the layout flow entirely, its siblings reflow to fill the space, and its own frame is hidden. Default `false`. Set directly or via `Hide()`/`Show()`.
@@ -212,12 +215,15 @@ end
 -- =============================================================================
 
 --- Positions `node.children` in a row or column within `frame`, sized to
---- `width`/`height`. A child stretches to fill the cross axis (height for
---- `ROW`, width for `COLUMN`) unless it gives its own fixed `crossSize`, in
---- which case it's sized to that instead, still anchored at the cross
---- axis's start. `frame` must already be resolved and sized by the caller:
---- `Layout()` for the tree's actual root, this same loop for every other
---- node, right before recursing into it.
+--- `width`/`height`. A child's cross-axis alignment (its own `alignSelf`,
+--- else `node.align`, else `STRETCH`) decides both its cross-axis size and
+--- where it sits: `STRETCH` fills the cross axis, falling back to it only
+--- when the child gives no `crossSize` of its own; any other alignment
+--- requires the child's own `crossSize` (errors otherwise) and positions it
+--- at the cross axis's start, center, or end accordingly. `frame` must
+--- already be resolved and sized by the caller: `Layout()` for the tree's
+--- actual root, this same loop for every other node, right before
+--- recursing into it.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param width integer
@@ -272,15 +278,32 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
       childFrame:SetParent(frame)
 
       local size = child.size or flexSize
-      local childCrossSize = child.crossSize or crossSize
+
+      local align = (child.alignSelf or node.align or "STRETCH"):upper()
+      local childCrossSize
+      if align == "STRETCH" then
+        childCrossSize = child.crossSize or crossSize
+      else
+        childCrossSize = child.crossSize
+        assert(childCrossSize,
+          "Waffle: a child aligned '" .. align .. "' (not STRETCH) needs its own `crossSize`, alignment doesn't fall back to the container's cross size")
+      end
+
+      local crossOffset = padding
+      if align == "CENTER" then
+        crossOffset = padding + (crossSize - childCrossSize) / 2
+      elseif align == "END" then
+        crossOffset = padding + (crossSize - childCrossSize)
+      end
+
       local childWidth, childHeight
 
       if isRow then
         childWidth, childHeight = size, childCrossSize
-        childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", mainOffset, -padding)
+        childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", mainOffset, -crossOffset)
       else
         childWidth, childHeight = childCrossSize, size
-        childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", padding, -mainOffset)
+        childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", crossOffset, -mainOffset)
       end
 
       childFrame:SetWidth(childWidth)
@@ -408,6 +431,17 @@ end
 function _W.FlexComponent:SetCrossSize(crossSize)
   if self.node.crossSize ~= crossSize then
     self.node.crossSize = crossSize
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets how this node aligns itself within its parent along the cross
+--- axis, overriding the parent's own `align`. Pass `nil` to go back to
+--- inheriting it. No-ops if already that alignment.
+--- @param alignSelf? WaffleFlexAlign
+function _W.FlexComponent:SetAlignSelf(alignSelf)
+  if self.node.alignSelf ~= alignSelf then
+    self.node.alignSelf = alignSelf
     _W.markDirty(self.node)
   end
 end
@@ -599,6 +633,18 @@ end
 function _W.FlexComponentContainer:SetPadding(padding)
   if self.node.padding ~= padding then
     self.node.padding = padding
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets how this container aligns its own children along the cross axis
+--- by default, unless a given child overrides it with its own
+--- `alignSelf`. Pass `nil` to reset to the default (`STRETCH`). No-ops if
+--- already that alignment.
+--- @param align? WaffleFlexAlign
+function _W.FlexComponentContainer:SetAlign(align)
+  if self.node.align ~= align then
+    self.node.align = align
     _W.markDirty(self.node)
   end
 end
