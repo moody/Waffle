@@ -35,8 +35,8 @@ local Waffle = Addon.Waffle
 --- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field align? WaffleFlexAlign Cross-axis alignment for this node's own children. Default `STRETCH`. A child's own `alignSelf` overrides this.
 --- @field justify? WaffleFlexJustify Main-axis distribution of leftover space among this node's own children. Default `START`. No effect if any child is flexible, it already consumes the leftover space.
---- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` only legal along this node's own main axis (`direction` is `ROW`).
---- @field height? integer | "AUTO" Same as `width`, vertical instead; `"AUTO"` only legal when `direction` is `COLUMN`.
+--- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
+--- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
 --- @field gap? integer Between children only, not the edges. Default `0`.
 --- @field padding? integer On all four sides. Default `0`.
@@ -502,9 +502,8 @@ end
 -- redundant calls (e.g. from a per-frame OnUpdate) stay cheap.
 
 --- Sets this node's own width. `nil` flexes/stretches instead; `"AUTO"`
---- computes it from this node's own children (only legal along its own
---- main axis). Setting an illegal `"AUTO"` doesn't error here, only later
---- when `Layout()` actually resolves it.
+--- computes it from this node's own children (a sum along its main axis,
+--- a max along its cross axis).
 --- @param width? integer | "AUTO"
 function _W.FlexComponent:SetWidth(width)
   if self.node.width ~= width then
