@@ -42,6 +42,23 @@ Waffle:Flex({
 
 `direction` defaults to `"ROW"`. A node's own physical `width`/`height` always mean the same thing regardless of `direction`: whichever one is this node's own main axis within its parent (`width` for a ROW parent, `height` for a COLUMN one) takes exactly that much space along it, splitting whatever's left over evenly with any other flexible siblings that omit theirs; here that's `content` getting the full 300 left after `sidebar`'s 100. The other one is this node's cross-axis size, see alignment below.
 
+**Shrink-to-fit sizing.** `width`/`height` also accept `"AUTO"` instead of a fixed number, computing that dimension from a node's own children instead: a sum along its own main axis (plus `gap`/`padding`), or a max along its cross axis (plus `padding`), since children stack one after another along the main axis but share the same band along the cross axis. Every visible child needs its own number or `"AUTO"` of its own; a flexible child has nothing to measure yet and errors.
+
+```lua
+Waffle:Flex({
+  frame = frame,
+  direction = "ROW",
+  width = "AUTO", -- sums icon and label, plus gap/padding
+  height = "AUTO", -- maxes over the same two instead
+  gap = 8,
+  padding = 4,
+  children = {
+    { frame = icon, width = 24, height = 24 },
+    { frame = label, width = 80, height = 16 },
+  }
+}):Layout()
+```
+
 **Aligning children on the cross axis.** `align`, set on a container, controls how it aligns its own children along the cross axis: `"STRETCH"` (the default, fills it), `"START"`, `"CENTER"`, or `"END"`. Any child can override it for itself with its own `alignSelf`. Alignment other than `STRETCH` requires that child's own cross-axis dimension (`height`, for a ROW parent), it isn't derived from anything, so give one or expect an error:
 
 ```lua
@@ -73,7 +90,7 @@ Waffle:Flex({
 }):Layout()
 ```
 
-The root is a node like any other: `frame`, `frameFactory`, `key`, `hidden`, and `onLayout` all work the same way they do for a child, and a root's own `frameFactory` just has no parent to receive as an argument, since nothing sits above it. The one real difference is `width`/`height`: an ordinary child only needs its own main-axis dimension, its parent supplies the cross axis; the root has no parent to supply anything, so it needs both, given directly or computed via `"AUTO"` (only legal along its own main axis, given its own `direction`).
+The root is a node like any other: `frame`, `frameFactory`, `key`, `hidden`, and `onLayout` all work the same way they do for a child, and a root's own `frameFactory` just has no parent to receive as an argument, since nothing sits above it. The one real difference is `width`/`height`: an ordinary child only needs its own main-axis dimension, its parent supplies the cross axis; the root has no parent to supply anything, so it needs both, each given directly or computed via `"AUTO"` (on either axis).
 
 **Nesting.** A child with its own `children` becomes a nested container, laid out within its own resolved width/height once the parent knows it.
 
@@ -260,7 +277,7 @@ root:Layout()
 - **`Container:IsContainer()`** — Returns `true` if this node is a container. Works from a container or a leaf.
 - **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space, and hides its own frame. Works from a container or a leaf. No-ops if already hidden.
 - **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
-- **`Container:SetWidth(width?)`** — Sets this node's own physical width. Works from a container or a leaf. Pass `nil` to let it flex/stretch instead (whichever applies), or `"AUTO"` to compute it from this node's own children (only legal when `width` is this node's own main axis, given its own `direction`). No-ops if already that value.
+- **`Container:SetWidth(width?)`** — Sets this node's own physical width. Works from a container or a leaf. Pass `nil` to let it flex/stretch instead (whichever applies), or `"AUTO"` to compute it from this node's own children (a sum along its main axis, a max along its cross axis). No-ops if already that value.
 - **`Container:SetHeight(height?)`** — Sets this node's own physical height. Same as `SetWidth()` in every other respect, the vertical axis instead.
 - **`Container:SetGap(gap?)`** — Sets the space between this container's children. Container-only. No-ops if already that gap.
 - **`Container:SetPadding(padding?)`** — Sets the space between this container's edge and its children, on all four sides. Container-only. No-ops if already that padding.
@@ -282,12 +299,12 @@ A child (`WaffleFlexNode`), whether given via `options.children` or `AddChild`/`
 - **`hidden`** — Excludes this child from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 - **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. Can also be toggled after the fact with `SetOrder()`.
-- **`width`** — This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it as the sum of this node's own children's own `width` (plus `gap`/`padding`), only legal when `width` is this node's own main axis (`direction` is `ROW`); every visible child needs its own number or `"AUTO"`, a flexible child errors, there's no space yet to split. Can also be toggled after the fact with `SetWidth()`.
-- **`height`** — This node's own physical height, always vertical. Same as `width` in every other respect; `"AUTO"` only legal when `direction` is `COLUMN`. Can also be toggled after the fact with `SetHeight()`.
+- **`width`** — This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it from this node's own children instead: a sum of their own `width` (plus `gap`/`padding`) along this node's own main axis (`direction` is `ROW`), or a max of them (plus `padding`) along its cross axis; every visible child needs its own number or `"AUTO"`, a flexible child errors. Can also be toggled after the fact with `SetWidth()`.
+- **`height`** — This node's own physical height, always vertical. Same as `width` in every other respect, `"AUTO"` sums along the main axis when `direction` is `COLUMN`, maxes along the cross axis otherwise. Can also be toggled after the fact with `SetHeight()`.
 - **`onLayout`** — Called with this child's frame and resolved width/height, after its `children` (if any) are laid out.
 - **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node; even the tree's actual root needs its own `frame`/`frameFactory`, nothing above it to inherit a fallback from.
 
-The root passed to `Waffle:Flex()` is a node like any other, no separate type, `width`/`height` included. `alignSelf`/`order` have no effect there, there's nothing above the root to align or reorder among siblings; everything else, `align`/`justify`/`hidden`/`onLayout`/`defaultFrameFactory` included, still applies, same as for any child, `align`/`justify` in particular work exactly the same as they do anywhere else, since both are about how a node treats its own children, not how it's treated by a parent. The one real difference: an ordinary child only needs its own main-axis dimension, its parent supplies the cross axis; the root has no parent to supply anything, so it needs both `width` and `height` given, one of them as `"AUTO"` if that's its own main axis.
+The root passed to `Waffle:Flex()` is a node like any other, no separate type, `width`/`height` included. `alignSelf`/`order` have no effect there, there's nothing above the root to align or reorder among siblings; everything else, `align`/`justify`/`hidden`/`onLayout`/`defaultFrameFactory` included, still applies, same as for any child, `align`/`justify` in particular work exactly the same as they do anywhere else, since both are about how a node treats its own children, not how it's treated by a parent. The one real difference: an ordinary child only needs its own main-axis dimension, its parent supplies the cross axis; the root has no parent to supply anything, so it needs both `width` and `height` given, each directly or as `"AUTO"`.
 
 ## Testing
 
