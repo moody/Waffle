@@ -126,6 +126,48 @@ do
   assert(colFrame._test.height == 30)
 end
 
+-- Test: `SetAlign` changes a container's default alignment on the next
+-- `Layout()` call.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
+  container:AddChild({ frame = a, crossSize = 40 })
+  container:Layout()
+
+  assert(a._test.point.offsetY == 0) -- default STRETCH; a fixed crossSize just isn't stretched, still starts at 0
+
+  container:SetAlign("CENTER")
+  container:Layout()
+
+  assert(a._test.point.offsetY == -30) -- (100 - 40) / 2
+end
+
+-- Test: `SetAlignSelf` changes one child's own alignment, overriding the
+-- container's, on the next `Layout()` call; `SetAlignSelf(nil)` reverts to
+-- inheriting the container's `align` again.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100, align = "START" })
+  local leaf = container:AddChild({ frame = a, crossSize = 40 })
+  container:Layout()
+
+  assert(a._test.point.offsetY == 0)
+
+  leaf:SetAlignSelf("END")
+  container:Layout()
+
+  assert(a._test.point.offsetY == -60) -- 100 - 40
+
+  leaf:SetAlignSelf(nil)
+  container:Layout()
+
+  assert(a._test.point.offsetY == 0) -- back to inheriting the container's START
+end
+
 -- Test: `SetGap`/`SetPadding`/`SetSize`/`SetCrossSize` mark the tree dirty,
 -- but only on an actual value change; calling any of them with the current
 -- value is a no-op.
@@ -165,10 +207,25 @@ do
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
+
+  container:SetAlign(nil)
+  assert(container:IsDirty() == false)
+  container:SetAlign("CENTER")
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetAlignSelf(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetAlignSelf("END")
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
 end
 
--- Test: `SetGap`/`SetPadding` are container-only, a leaf can never have
--- children so it never gets them; `SetSize`/`SetCrossSize` are shared by both.
+-- Test: `SetGap`/`SetPadding`/`SetAlign` are container-only, a leaf can
+-- never have children so it never gets them; `SetSize`/`SetCrossSize`/
+-- `SetAlignSelf` are shared by both.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -178,10 +235,13 @@ do
 
   assert(leaf.SetGap == nil)
   assert(leaf.SetPadding == nil)
+  assert(leaf.SetAlign == nil)
   assert(leaf.SetSize ~= nil)
   assert(container.SetSize ~= nil)
   assert(leaf.SetCrossSize ~= nil)
   assert(container.SetCrossSize ~= nil)
+  assert(leaf.SetAlignSelf ~= nil)
+  assert(container.SetAlignSelf ~= nil)
 end
 
 print("All assertions passed.")
