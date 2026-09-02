@@ -2,8 +2,9 @@
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `align = "START"` sizes a child to its own `crossSize` (required,
--- doesn't fall back to stretching) and anchors it at the cross axis's start.
+-- Test: `align = "START"` sizes a child to its own cross-axis dimension
+-- (`height`, for ROW; required, doesn't fall back to stretching) and
+-- anchors it at the cross axis's start.
 do
   local parent = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -14,7 +15,7 @@ do
     width = 200,
     height = 100,
     align = "START",
-    children = { { frame = a, crossSize = 30 } }
+    children = { { frame = a, height = 30 } }
   }):Layout()
 
   assert(a._test.height == 30)
@@ -22,7 +23,7 @@ do
 end
 
 -- Test: `align = "CENTER"` centers a child within the cross axis, using
--- its own `crossSize`.
+-- its own `height`.
 do
   local parent = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -33,7 +34,7 @@ do
     width = 200,
     height = 100,
     align = "CENTER",
-    children = { { frame = a, crossSize = 40 } }
+    children = { { frame = a, height = 40 } }
   }):Layout()
 
   assert(a._test.height == 40)
@@ -51,7 +52,7 @@ do
     width = 200,
     height = 100,
     align = "END",
-    children = { { frame = a, crossSize = 40 } }
+    children = { { frame = a, height = 40 } }
   }):Layout()
 
   assert(a._test.height == 40)
@@ -70,8 +71,8 @@ do
     height = 100,
     align = "START",
     children = {
-      { frame = a, crossSize = 40 },                     -- inherits START from the container
-      { frame = b, crossSize = 40, alignSelf = "END" },
+      { frame = a, height = 40 },                     -- inherits START from the container
+      { frame = b, height = 40, alignSelf = "END" },
     }
   }):Layout()
 
@@ -79,8 +80,8 @@ do
   assert(b._test.point.offsetY == -60) -- 100 - 40
 end
 
--- Test: a child resolved to a non-`STRETCH` alignment with no `crossSize`
--- of its own errors clearly, alignment never falls back to stretching.
+-- Test: a child resolved to a non-`STRETCH` alignment with no `height` of
+-- its own errors clearly, alignment never falls back to stretching.
 do
   local parent = Mocks:CreateFrame()
   local container = Waffle:Flex({
@@ -90,11 +91,11 @@ do
     height = 100,
     align = "CENTER",
   })
-  container:AddChild({ frame = Mocks:CreateFrame() }) -- no crossSize
+  container:AddChild({ frame = Mocks:CreateFrame() }) -- no height
 
   local ok, err = pcall(function() container:Layout() end)
   assert(not ok)
-  assert(tostring(err):find("crossSize"))
+  assert(tostring(err):find("height"))
 end
 
 -- Test: alignment applies to the cross axis regardless of direction: for
@@ -109,7 +110,7 @@ do
     width = 200,
     height = 100,
     align = "CENTER",
-    children = { { frame = a, crossSize = 60 } }
+    children = { { frame = a, width = 60 } }
   }):Layout()
 
   assert(a._test.width == 60)
@@ -129,7 +130,7 @@ do
     height = 100,
     padding = 10,
     align = "END",
-    children = { { frame = a, crossSize = 30 } }
+    children = { { frame = a, height = 30 } }
   }):Layout()
 
   -- available cross space = 100 - 10*2 = 80; end offset = 10 + (80 - 30) = 60

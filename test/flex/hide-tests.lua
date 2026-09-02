@@ -18,13 +18,13 @@ do
     width = 200,
     height = 50,
     children = {
-      { frame = a, size = 50 },
-      { frame = b, size = 100, hidden = true },
+      { frame = a, width = 50 },
+      { frame = b, width = 100, hidden = true },
       { frame = c },
     }
   }):Layout()
 
-  assert(c._test.width == 150) -- 200 - 50 (b's size excluded)
+  assert(c._test.width == 150) -- 200 - 50 (b's width excluded)
   assert(c._test.point.offsetX == 50) -- right after a, b's slot skipped
   assert(b._test.width == nil) -- never positioned
   assert(b._test.point == nil)
@@ -166,7 +166,7 @@ do
     gap = 10,
     children = {
       { frame = a },
-      { frame = b, hidden = true, size = 999 },
+      { frame = b, hidden = true, width = 999 },
       { frame = c },
     }
   }):Layout()

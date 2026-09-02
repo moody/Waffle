@@ -91,12 +91,12 @@ do
   local containerB = Waffle:Flex({ frame = rootB, direction = "ROW", width = 300, height = 50 })
 
   local childFrame = Mocks:CreateFrame()
-  local leafA = containerA:AddChild({ frame = childFrame, size = 100 })
+  local leafA = containerA:AddChild({ frame = childFrame, width = 100 })
   containerA:Layout()
   assert(childFrame._test.point.parent == rootA)
 
   assert(containerA:RemoveChild(leafA))
-  local leafB = containerB:AddChild({ frame = childFrame, size = 100 })
+  local leafB = containerB:AddChild({ frame = childFrame, width = 100 })
   containerB:Layout()
 
   assert(childFrame._test.point.parent == rootB)
@@ -172,7 +172,7 @@ do
   local nested = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
-  container:AddChild({ frame = a, size = 100 })
+  container:AddChild({ frame = a, width = 100 })
   local row = container:AddRow({ frame = rowFrame })
   local leaf = row:AddChild({ frame = nested })
 
@@ -195,7 +195,7 @@ do
   local staleRootB = Waffle:Flex(rootBOptions) -- tree B's own root wrapper
 
   local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 300, height = 50 })
-  containerA:AddChild({ frame = siblingFrame, size = 100 })
+  containerA:AddChild({ frame = siblingFrame, width = 100 })
   containerA:AddChild(rootBOptions) -- grafted in as a child, tree B stops being independent
   containerA:Layout()
 
@@ -203,7 +203,7 @@ do
   assert(rootBFrame._test.width == 200) -- 300 - 100, flexes to fill the rest
   assert(containerA:IsDirty() == false)
 
-  staleRootB:SetSize(50) -- mutating through the stale wrapper still reaches tree A
+  staleRootB:SetWidth(50) -- mutating through the stale wrapper still reaches tree A
   assert(containerA:IsDirty() == true)
 
   containerA:Layout()

@@ -15,9 +15,9 @@ local function ThreeFixedChildren(justify)
     height = 50,
     justify = justify,
     children = {
-      { frame = a, size = 50 },
-      { frame = b, size = 50 },
-      { frame = c, size = 50 },
+      { frame = a, width = 50 },
+      { frame = b, width = 50 },
+      { frame = c, width = 50 },
     }
   }):Layout()
 
@@ -90,9 +90,9 @@ do
     height = 50,
     justify = "CENTER",
     children = {
-      { frame = fixed1, size = 50 },
+      { frame = fixed1, width = 50 },
       { frame = flex },
-      { frame = fixed2, size = 50 },
+      { frame = fixed2, width = 50 },
     }
   }):Layout()
 
@@ -114,7 +114,7 @@ do
     width = 300,
     height = 50,
     justify = "SPACE_BETWEEN",
-    children = { { frame = a, size = 50 } }
+    children = { { frame = a, width = 50 } }
   }):Layout()
 
   assert(a._test.point.offsetX == 0)
@@ -133,8 +133,8 @@ do
     height = 200,
     justify = "CENTER",
     children = {
-      { frame = a, size = 40 },
-      { frame = b, size = 40 },
+      { frame = a, height = 40 },
+      { frame = b, height = 40 },
     }
   }):Layout()
 
