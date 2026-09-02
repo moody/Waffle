@@ -9,12 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `crossSize`/`SetCrossSize()`: a fixed size along the cross axis (height for `ROW`, width for `COLUMN`), overriding the previously-unconditional stretch. Omitted, a node still stretches to fill it, same as before.
-- `align`/`SetAlign()` (container) and `alignSelf`/`SetAlignSelf()` (any node, overriding the parent's `align`): cross-axis alignment, `"STRETCH"` (default, unchanged behavior), `"START"`, `"CENTER"`, or `"END"`. Anything other than `STRETCH` requires the node's own `crossSize`, errors otherwise, alignment never falls back to stretching.
+- `align`/`SetAlign()` (container) and `alignSelf`/`SetAlignSelf()` (any node, overriding the parent's `align`): cross-axis alignment, `"STRETCH"` (default, unchanged behavior), `"START"`, `"CENTER"`, or `"END"`. Anything other than `STRETCH` requires the node's own cross-axis dimension, errors otherwise, alignment never falls back to stretching.
 - `justify`/`SetJustify()` (container): main-axis distribution of leftover space, `"START"` (default, unchanged behavior), `"CENTER"`, `"END"`, `"SPACE_BETWEEN"`, `"SPACE_AROUND"`, or `"SPACE_EVENLY"`. Only has anything to distribute when nothing among the children is flexible, a flexible child already consumes all the leftover space.
+- `"AUTO"`, accepted by `width`/`height`: computes that dimension from the sum of this node's own children's own sizes along the same axis (plus `gap`/`padding`), instead of a fixed number. Only legal along a node's own main axis, given its own `direction`; every visible child needs its own number or `"AUTO"` of its own, a flexible child errors, there's no space yet to split.
 
 ### Changed
 
+- **Breaking:** `size`/`SetSize()` renamed to `width`; `crossSize`/`SetCrossSize()` renamed to `height`. Both are now genuinely physical (always horizontal/vertical, regardless of `direction`), rather than always meaning "main axis"/"cross axis". A node's own main-axis dimension within its parent is still whichever one that parent's `direction` puts on that axis (`width` for a ROW parent, `height` for a COLUMN one); the other one is its cross-axis size, same roles as before, just renamed.
+- The root passed to `Waffle:Flex()` no longer has its own type (`WaffleFlexRootNode` is gone); it shares `WaffleFlexNode` with every other node, `width`/`height` included, and needs both explicitly (one as `"AUTO"` if that's its own main axis), same requirement it already had before this change.
 - `defaultFrameFactory` is no longer root-exclusive. Any node can declare one, applying to everything below it and overriding whatever's inherited from further up the tree. Never applies to the node that declares it, root included, the root now needs its own `frame`/`frameFactory` too, `defaultFrameFactory` alone is no longer enough to resolve it.
 
 ## [0.2.0] - 2026-09-01
