@@ -25,6 +25,7 @@ local Waffle = Addon.Waffle
 
 --- @alias WaffleFlexDirection "ROW" | "COLUMN"
 --- @alias WaffleFlexAlign "START" | "CENTER" | "END" | "STRETCH"
+--- @alias WaffleFlexJustify "START" | "CENTER" | "END" | "SPACE_BETWEEN" | "SPACE_AROUND" | "SPACE_EVENLY"
 
 --- Properties shared by every node in the tree, root included. The plain
 --- data tables Waffle operates on.
@@ -34,6 +35,7 @@ local Waffle = Addon.Waffle
 --- @field children? WaffleFlexNode[] Children positioned within this node, in a row or column depending on `direction`.
 --- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field align? WaffleFlexAlign How this node aligns its own children along the cross axis, if it has any. Default `STRETCH`. A child overrides this for itself via its own `alignSelf`. Set directly or via `SetAlign()`.
+--- @field justify? WaffleFlexJustify How this node distributes leftover main-axis space among its own children, if it has any and none of them are flexible (a flexible child already consumes all leftover space, there's nothing left for this to distribute). Default `START`. Set directly or via `SetJustify()`.
 --- @field size? integer Fixed size along the main axis (width for `ROW`, height for `COLUMN`) this node takes up within its parent. Omitted nodes split the remaining space evenly. Set directly or via `SetSize()`. No effect on the tree's actual root, nothing sizes it from outside.
 --- @field crossSize? integer Fixed size along the cross axis (height for `ROW`, width for `COLUMN`) this node takes up within its parent. Required if resolved to a non-`STRETCH` alignment; ignored (falls back to stretching) when `STRETCH`. Set directly or via `SetCrossSize()`. No effect on the tree's actual root, nothing sizes it from outside.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align` for this node specifically. Unset, inherits the parent's `align` (`STRETCH` if that's also unset). Set directly or via `SetAlignSelf()`. No effect on the tree's actual root, nothing aligns it within a parent.
@@ -220,7 +222,10 @@ end
 --- where it sits: `STRETCH` fills the cross axis, falling back to it only
 --- when the child gives no `crossSize` of its own; any other alignment
 --- requires the child's own `crossSize` (errors otherwise) and positions it
---- at the cross axis's start, center, or end accordingly. `frame` must
+--- at the cross axis's start, center, or end accordingly. `node.justify`
+--- distributes any leftover main-axis space (only meaningful when nothing
+--- is flexible, a flexible child already consumes it all) among the
+--- children instead of leaving it unused after the last one. `frame` must
 --- already be resolved and sized by the caller: `Layout()` for the tree's
 --- actual root, this same loop for every other node, right before
 --- recursing into it.
@@ -264,7 +269,29 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   local remaining = mainSize - fixedTotal - totalGap
   local flexSize = flexCount > 0 and math.max(remaining / flexCount, 0) or 0
 
-  local mainOffset = padding
+  -- `justify` only has leftover space to distribute when nothing is
+  -- flexible, a flexible child already consumes all of `remaining` via
+  -- `flexSize` above.
+  local justifyOffset, justifyGap = 0, 0
+  if flexCount == 0 then
+    local leftover = math.max(remaining, 0)
+    local justify = (node.justify or "START"):upper()
+    if justify == "END" then
+      justifyOffset = leftover
+    elseif justify == "CENTER" then
+      justifyOffset = leftover / 2
+    elseif justify == "SPACE_BETWEEN" and visibleCount > 1 then
+      justifyGap = leftover / (visibleCount - 1)
+    elseif justify == "SPACE_AROUND" and visibleCount > 0 then
+      justifyGap = leftover / visibleCount
+      justifyOffset = justifyGap / 2
+    elseif justify == "SPACE_EVENLY" then
+      justifyGap = leftover / (visibleCount + 1)
+      justifyOffset = justifyGap
+    end
+  end
+
+  local mainOffset = padding + justifyOffset
   for _, child in ipairs(children) do
     if child.hidden then
       if child.frame then
@@ -317,7 +344,7 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
         child.onLayout(childFrame, childWidth, childHeight)
       end
 
-      mainOffset = mainOffset + size + gap
+      mainOffset = mainOffset + size + gap + justifyGap
     end
   end
 end
@@ -645,6 +672,17 @@ end
 function _W.FlexComponentContainer:SetAlign(align)
   if self.node.align ~= align then
     self.node.align = align
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets how this container distributes leftover main-axis space among its
+--- own children. Pass `nil` to reset to the default (`START`). No-ops if
+--- already that value.
+--- @param justify? WaffleFlexJustify
+function _W.FlexComponentContainer:SetJustify(justify)
+  if self.node.justify ~= justify then
+    self.node.justify = justify
     _W.markDirty(self.node)
   end
 end
