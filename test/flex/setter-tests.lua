@@ -168,6 +168,26 @@ do
   assert(a._test.point.offsetY == 0) -- back to inheriting the container's START
 end
 
+-- Test: `SetJustify` changes a container's main-axis distribution on the
+-- next `Layout()` call.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  container:AddChild({ frame = a, size = 50 })
+  container:AddChild({ frame = b, size = 50 })
+  container:Layout()
+
+  assert(b._test.point.offsetX == 50) -- default START, packed together
+
+  container:SetJustify("SPACE_BETWEEN")
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0)
+  assert(b._test.point.offsetX == 150) -- all 100 leftover between the two
+end
+
 -- Test: `SetGap`/`SetPadding`/`SetSize`/`SetCrossSize` mark the tree dirty,
 -- but only on an actual value change; calling any of them with the current
 -- value is a no-op.
@@ -221,11 +241,18 @@ do
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
+
+  container:SetJustify(nil)
+  assert(container:IsDirty() == false)
+  container:SetJustify("CENTER")
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
 end
 
--- Test: `SetGap`/`SetPadding`/`SetAlign` are container-only, a leaf can
--- never have children so it never gets them; `SetSize`/`SetCrossSize`/
--- `SetAlignSelf` are shared by both.
+-- Test: `SetGap`/`SetPadding`/`SetAlign`/`SetJustify` are container-only, a
+-- leaf can never have children so it never gets them; `SetSize`/
+-- `SetCrossSize`/`SetAlignSelf` are shared by both.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -235,6 +262,7 @@ do
 
   assert(leaf.SetGap == nil)
   assert(leaf.SetPadding == nil)
+  assert(leaf.SetJustify == nil)
   assert(leaf.SetAlign == nil)
   assert(leaf.SetSize ~= nil)
   assert(container.SetSize ~= nil)
@@ -242,6 +270,7 @@ do
   assert(container.SetCrossSize ~= nil)
   assert(leaf.SetAlignSelf ~= nil)
   assert(container.SetAlignSelf ~= nil)
+  assert(container.SetJustify ~= nil)
 end
 
 print("All assertions passed.")
