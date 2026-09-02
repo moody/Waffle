@@ -234,9 +234,37 @@ function _W.computeAutoSize(node, axis)
   return total + gap * math.max(visibleCount - 1, 0) + padding * 2
 end
 
+--- Computes `node`'s size along its own cross axis (`axis`) as the max of
+--- its children's own sizes along that same axis, plus `padding` on both
+--- ends, not a sum: children sit side by side within this band rather
+--- than stacking along it. Errors if any visible child is flexible,
+--- there's nothing of its own to measure.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @return integer
+function _W.computeAutoCrossSize(node, axis)
+  assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from")
+
+  local max = 0
+  local padding = node.padding or 0
+
+  for _, child in ipairs(node.children) do
+    if not child.hidden then
+      local size = _W.resolveDimension(child, axis)
+      assert(size,
+        "Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
+        axis .. "`, a flexible child (`nil`) has nothing of its own to measure")
+      max = math.max(max, size)
+    end
+  end
+
+  return max + padding * 2
+end
+
 --- Resolves `node`'s size along `axis`: the given number, computed from
---- its children if `"AUTO"` (only legal along `node`'s own main axis,
---- errors otherwise), or `nil` if `node` is flexible along `axis` instead.
+--- its children if `"AUTO"` (a sum along `node`'s own main axis, a max
+--- along its cross axis), or `nil` if `node` is flexible along `axis`
+--- instead.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @return integer?
@@ -244,11 +272,7 @@ function _W.resolveDimension(node, axis)
   local value = node[axis]
   if value == "AUTO" then
     local isMainAxis = ((node.direction or "ROW"):upper() == "ROW") == (axis == "width")
-    assert(isMainAxis,
-      "Waffle: `\"AUTO\"` on `" ..
-      axis ..
-      "` needs it to be this node's own main axis (given its `direction`), auto-sizing the cross axis isn't supported yet")
-    return _W.computeAutoSize(node, axis)
+    return isMainAxis and _W.computeAutoSize(node, axis) or _W.computeAutoCrossSize(node, axis)
   end
   return value
 end
