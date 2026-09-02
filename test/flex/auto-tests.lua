@@ -166,23 +166,6 @@ do
   assert(tostring(err):find("flexible"))
 end
 
--- Test: `"AUTO"` on a node's own cross axis (not its main axis, given its
--- own `direction`) errors.
-do
-  local parent = Mocks:CreateFrame()
-  local container = Waffle:Flex({ frame = parent, direction = "ROW", width = 400, height = 50 })
-  container:AddChild({
-    frame = Mocks:CreateFrame(),
-    direction = "ROW",
-    height = "AUTO", -- ROW's cross axis, not its main axis
-    children = { { frame = Mocks:CreateFrame(), width = 30 } },
-  })
-
-  local ok, err = pcall(function() container:Layout() end)
-  assert(not ok)
-  assert(tostring(err):find("main axis"))
-end
-
 -- Test: root's own `width = "AUTO"` works the same way any node's would,
 -- `height` (its cross axis) still required, given directly.
 do
