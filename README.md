@@ -57,6 +57,22 @@ Waffle:Flex({
 }):Layout()
 ```
 
+**Distributing leftover main-axis space.** `justify`, also set on a container, controls how it spreads out leftover main-axis space among its children, when there is any: `"START"` (the default, unchanged), `"CENTER"`, `"END"`, `"SPACE_BETWEEN"`, `"SPACE_AROUND"`, or `"SPACE_EVENLY"`. Only matters when nothing is flexible, a flexible child already consumes all the leftover space, leaving nothing for `justify` to distribute:
+
+```lua
+Waffle:Flex({
+  frame = frame,
+  width = 400,
+  height = 40,
+  justify = "SPACE_BETWEEN", -- three fixed-size buttons, spread across the full row
+  children = {
+    { frame = cancelButton, size = 80 },
+    { frame = helpButton, size = 80 },
+    { frame = okButton, size = 80 },
+  }
+}):Layout()
+```
+
 The root is a container like any other: `frame`, `frameFactory`, `key`, `hidden`, and `onLayout` all work the same way they do for a child, and a root's own `frameFactory` just has no parent to receive as an argument, since nothing sits above it.
 
 **Nesting.** A child with its own `children` becomes a nested container, laid out within its own resolved width/height once the parent knows it.
@@ -250,6 +266,7 @@ root:Layout()
 - **`Container:SetPadding(padding?)`** — Sets the space between this container's edge and its children, on all four sides. Container-only. No-ops if already that padding.
 - **`Container:SetAlign(align?)`** — Sets how this container aligns its own children along the cross axis by default. Container-only. Pass `nil` to reset to the default (`"STRETCH"`). No-ops if already that alignment.
 - **`Container:SetAlignSelf(alignSelf?)`** — Sets how this node aligns itself within its parent along the cross axis, overriding the parent's own `align`. Works on any container or leaf. Pass `nil` to go back to inheriting it. No-ops if already that alignment.
+- **`Container:SetJustify(justify?)`** — Sets how this container distributes leftover main-axis space among its own children. Container-only. Pass `nil` to reset to the default (`"START"`). No-ops if already that value.
 - **`Container:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that order.
 
 A child (`WaffleFlexNode`), whether given via `options.children` or `AddChild`/`AddRow`/`AddColumn`, accepts:
@@ -260,6 +277,7 @@ A child (`WaffleFlexNode`), whether given via `options.children` or `AddChild`/`
 - **`gap`** / **`padding`** — Space between/around this child's children, if it has any. Can also be toggled after the fact with `SetGap()`/`SetPadding()`.
 - **`align`** — How this child aligns its own children along the cross axis, if it has any: `"STRETCH"` (default), `"START"`, `"CENTER"`, or `"END"`. Overridden per-child by that child's own `alignSelf`. Can also be toggled after the fact with `SetAlign()`.
 - **`alignSelf`** — Overrides the parent's `align` for this child specifically. Requires this child's own `crossSize` if not `"STRETCH"`. Can also be toggled after the fact with `SetAlignSelf()`.
+- **`justify`** — How this child distributes leftover main-axis space among its own children, if it has any: `"START"` (default), `"CENTER"`, `"END"`, `"SPACE_BETWEEN"`, `"SPACE_AROUND"`, or `"SPACE_EVENLY"`. Only matters when none of those children are flexible. Can also be toggled after the fact with `SetJustify()`.
 - **`children`** — Can be given directly for a fully declarative style, instead of `AddChild`/`AddRow`/`AddColumn`.
 - **`hidden`** — Excludes this child from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this child for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
@@ -269,7 +287,7 @@ A child (`WaffleFlexNode`), whether given via `options.children` or `AddChild`/`
 - **`onLayout`** — Called with this child's frame and resolved width/height, after its `children` (if any) are laid out.
 - **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node; even the tree's actual root needs its own `frame`/`frameFactory`, nothing above it to inherit a fallback from.
 
-The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above. `size`/`crossSize`/`alignSelf`/`order` have no effect there, there's nothing above the root to resize, align, or reorder among siblings; everything else, `align`/`hidden`/`onLayout`/`defaultFrameFactory` included, still applies, same as for any child, `align` in particular works exactly the same as it does anywhere else, since it's about how a node treats its own children, not how it's treated by a parent. It also has its own width/height, nothing above it can resolve that automatically:
+The root passed to `Waffle:Flex()` (`WaffleFlexRootNode`) accepts all of the above. `size`/`crossSize`/`alignSelf`/`order` have no effect there, there's nothing above the root to resize, align, or reorder among siblings; everything else, `align`/`justify`/`hidden`/`onLayout`/`defaultFrameFactory` included, still applies, same as for any child, `align`/`justify` in particular work exactly the same as they do anywhere else, since both are about how a node treats its own children, not how it's treated by a parent. It also has its own width/height, nothing above it can resolve that automatically:
 
 - **`width`** / **`height`** — The root's available size.
 
