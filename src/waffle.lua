@@ -552,15 +552,21 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
 
   _W.sortFlexChildren(children)
 
+  -- Reuses lines a cross-axis `"AUTO"` computation already split `node`
+  -- into, instead of splitting them again.
+  local lines = node.wrap and _W.Cache.WrapLines[node] or nil
+  _W.Cache.WrapLines[node] = nil
+
   -- Hidden children are hidden and dropped here, once, so neither
-  -- `splitFlexLines` nor `layoutFlexLine` needs to care about them at all.
-  local visibleChildren = {}
+  -- `splitFlexLines` nor `layoutFlexLine` needs to care about them at
+  -- all. Left `nil`, not built, when `lines` already covers `node`.
+  local visibleChildren = not lines and {} or nil
   for _, child in ipairs(children) do
     if child.hidden then
       if child.frame then
         child.frame:Hide()
       end
-    else
+    elseif visibleChildren then
       table.insert(visibleChildren, child)
     end
   end
@@ -568,11 +574,6 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   if node.wrap then
     local gap = node.gap or 0
     local crossOffset = padding
-
-    -- Reuses lines a cross-axis `"AUTO"` computation already split
-    -- `node` into, if there is one, instead of splitting them again.
-    local lines = _W.Cache.WrapLines[node]
-    _W.Cache.WrapLines[node] = nil
 
     for _, lineChildren in ipairs(lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)) do
       local thisLineCrossSize = _W.lineCrossSize(lineChildren, crossAxis, crossSize)
