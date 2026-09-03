@@ -7,6 +7,8 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 ## Features
 
 - Row/column flex layout with fixed and flexible sizing, gap, and padding, no manual `SetPoint` math
+- Shrink-to-fit sizing (`width`/`height` accepting `"AUTO"`), so a container can size itself from its own children instead of a fixed number
+- Wrapping (`wrap`), so children that would overflow the main axis start a new line instead, each line sized and aligned independently
 - A fluent API (`AddRow`, `AddColumn`, `AddChild`) for composing nested layouts, or a fully declarative table if you'd rather write it that way
 - `Layout()` is a pure recompute of the current tree, not a one-time construction step, call it again any time state changes and the layout needs to catch up
 - An optional frame factory so you don't have to `CreateFrame` every wrapper container yourself
