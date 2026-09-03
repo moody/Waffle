@@ -38,6 +38,7 @@ local Waffle = Addon.Waffle
 --- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
 --- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
+--- @field wrap? boolean Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `gap` between lines too. Default `false`.
 --- @field gap? integer Between children only, not the edges. Default `0`.
 --- @field padding? integer On all four sides. Default `0`.
 --- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. Default `false`.
@@ -261,6 +262,27 @@ function _W.computeAutoCrossSize(node, axis)
   return max + padding * 2
 end
 
+--- A line's own cross-size: the max of every child's own resolved size
+--- along `axis` that actually has one; a child with nothing of its own
+--- (e.g. a STRETCH child on its cross axis) is skipped rather than
+--- erroring. `fallback` covers a line with nothing explicit at all, same
+--- posture as a STRETCH child itself falling back to the container's
+--- cross size when it has nothing of its own either.
+--- @param children WaffleFlexNode[]
+--- @param axis "width" | "height"
+--- @param fallback integer
+--- @return integer
+function _W.lineCrossSize(children, axis, fallback)
+  local max
+  for _, child in ipairs(children) do
+    local size = _W.resolveDimension(child, axis)
+    if size then
+      max = max and math.max(max, size) or size
+    end
+  end
+  return max or fallback
+end
+
 --- Resolves `node`'s size along `axis`: the given number, computed from
 --- its children if `"AUTO"` (a sum along `node`'s own main axis, a max
 --- along its cross axis), or `nil` if `node` is flexible along `axis`
@@ -281,46 +303,77 @@ end
 -- Layout Functions
 -- =============================================================================
 
---- Positions `node.children` in a row or column within `frame`, sized to
---- `width`/`height`. Non-STRETCH alignment requires the child's own
---- cross-axis value, it never falls back to stretching. `frame` must
---- already be resolved/sized by the caller.
---- @param node WaffleFlexNode
---- @param frame WaffleFrame
---- @param width integer
---- @param height integer
---- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
-function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
-  local children = node.children
-  local gap = node.gap or 0
-  local padding = node.padding or 0
-  local isRow = (node.direction or "ROW"):upper() == "ROW"
-  local mainAxis = isRow and "width" or "height"
-  local crossAxis = isRow and "height" or "width"
+--- Splits `children` (already sorted, already visible-only) into lines
+--- along `axis`: each line is as many children as fit within `mainSize`,
+--- in order. A fixed-size child that would overflow the current line
+--- starts a new one instead, unless the current line is still empty, a
+--- lone child bigger than `mainSize` still gets placed on one rather than
+--- looping forever. A flexible child (no fixed size of its own yet)
+--- always joins the current line, there's nothing of its own yet to check
+--- for overflow.
+--- @param children WaffleFlexNode[]
+--- @param axis "width" | "height"
+--- @param mainSize integer
+--- @param gap integer
+--- @return WaffleFlexNode[][]
+function _W.splitFlexLines(children, axis, mainSize, gap)
+  local lines = {}
+  local currentLine = {}
+  local currentLineTotal = 0
 
-  local mainSize = (isRow and width or height) - (padding * 2)
-  local crossSize = (isRow and height or width) - (padding * 2)
-
-  -- Declaration order/parent are assigned here, not in their own pass,
-  -- since this loop is already walking every child anyway.
-  local fixedTotal = 0
-  local flexCount = 0
-  local visibleCount = 0
   for _, child in ipairs(children) do
-    _W.DeclarationOrder:Assign(child)
-    _W.NodeParent:Claim(child, node)
-    if not child.hidden then
-      visibleCount = visibleCount + 1
-      local size = _W.resolveDimension(child, mainAxis)
-      if size then
-        fixedTotal = fixedTotal + size
-      else
-        flexCount = flexCount + 1
-      end
+    local size = _W.resolveDimension(child, axis)
+    if size and #currentLine > 0 and currentLineTotal + gap + size > mainSize then
+      table.insert(lines, currentLine)
+      currentLine = {}
+      currentLineTotal = 0
+    end
+
+    table.insert(currentLine, child)
+    if size then
+      currentLineTotal = currentLineTotal + size + (#currentLine > 1 and gap or 0)
     end
   end
 
-  _W.sortFlexChildren(children)
+  if #currentLine > 0 then
+    table.insert(lines, currentLine)
+  end
+
+  return lines
+end
+
+--- Positions `lineChildren` along `mainAxis`, starting at `mainStart`, and
+--- aligns each within `crossSize` starting at `crossStart`. One line is
+--- every one of `node.children` when `node.wrap` isn't set, or one
+--- wrapped line's worth of them when it is. Non-STRETCH alignment
+--- requires the child's own cross-axis value, it never falls back to
+--- stretching.
+--- @param node WaffleFlexNode
+--- @param frame WaffleFrame
+--- @param lineChildren WaffleFlexNode[]
+--- @param mainAxis "width" | "height"
+--- @param crossAxis "width" | "height"
+--- @param mainSize integer
+--- @param crossSize integer
+--- @param mainStart integer
+--- @param crossStart integer
+--- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, crossSize, mainStart, crossStart,
+                           defaultFrameFactory)
+  local gap = node.gap or 0
+  local isRow = mainAxis == "width"
+  local visibleCount = #lineChildren
+
+  local fixedTotal = 0
+  local flexCount = 0
+  for _, child in ipairs(lineChildren) do
+    local size = _W.resolveDimension(child, mainAxis)
+    if size then
+      fixedTotal = fixedTotal + size
+    else
+      flexCount = flexCount + 1
+    end
+  end
 
   local totalGap = gap * math.max(visibleCount - 1, 0)
   local remaining = mainSize - fixedTotal - totalGap
@@ -347,64 +400,114 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     end
   end
 
-  local mainOffset = padding + justifyOffset
+  local mainOffset = mainStart + justifyOffset
+  for _, child in ipairs(lineChildren) do
+    local childFrame = _W.resolveFrame(child, frame, defaultFrameFactory)
+
+    childFrame:Show()
+    childFrame:ClearAllPoints()
+    childFrame:SetParent(frame)
+
+    local size = _W.resolveDimension(child, mainAxis) or flexSize
+
+    local align = (child.alignSelf or node.align or "STRETCH"):upper()
+    local childCrossSize
+    if align == "STRETCH" then
+      childCrossSize = _W.resolveDimension(child, crossAxis) or crossSize
+    else
+      childCrossSize = _W.resolveDimension(child, crossAxis)
+      assert(childCrossSize,
+        "Waffle: a child aligned '" ..
+        align ..
+        "' (not STRETCH) needs its own `" ..
+        crossAxis .. "`, alignment doesn't fall back to the container's cross size")
+    end
+
+    local crossOffset = crossStart
+    if align == "CENTER" then
+      crossOffset = crossStart + (crossSize - childCrossSize) / 2
+    elseif align == "END" then
+      crossOffset = crossStart + (crossSize - childCrossSize)
+    end
+
+    local childWidth, childHeight
+
+    if isRow then
+      childWidth, childHeight = size, childCrossSize
+      childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", mainOffset, -crossOffset)
+    else
+      childWidth, childHeight = childCrossSize, size
+      childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", crossOffset, -mainOffset)
+    end
+
+    childFrame:SetWidth(childWidth)
+    childFrame:SetHeight(childHeight)
+
+    if child.children then
+      _W.flexLayout(child, childFrame, childWidth, childHeight, child.defaultFrameFactory or defaultFrameFactory)
+    end
+
+    if child.onLayout then
+      child.onLayout(childFrame, childWidth, childHeight)
+    end
+
+    mainOffset = mainOffset + size + gap + justifyGap
+  end
+end
+
+--- Positions `node.children` in a row or column within `frame`, sized to
+--- `width`/`height`, one line (`node.wrap` unset) or several (`node.wrap`
+--- set, overflowing children start a new one instead of continuing past
+--- `mainSize`). `frame` must already be resolved/sized by the caller.
+--- @param node WaffleFlexNode
+--- @param frame WaffleFrame
+--- @param width integer
+--- @param height integer
+--- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
+  local children = node.children
+  local padding = node.padding or 0
+  local isRow = (node.direction or "ROW"):upper() == "ROW"
+  local mainAxis = isRow and "width" or "height"
+  local crossAxis = isRow and "height" or "width"
+
+  local mainSize = (isRow and width or height) - (padding * 2)
+  local crossSize = (isRow and height or width) - (padding * 2)
+
+  -- Declaration order/parent are assigned here, not in their own pass,
+  -- since this loop is already walking every child anyway.
+  for _, child in ipairs(children) do
+    _W.DeclarationOrder:Assign(child)
+    _W.NodeParent:Claim(child, node)
+  end
+
+  _W.sortFlexChildren(children)
+
+  -- Hidden children are hidden and dropped here, once, so neither
+  -- `splitFlexLines` nor `layoutFlexLine` needs to care about them at all.
+  local visibleChildren = {}
   for _, child in ipairs(children) do
     if child.hidden then
       if child.frame then
         child.frame:Hide()
       end
     else
-      local childFrame = _W.resolveFrame(child, frame, defaultFrameFactory)
-
-      childFrame:Show()
-      childFrame:ClearAllPoints()
-      childFrame:SetParent(frame)
-
-      local size = _W.resolveDimension(child, mainAxis) or flexSize
-
-      local align = (child.alignSelf or node.align or "STRETCH"):upper()
-      local childCrossSize
-      if align == "STRETCH" then
-        childCrossSize = _W.resolveDimension(child, crossAxis) or crossSize
-      else
-        childCrossSize = _W.resolveDimension(child, crossAxis)
-        assert(childCrossSize,
-          "Waffle: a child aligned '" ..
-          align ..
-          "' (not STRETCH) needs its own `" ..
-          crossAxis .. "`, alignment doesn't fall back to the container's cross size")
-      end
-
-      local crossOffset = padding
-      if align == "CENTER" then
-        crossOffset = padding + (crossSize - childCrossSize) / 2
-      elseif align == "END" then
-        crossOffset = padding + (crossSize - childCrossSize)
-      end
-
-      local childWidth, childHeight
-
-      if isRow then
-        childWidth, childHeight = size, childCrossSize
-        childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", mainOffset, -crossOffset)
-      else
-        childWidth, childHeight = childCrossSize, size
-        childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", crossOffset, -mainOffset)
-      end
-
-      childFrame:SetWidth(childWidth)
-      childFrame:SetHeight(childHeight)
-
-      if child.children then
-        _W.flexLayout(child, childFrame, childWidth, childHeight, child.defaultFrameFactory or defaultFrameFactory)
-      end
-
-      if child.onLayout then
-        child.onLayout(childFrame, childWidth, childHeight)
-      end
-
-      mainOffset = mainOffset + size + gap + justifyGap
+      table.insert(visibleChildren, child)
     end
+  end
+
+  if node.wrap then
+    local gap = node.gap or 0
+    local crossOffset = padding
+    for _, lineChildren in ipairs(_W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)) do
+      local thisLineCrossSize = _W.lineCrossSize(lineChildren, crossAxis, crossSize)
+      _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, thisLineCrossSize, padding,
+        crossOffset, defaultFrameFactory)
+      crossOffset = crossOffset + thisLineCrossSize + gap
+    end
+  else
+    _W.layoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, mainSize, crossSize, padding, padding,
+      defaultFrameFactory)
   end
 end
 
@@ -743,6 +846,15 @@ end
 function _W.FlexComponentContainer:SetJustify(justify)
   if self.node.justify ~= justify then
     self.node.justify = justify
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets whether this container's overflowing children wrap onto a new line.
+--- @param wrap? boolean
+function _W.FlexComponentContainer:SetWrap(wrap)
+  if self.node.wrap ~= wrap then
+    self.node.wrap = wrap
     _W.markDirty(self.node)
   end
 end
