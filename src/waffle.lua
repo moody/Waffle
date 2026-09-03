@@ -148,13 +148,13 @@ end
 -- Cache
 -- =============================================================================
 
---- Internal memoization scoped to a single `Layout()` pass.
+--- Internal memoization and table reuse for `Layout()`.
 _W.Cache = {}
 
 --- A wrap node's own children, already split into lines by
 --- `computeAutoCrossSize`, for `flexLayout` to reuse instead of
---- splitting them again right after. Consumed: cleared as soon as read.
---- Weak keys so an unreferenced node can still be garbage collected.
+--- splitting them again right after. Weak keys so an unreferenced node
+--- can still be garbage collected.
 _W.Cache.WrapLines = setmetatable({}, { __mode = "k" })
 
 --- Bumped once per `Layout()` pass (see `FlexComponent:Layout()`).
@@ -163,10 +163,95 @@ _W.Cache.WrapLines = setmetatable({}, { __mode = "k" })
 _W.Cache.CurrentPass = 0
 
 --- `node`'s own `"AUTO"` result per axis, tagged with the pass that
---- computed it: asking again the same pass reuses it instead of
---- recomputing `node`'s whole subtree. Weak keys so an unreferenced
---- node can still be garbage collected.
+--- computed it. Weak keys so an unreferenced node can still be garbage
+--- collected.
 _W.Cache.ResolvedDimensions = setmetatable({}, { __mode = "k" })
+
+--- `node`'s own children, sorted for positioning, one persistent table
+--- per node reused across every `Layout()` call instead of allocated
+--- fresh each time. Weak keys so an unreferenced node can still be
+--- garbage collected.
+_W.Cache.SortedChildren = setmetatable({}, { __mode = "k" })
+
+--- `node`'s own visible (non-hidden) children, same reuse as
+--- `SortedChildren` and for the same reason.
+_W.Cache.VisibleChildren = setmetatable({}, { __mode = "k" })
+
+--- Returns `node`'s cached `"AUTO"` result for `axis`, `nil` if it was
+--- never computed or is from a stale pass.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @return integer?
+function _W.Cache:GetResolvedDimension(node, axis)
+  local entry = self.ResolvedDimensions[node]
+  if entry and entry.pass == self.CurrentPass then
+    return entry[axis]
+  end
+  return nil
+end
+
+--- Records `node`'s `"AUTO"` result for `axis` for the rest of the
+--- current pass. Reuses `node`'s own existing entry rather than
+--- allocating a new one, resetting it first if it's from a stale pass.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @param value integer
+function _W.Cache:SetResolvedDimension(node, axis, value)
+  local entry = self.ResolvedDimensions[node]
+  if not entry then
+    entry = { pass = self.CurrentPass }
+    self.ResolvedDimensions[node] = entry
+  elseif entry.pass ~= self.CurrentPass then
+    entry.pass = self.CurrentPass
+    entry.width = nil
+    entry.height = nil
+  end
+  entry[axis] = value
+end
+
+--- Returns and clears `node`'s cached wrap lines, even if the caller
+--- ends up not using them.
+--- @param node WaffleFlexNode
+--- @return WaffleFlexNode[][]?
+function _W.Cache:GetWrapLines(node)
+  local lines = self.WrapLines[node]
+  self.WrapLines[node] = nil
+  return lines
+end
+
+--- Records `node`'s wrap lines for `flexLayout` to take right after.
+--- @param node WaffleFlexNode
+--- @param lines WaffleFlexNode[][]
+function _W.Cache:SetWrapLines(node, lines)
+  self.WrapLines[node] = lines
+end
+
+--- Returns `node`'s own table in `pool` (`SortedChildren`/
+--- `VisibleChildren` above), creating it on the first ask. Never
+--- replaced once created; callers overwrite it by index and finish
+--- with `Truncate` below.
+--- @param pool table<WaffleFlexNode, WaffleFlexNode[]>
+--- @param node WaffleFlexNode
+--- @return WaffleFlexNode[]
+function _W.Cache:GetReusableTable(pool, node)
+  local t = pool[node]
+  if not t then
+    t = {}
+    pool[node] = t
+  end
+  return t
+end
+
+--- Clears every entry in `t` past index `count`, so reusing it for a
+--- shorter list than last time doesn't leave stale entries past its new
+--- logical length.
+--- @param t table
+--- @param count integer
+function _W.Cache:Truncate(t, count)
+  for i = count + 1, #t do
+    t[i] = nil
+  end
+end
 
 -- =============================================================================
 -- Sort Functions
@@ -311,7 +396,7 @@ function _W.computeAutoCrossSize(node, axis)
 
       -- Cached for `node`'s own upcoming `flexLayout` call, which would
       -- otherwise redo this same sort and split.
-      _W.Cache.WrapLines[node] = lines
+      _W.Cache:SetWrapLines(node, lines)
     end
   end
 
@@ -352,18 +437,14 @@ end
 function _W.resolveDimension(node, axis)
   local value = node[axis]
   if value == "AUTO" then
-    local cached = _W.Cache.ResolvedDimensions[node]
-    if not cached or cached.pass ~= _W.Cache.CurrentPass then
-      cached = { pass = _W.Cache.CurrentPass }
-      _W.Cache.ResolvedDimensions[node] = cached
-    end
-
-    if cached[axis] == nil then
+    local cached = _W.Cache:GetResolvedDimension(node, axis)
+    if cached == nil then
       local isMainAxis = ((node.direction or "ROW"):upper() == "ROW") == (axis == "width")
-      cached[axis] = isMainAxis and _W.computeAutoSize(node, axis) or _W.computeAutoCrossSize(node, axis)
+      cached = isMainAxis and _W.computeAutoSize(node, axis) or _W.computeAutoCrossSize(node, axis)
+      _W.Cache:SetResolvedDimension(node, axis, cached)
     end
 
-    return cached[axis]
+    return cached
   end
   return value
 end
@@ -544,34 +625,42 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
 
   -- Declaration order/parent are assigned here, not in their own pass,
   -- since this loop is already walking every child anyway. `children`
-  -- is a copy, not `node.children` itself, so sorting it doesn't
-  -- disturb `GetChildren()`'s own declaration-order guarantee.
-  local children = {}
+  -- is `node`'s own reused scratch copy, not `node.children` itself, so
+  -- sorting it doesn't disturb `GetChildren()`'s own declaration-order
+  -- guarantee.
+  local children = _W.Cache:GetReusableTable(_W.Cache.SortedChildren, node)
   for i, child in ipairs(node.children) do
     _W.DeclarationOrder:Assign(child)
     _W.NodeParent:Claim(child, node)
     children[i] = child
   end
+  _W.Cache:Truncate(children, #node.children)
 
   _W.sortFlexChildren(children)
 
   -- Reuses lines a cross-axis `"AUTO"` computation already split `node`
   -- into, instead of splitting them again.
-  local lines = node.wrap and _W.Cache.WrapLines[node] or nil
-  _W.Cache.WrapLines[node] = nil
+  local wrapLines = _W.Cache:GetWrapLines(node)
+  local lines = node.wrap and wrapLines or nil
 
   -- Hidden children are hidden and dropped here, once, so neither
   -- `splitFlexLines` nor `layoutFlexLine` needs to care about them at
   -- all. Left `nil`, not built, when `lines` already covers `node`.
-  local visibleChildren = not lines and {} or nil
+  local visibleChildren = not lines and _W.Cache:GetReusableTable(_W.Cache.VisibleChildren, node) or nil
+
+  local visibleCount = 0
   for _, child in ipairs(children) do
     if child.hidden then
       if child.frame then
         child.frame:Hide()
       end
     elseif visibleChildren then
-      table.insert(visibleChildren, child)
+      visibleCount = visibleCount + 1
+      visibleChildren[visibleCount] = child
     end
+  end
+  if visibleChildren then
+    _W.Cache:Truncate(visibleChildren, visibleCount)
   end
 
   if node.wrap then
