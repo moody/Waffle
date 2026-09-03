@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `grow`/`SetGrow()` (any node): a flexible child's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`, matching the previous always-even split; `grow = 0` claims none of the leftover. No effect on a node with its own explicit main-axis `width`/`height`, or on the root. `justify` now only matters when nothing among its children has a positive `grow` share, not merely when nothing is flexible.
+
 ## [0.3.0] - 2026-09-03
 
 ### Added
