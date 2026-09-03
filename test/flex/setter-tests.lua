@@ -230,6 +230,33 @@ do
   assert(b._test.point.offsetX == 150) -- all 100 leftover between the two
 end
 
+-- Test: `SetWrap` makes overflowing children wrap onto a new line on the
+-- next `Layout()` call; `SetWrap(false)` reverts to a single, overflowing
+-- line.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 100, height = 200 })
+  container:AddChild({ frame = a, width = 60, height = 30 })
+  container:AddChild({ frame = b, width = 60, height = 40 })
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0 and a._test.point.offsetY == 0)
+  assert(b._test.point.offsetX == 60 and b._test.point.offsetY == 0) -- overflowing, same line
+
+  container:SetWrap(true)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0 and a._test.point.offsetY == 0)
+  assert(b._test.point.offsetX == 0 and b._test.point.offsetY == -30) -- new line, after a's own height
+
+  container:SetWrap(false)
+  container:Layout()
+
+  assert(b._test.point.offsetX == 60 and b._test.point.offsetY == 0) -- back to one overflowing line
+end
+
 -- Test: `SetGap`/`SetPadding`/`SetWidth`/`SetHeight` mark the tree dirty,
 -- but only on an actual value change; calling any of them with the current
 -- value is a no-op.
@@ -290,11 +317,18 @@ do
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
+
+  container:SetWrap(nil)
+  assert(container:IsDirty() == false)
+  container:SetWrap(true)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
 end
 
--- Test: `SetGap`/`SetPadding`/`SetAlign`/`SetJustify` are container-only, a
--- leaf can never have children so it never gets them; `SetWidth`/
--- `SetHeight`/`SetAlignSelf` are shared by both.
+-- Test: `SetGap`/`SetPadding`/`SetAlign`/`SetJustify`/`SetWrap` are
+-- container-only, a leaf can never have children so it never gets them;
+-- `SetWidth`/`SetHeight`/`SetAlignSelf` are shared by both.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -306,6 +340,7 @@ do
   assert(leaf.SetPadding == nil)
   assert(leaf.SetJustify == nil)
   assert(leaf.SetAlign == nil)
+  assert(leaf.SetWrap == nil)
   assert(leaf.SetWidth ~= nil)
   assert(container.SetWidth ~= nil)
   assert(leaf.SetHeight ~= nil)
@@ -313,6 +348,7 @@ do
   assert(leaf.SetAlignSelf ~= nil)
   assert(container.SetAlignSelf ~= nil)
   assert(container.SetJustify ~= nil)
+  assert(container.SetWrap ~= nil)
 end
 
 print("All assertions passed.")
