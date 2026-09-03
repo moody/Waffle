@@ -168,6 +168,31 @@ do
   assert(colFrame._test.height == 30)
 end
 
+-- Test: `SetGrow` changes a flexible child's own share of leftover
+-- space on the next `Layout()` call; `SetGrow(nil)` reverts it to the
+-- default (equal) share.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
+  local leafA = container:AddChild({ frame = a })
+  container:AddChild({ frame = b })
+  container:Layout()
+
+  assert(a._test.width == 150 and b._test.width == 150)
+
+  leafA:SetGrow(2)
+  container:Layout()
+
+  assert(a._test.width == 200 and b._test.width == 100)
+
+  leafA:SetGrow(nil)
+  container:Layout()
+
+  assert(a._test.width == 150 and b._test.width == 150)
+end
+
 -- Test: `SetAlign` changes a container's default alignment on the next
 -- `Layout()` call.
 do
@@ -311,6 +336,13 @@ do
   container:Layout()
   assert(container:IsDirty() == false)
 
+  leaf:SetGrow(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetGrow(2)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
   container:SetJustify(nil)
   assert(container:IsDirty() == false)
   container:SetJustify("CENTER")
@@ -328,7 +360,7 @@ end
 
 -- Test: `SetGap`/`SetPadding`/`SetAlign`/`SetJustify`/`SetWrap` are
 -- container-only, a leaf can never have children so it never gets them;
--- `SetWidth`/`SetHeight`/`SetAlignSelf` are shared by both.
+-- `SetWidth`/`SetHeight`/`SetGrow`/`SetAlignSelf` are shared by both.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -345,6 +377,8 @@ do
   assert(container.SetWidth ~= nil)
   assert(leaf.SetHeight ~= nil)
   assert(container.SetHeight ~= nil)
+  assert(leaf.SetGrow ~= nil)
+  assert(container.SetGrow ~= nil)
   assert(leaf.SetAlignSelf ~= nil)
   assert(container.SetAlignSelf ~= nil)
   assert(container.SetJustify ~= nil)
