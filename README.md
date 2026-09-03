@@ -92,6 +92,24 @@ Waffle:Flex({
 
 The root needs both `width` and `height` given, unlike an ordinary child (see [`Waffle:Flex(node)`](#waffleflexnode) for why).
 
+**Wrapping.** `wrap`, set on a container, makes overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size, computed the same way as cross-axis `"AUTO"` (a max over that line's own children), and stacks after the previous one; `align`/`justify` apply per line, independently, not once across the whole container.
+
+```lua
+Waffle:Flex({
+  frame = frame,
+  width = 100,
+  height = 200,
+  wrap = true,
+  gap = 8,
+  children = {
+    { frame = icon1, width = 32, height = 32 },
+    { frame = icon2, width = 32, height = 32 },
+    { frame = icon3, width = 32, height = 32 }, -- doesn't fit next to icon1/icon2, starts a new line
+    { frame = icon4, width = 32, height = 32 },
+  }
+}):Layout()
+```
+
 **Nesting.** A child with its own `children` becomes a nested container, laid out within its own resolved width/height once the parent knows it.
 
 ```lua
@@ -191,6 +209,7 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`align`** — How this node aligns its own children along the cross axis, if it has any: `"STRETCH"` (default), `"START"`, `"CENTER"`, or `"END"`. Overridden per-child by that child's own `alignSelf`. Can also be toggled after the fact with `SetAlign()`.
 - **`alignSelf`** — Overrides the parent's `align` for this node specifically. Requires this node's own cross-axis dimension if not `"STRETCH"`. No effect on the root, nothing above it to align it within. Can also be toggled after the fact with `SetAlignSelf()`.
 - **`justify`** — How this node distributes leftover main-axis space among its own children, if it has any: `"START"` (default), `"CENTER"`, `"END"`, `"SPACE_BETWEEN"`, `"SPACE_AROUND"`, or `"SPACE_EVENLY"`. Only matters when none of those children are flexible. Can also be toggled after the fact with `SetJustify()`.
+- **`wrap`** — Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `gap` between lines too. Default `false`. Can also be toggled after the fact with `SetWrap()`.
 - **`children`** — Can be given directly for a fully declarative style, instead of `AddChild`/`AddRow`/`AddColumn`; a node written directly into this table is still tracked and protected against double-attachment the same way.
 - **`hidden`** — Excludes this node from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this node for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
@@ -221,6 +240,7 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`Container:SetAlign(align?)`** — Sets how this container aligns its own children along the cross axis by default. Container-only. Pass `nil` to reset to the default (`"STRETCH"`). No-ops if already that alignment.
 - **`Container:SetAlignSelf(alignSelf?)`** — Sets how this node aligns itself within its parent along the cross axis, overriding the parent's own `align`. Works on any container or leaf. Pass `nil` to go back to inheriting it. No-ops if already that alignment.
 - **`Container:SetJustify(justify?)`** — Sets how this container distributes leftover main-axis space among its own children. Container-only. Pass `nil` to reset to the default (`"START"`). No-ops if already that value.
+- **`Container:SetWrap(wrap?)`** — Sets whether this container's overflowing children wrap onto a new line. Container-only. Pass `nil` to reset to the default (`false`). No-ops if already that value.
 - **`Container:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that order.
 
 ## Testing
