@@ -195,4 +195,99 @@ do
   assert(frame._test.height == 45) -- max(20, 45), root's own cross axis
 end
 
+-- Test: cross-axis `"AUTO"` on a wrapped container sums each line's own
+-- max, rather than one flat max over every child regardless of line.
+do
+  local parent = Mocks:CreateFrame()
+  local autoFrame = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  Waffle:Flex({
+    frame = parent,
+    direction = "ROW",
+    width = 400,
+    height = 50,
+    children = {
+      {
+        frame = autoFrame,
+        direction = "ROW",
+        width = 100,
+        height = "AUTO",
+        wrap = true,
+        children = {
+          { frame = a, width = 60, height = 30 }, -- line 1
+          { frame = b, width = 60, height = 40 }, -- doesn't fit alongside a, line 2
+        }
+      }
+    }
+  }):Layout()
+
+  assert(autoFrame._test.height == 70) -- line 1's 30 + line 2's 40, not max(30, 40)
+end
+
+-- Test: cross-axis `"AUTO"` on a wrapped container also accounts for
+-- `gap` between lines, not just each line's own max; omitting it would
+-- under-report the space its own children actually occupy once
+-- `flexLayout` positions them for real.
+do
+  local parent = Mocks:CreateFrame()
+  local autoFrame = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  Waffle:Flex({
+    frame = parent,
+    direction = "ROW",
+    width = 400,
+    height = 50,
+    children = {
+      {
+        frame = autoFrame,
+        direction = "ROW",
+        width = 100,
+        height = "AUTO",
+        wrap = true,
+        gap = 10,
+        children = {
+          { frame = a, width = 60, height = 30 }, -- line 1
+          { frame = b, width = 60, height = 40 }, -- doesn't fit alongside a, line 2
+        }
+      }
+    }
+  }):Layout()
+
+  assert(autoFrame._test.height == 80) -- 30 + 40 + gap(10), not 70
+  assert(b._test.point.offsetY == -40) -- line 2 actually starts at 30 + gap(10)
+end
+
+-- Test: `wrap` on a cross-axis `"AUTO"` node that never actually wraps
+-- (everything fits on one line) still degenerates to the original flat
+-- max, unaffected by being lines-aware now.
+do
+  local parent = Mocks:CreateFrame()
+  local autoFrame = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  Waffle:Flex({
+    frame = parent,
+    direction = "ROW",
+    width = 400,
+    height = 50,
+    children = {
+      {
+        frame = autoFrame,
+        direction = "ROW",
+        width = 200,
+        height = "AUTO",
+        wrap = true,
+        children = {
+          { frame = a, width = 60, height = 30 },
+          { frame = b, width = 60, height = 40 },
+        }
+      }
+    }
+  }):Layout()
+
+  assert(autoFrame._test.height == 40) -- both fit on one line, max(30, 40)
+end
+
 print("All assertions passed.")
