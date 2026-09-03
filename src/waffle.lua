@@ -235,31 +235,71 @@ function _W.computeAutoSize(node, axis)
   return total + gap * math.max(visibleCount - 1, 0) + padding * 2
 end
 
---- Computes `node`'s size along its own cross axis (`axis`) as the max of
---- its children's own sizes along that same axis, plus `padding` on both
---- ends, not a sum: children sit side by side within this band rather
---- than stacking along it. Errors if any visible child is flexible,
---- there's nothing of its own to measure.
+--- The max of every one of `children`'s own resolved sizes along `axis`.
+--- Errors if any is flexible, there's nothing of its own to measure. The
+--- strict counterpart to `lineCrossSize`, which falls back instead of
+--- erroring; `"AUTO"` can't fall back to a guess, so it needs this one.
+--- @param children WaffleFlexNode[]
+--- @param axis "width" | "height"
+--- @return integer
+function _W.maxCrossSize(children, axis)
+  local max = 0
+  for _, child in ipairs(children) do
+    local size = _W.resolveDimension(child, axis)
+    assert(size,
+      "Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
+      axis .. "`, a flexible child (`nil`) has nothing of its own to measure")
+    max = math.max(max, size)
+  end
+  return max
+end
+
+--- Computes `node`'s size along its own cross axis (`axis`) as the sum of
+--- every line's own `maxCrossSize`, plus `gap` between lines and
+--- `padding` on both ends: children sit side by side within a line
+--- rather than stacking along it, but separate lines still stack one
+--- after another, same as `flexLayout` stacks them for real, `gap`
+--- included, or this would under-report the space its own children
+--- actually occupy. `node.wrap` is what makes more than one line
+--- possible; without it (or without its own main axis resolving to a
+--- number to wrap against) every child is one line, and the formula
+--- degenerates back to a flat max over all of them with no `gap` term,
+--- the original this generalizes.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @return integer
 function _W.computeAutoCrossSize(node, axis)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from")
 
-  local max = 0
+  local gap = node.gap or 0
   local padding = node.padding or 0
 
+  local visibleChildren = {}
   for _, child in ipairs(node.children) do
     if not child.hidden then
-      local size = _W.resolveDimension(child, axis)
-      assert(size,
-        "Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
-        axis .. "`, a flexible child (`nil`) has nothing of its own to measure")
-      max = math.max(max, size)
+      table.insert(visibleChildren, child)
     end
   end
 
-  return max + padding * 2
+  local lines = { visibleChildren }
+  if node.wrap then
+    local mainAxis = axis == "width" and "height" or "width"
+    local mainSize = _W.resolveDimension(node, mainAxis)
+    if mainSize then
+      -- Lines have to match what `flexLayout` will actually produce, which
+      -- sorts before splitting; without this, a child moved earlier by
+      -- `order` could land on a different line here than it really will.
+      _W.sortFlexChildren(visibleChildren)
+      lines = _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)
+    end
+  end
+
+  local total = 0
+  for _, lineChildren in ipairs(lines) do
+    total = total + _W.maxCrossSize(lineChildren, axis)
+  end
+
+  return total + gap * math.max(#lines - 1, 0) + padding * 2
 end
 
 --- A line's own cross-size: the max of every child's own resolved size
