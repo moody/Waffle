@@ -94,7 +94,7 @@ Waffle:Flex({
 
 The root needs both `width` and `height` given, unlike an ordinary child (see [`Waffle:Flex(node)`](#waffleflexnode) for why).
 
-**Wrapping.** `wrap`, set on a container, makes overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size, computed the same way as cross-axis `"AUTO"` (a max over that line's own children), and stacks after the previous one; `align`/`justify` apply per line, independently, not once across the whole container.
+**Wrapping.** `wrap`, set on a container, makes overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size, computed the same way as cross-axis `"AUTO"` (a max over that line's own children), and stacks after the previous one; `align`/`justify` apply per line, independently, not once across the whole container. Combined with cross-axis `"AUTO"` on the container itself, that dimension sums every line's own cross-size instead of maxing across every child directly.
 
 ```lua
 Waffle:Flex({
