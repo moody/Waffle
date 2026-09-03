@@ -145,6 +145,30 @@ function _W.markDirty(node)
 end
 
 -- =============================================================================
+-- Cache
+-- =============================================================================
+
+--- Internal memoization scoped to a single `Layout()` pass.
+_W.Cache = {}
+
+--- A wrap node's own children, already split into lines by
+--- `computeAutoCrossSize`, for `flexLayout` to reuse instead of
+--- splitting them again right after. Consumed: cleared as soon as read.
+--- Weak keys so an unreferenced node can still be garbage collected.
+_W.Cache.WrapLines = setmetatable({}, { __mode = "k" })
+
+--- Bumped once per `Layout()` pass (see `FlexComponent:Layout()`).
+--- Scopes `ResolvedDimensions` entries to the pass that computed them,
+--- so a stale one from an earlier pass is never reused.
+_W.Cache.CurrentPass = 0
+
+--- `node`'s own `"AUTO"` result per axis, tagged with the pass that
+--- computed it: asking again the same pass reuses it instead of
+--- recomputing `node`'s whole subtree. Weak keys so an unreferenced
+--- node can still be garbage collected.
+_W.Cache.ResolvedDimensions = setmetatable({}, { __mode = "k" })
+
+-- =============================================================================
 -- Sort Functions
 -- =============================================================================
 
@@ -236,9 +260,8 @@ function _W.computeAutoSize(node, axis)
 end
 
 --- The max of every one of `children`'s own resolved sizes along `axis`.
---- Errors if any is flexible, there's nothing of its own to measure. The
---- strict counterpart to `lineCrossSize`, which falls back instead of
---- erroring; `"AUTO"` can't fall back to a guess, so it needs this one.
+--- Errors if any is flexible, there's nothing of its own to measure.
+--- The strict counterpart to `lineCrossSize`, which falls back instead.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @return integer
@@ -254,17 +277,11 @@ function _W.maxCrossSize(children, axis)
   return max
 end
 
---- Computes `node`'s size along its own cross axis (`axis`) as the sum of
---- every line's own `maxCrossSize`, plus `gap` between lines and
---- `padding` on both ends: children sit side by side within a line
---- rather than stacking along it, but separate lines still stack one
---- after another, same as `flexLayout` stacks them for real, `gap`
---- included, or this would under-report the space its own children
---- actually occupy. `node.wrap` is what makes more than one line
---- possible; without it (or without its own main axis resolving to a
---- number to wrap against) every child is one line, and the formula
---- degenerates back to a flat max over all of them with no `gap` term,
---- the original this generalizes.
+--- Computes `node`'s size along its own cross axis (`axis`) as the sum
+--- of every line's own `maxCrossSize`, plus `gap` between lines and
+--- `padding` on both ends. One line, a flat max with no `gap` term,
+--- unless `node.wrap` is set and its own main axis resolves to a number
+--- to wrap against.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @return integer
@@ -291,6 +308,10 @@ function _W.computeAutoCrossSize(node, axis)
       -- `order` could land on a different line here than it really will.
       _W.sortFlexChildren(visibleChildren)
       lines = _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)
+
+      -- Cached for `node`'s own upcoming `flexLayout` call, which would
+      -- otherwise redo this same sort and split.
+      _W.Cache.WrapLines[node] = lines
     end
   end
 
@@ -303,11 +324,9 @@ function _W.computeAutoCrossSize(node, axis)
 end
 
 --- A line's own cross-size: the max of every child's own resolved size
---- along `axis` that actually has one; a child with nothing of its own
---- (e.g. a STRETCH child on its cross axis) is skipped rather than
---- erroring. `fallback` covers a line with nothing explicit at all, same
---- posture as a STRETCH child itself falling back to the container's
---- cross size when it has nothing of its own either.
+--- along `axis` that has one, skipping any that don't (e.g. a STRETCH
+--- child on its cross axis) rather than erroring. `fallback` covers a
+--- line with nothing explicit at all.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @param fallback integer
@@ -326,15 +345,25 @@ end
 --- Resolves `node`'s size along `axis`: the given number, computed from
 --- its children if `"AUTO"` (a sum along `node`'s own main axis, a max
 --- along its cross axis), or `nil` if `node` is flexible along `axis`
---- instead.
+--- instead. An `"AUTO"` result is cached for the rest of the current pass.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @return integer?
 function _W.resolveDimension(node, axis)
   local value = node[axis]
   if value == "AUTO" then
-    local isMainAxis = ((node.direction or "ROW"):upper() == "ROW") == (axis == "width")
-    return isMainAxis and _W.computeAutoSize(node, axis) or _W.computeAutoCrossSize(node, axis)
+    local cached = _W.Cache.ResolvedDimensions[node]
+    if not cached or cached.pass ~= _W.Cache.CurrentPass then
+      cached = { pass = _W.Cache.CurrentPass }
+      _W.Cache.ResolvedDimensions[node] = cached
+    end
+
+    if cached[axis] == nil then
+      local isMainAxis = ((node.direction or "ROW"):upper() == "ROW") == (axis == "width")
+      cached[axis] = isMainAxis and _W.computeAutoSize(node, axis) or _W.computeAutoCrossSize(node, axis)
+    end
+
+    return cached[axis]
   end
   return value
 end
@@ -539,7 +568,13 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   if node.wrap then
     local gap = node.gap or 0
     local crossOffset = padding
-    for _, lineChildren in ipairs(_W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)) do
+
+    -- Reuses lines a cross-axis `"AUTO"` computation already split
+    -- `node` into, if there is one, instead of splitting them again.
+    local lines = _W.Cache.WrapLines[node]
+    _W.Cache.WrapLines[node] = nil
+
+    for _, lineChildren in ipairs(lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)) do
       local thisLineCrossSize = _W.lineCrossSize(lineChildren, crossAxis, crossSize)
       _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, thisLineCrossSize, padding,
         crossOffset, defaultFrameFactory)
@@ -689,6 +724,8 @@ end
 function _W.FlexComponent:Layout()
   local root = _W.NodeParent:FindRoot(self.node)
   if _W.DirtyRoots[root] then
+    _W.Cache.CurrentPass = _W.Cache.CurrentPass + 1
+
     if root.hidden then
       if root.frame then
         root.frame:Hide()
