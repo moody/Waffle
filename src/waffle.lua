@@ -534,7 +534,6 @@ end
 --- @param height integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
 function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
-  local children = node.children
   local padding = node.padding or 0
   local isRow = (node.direction or "ROW"):upper() == "ROW"
   local mainAxis = isRow and "width" or "height"
@@ -544,10 +543,14 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   local crossSize = (isRow and height or width) - (padding * 2)
 
   -- Declaration order/parent are assigned here, not in their own pass,
-  -- since this loop is already walking every child anyway.
-  for _, child in ipairs(children) do
+  -- since this loop is already walking every child anyway. `children`
+  -- is a copy, not `node.children` itself, so sorting it doesn't
+  -- disturb `GetChildren()`'s own declaration-order guarantee.
+  local children = {}
+  for i, child in ipairs(node.children) do
     _W.DeclarationOrder:Assign(child)
     _W.NodeParent:Claim(child, node)
+    children[i] = child
   end
 
   _W.sortFlexChildren(children)
