@@ -91,12 +91,12 @@ do
   local containerB = Waffle:Flex({ frame = rootB, direction = "ROW", width = 300, height = 50 })
 
   local childFrame = Mocks:CreateFrame()
-  local leafA = containerA:AddChild({ frame = childFrame, size = 100 })
+  local leafA = containerA:AddChild({ frame = childFrame, width = 100 })
   containerA:Layout()
   assert(childFrame._test.point.parent == rootA)
 
   assert(containerA:RemoveChild(leafA))
-  local leafB = containerB:AddChild({ frame = childFrame, size = 100 })
+  local leafB = containerB:AddChild({ frame = childFrame, width = 100 })
   containerB:Layout()
 
   assert(childFrame._test.point.parent == rootB)
@@ -128,6 +128,41 @@ do
   assert(nestedFrame._test.width == 200) -- rootBOptions' own children laid out too, as containerA's child now
 end
 
+-- Test: a node's own `defaultFrameFactory`, set from when it was its own
+-- root, keeps applying to its descendants after being grafted into a
+-- different tree, the new tree's own default doesn't take over for it.
+do
+  local rootAFrame = Mocks:CreateFrame()
+  local rootBFrame = Mocks:CreateFrame()
+  local aDefaultFrame, bDefaultFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local rootBOptions = {
+    frame = rootBFrame,
+    direction = "ROW",
+    defaultFrameFactory = function()
+      return bDefaultFrame
+    end,
+    children = { {} }, -- no frame/frameFactory of its own
+  }
+  Waffle:Flex(rootBOptions) -- rootBOptions is the root of its own tree, never laid out
+
+  local containerA = Waffle:Flex({
+    frame = rootAFrame,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    defaultFrameFactory = function()
+      return aDefaultFrame
+    end
+  })
+  local graftedB = containerA:AddChild(rootBOptions) -- grafted in as a child, no error
+
+  containerA:Layout()
+
+  local graftedBChild = graftedB:GetChildren()[1]
+  assert(graftedBChild:GetFrame() == bDefaultFrame) -- rootBOptions' own child used rootBOptions' own default, not containerA's
+end
+
 -- Test: calling `Layout()` on a node nested deep in the tree, not the root
 -- container itself, still lays out the whole tree from its actual root.
 do
@@ -137,7 +172,7 @@ do
   local nested = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
-  container:AddChild({ frame = a, size = 100 })
+  container:AddChild({ frame = a, width = 100 })
   local row = container:AddRow({ frame = rowFrame })
   local leaf = row:AddChild({ frame = nested })
 
@@ -160,7 +195,7 @@ do
   local staleRootB = Waffle:Flex(rootBOptions) -- tree B's own root wrapper
 
   local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 300, height = 50 })
-  containerA:AddChild({ frame = siblingFrame, size = 100 })
+  containerA:AddChild({ frame = siblingFrame, width = 100 })
   containerA:AddChild(rootBOptions) -- grafted in as a child, tree B stops being independent
   containerA:Layout()
 
@@ -168,7 +203,7 @@ do
   assert(rootBFrame._test.width == 200) -- 300 - 100, flexes to fill the rest
   assert(containerA:IsDirty() == false)
 
-  staleRootB:SetSize(50) -- mutating through the stale wrapper still reaches tree A
+  staleRootB:SetWidth(50) -- mutating through the stale wrapper still reaches tree A
   assert(containerA:IsDirty() == true)
 
   containerA:Layout()

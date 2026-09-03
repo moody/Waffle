@@ -11,9 +11,9 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
-  local leafA = container:AddChild({ frame = a, size = 100 })
-  container:AddChild({ frame = b, size = 100 })
-  container:AddChild({ frame = c, size = 100 })
+  local leafA = container:AddChild({ frame = a, width = 100 })
+  container:AddChild({ frame = b, width = 100 })
+  container:AddChild({ frame = c, width = 100 })
   container:Layout()
 
   assert(a._test.point.offsetX == 0 and b._test.point.offsetX == 100 and c._test.point.offsetX == 200)
@@ -32,7 +32,7 @@ do
   local a = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local leaf = container:AddChild({ frame = a, size = 100 })
+  local leaf = container:AddChild({ frame = a, width = 100 })
   container:Layout()
 
   local hideCallsBefore = a._test.hideCalls
@@ -118,9 +118,9 @@ do
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
-  container:AddChild({ frame = a, size = 100 })
-  local leafB = container:AddChild({ frame = b, size = 100 })
-  container:AddChild({ frame = c, size = 100 })
+  container:AddChild({ frame = a, width = 100 })
+  local leafB = container:AddChild({ frame = b, width = 100 })
+  container:AddChild({ frame = c, width = 100 })
   container:Layout()
 
   assert(b._test.point.offsetX == 100) -- b's old position, before removal
@@ -142,8 +142,8 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  container:AddChild({ frame = a, size = 100 })
-  container:AddChild({ frame = b, size = 100 })
+  container:AddChild({ frame = a, width = 100 })
+  container:AddChild({ frame = b, width = 100 })
   container:Layout()
 
   container:Clear()

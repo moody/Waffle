@@ -17,7 +17,7 @@ do
     children = {
       {
         frame = child,
-        size = 120,
+        width = 120,
         onLayout = function(frame, width, height)
           received = {
             frame = frame,
@@ -34,7 +34,7 @@ do
   assert(received.width == 120 and received.height == 50)
 end
 
--- Test: `onLayout` also fires for a flexible (no `size`) child, receiving
+-- Test: `onLayout` also fires for a flexible (no `width`) child, receiving
 -- whatever it actually got resolved to.
 do
   local parent = Mocks:CreateFrame()
@@ -47,7 +47,7 @@ do
     width = 300,
     height = 50,
     children = {
-      { frame = fixed, size = 100 },
+      { frame = fixed, width = 100 },
       {
         frame = flex,
         onLayout = function(frame, width, height)
@@ -75,7 +75,7 @@ do
     children = {
       {
         frame = child,
-        size = 40,
+        height = 40,
         onLayout = function(frame, width, height)
           received = { width = width, height = height }
         end

@@ -14,9 +14,9 @@ do
     width = 300,
     height = 50,
     children = {
-      { frame = a, size = 100 },
-      { frame = b, size = 100 },
-      { frame = c, size = 100 },
+      { frame = a, width = 100 },
+      { frame = b, width = 100 },
+      { frame = c, width = 100 },
     }
   }):Layout()
 
@@ -30,7 +30,7 @@ do
   assert(c._test.point.offsetX == 200 and c._test.point.offsetY == 0)
 end
 
--- Test: one flexible child (no `size`) among fixed ones fills whatever's
+-- Test: one flexible child (no `width`) among fixed ones fills whatever's
 -- left over.
 do
   local parent = Mocks:CreateFrame()
@@ -42,9 +42,9 @@ do
     width = 300,
     height = 50,
     children = {
-      { frame = fixed1, size = 50 },
+      { frame = fixed1, width = 50 },
       { frame = flex },
-      { frame = fixed2, size = 50 },
+      { frame = fixed2, width = 50 },
     }
   }):Layout()
 
@@ -88,8 +88,8 @@ do
     width = 200,
     height = 100,
     children = {
-      { frame = a, size = 30 },
-      { frame = b, size = 30 },
+      { frame = a, height = 30 },
+      { frame = b, height = 30 },
     }
   }):Layout()
 
@@ -112,9 +112,9 @@ do
     height = 50,
     gap = 10,
     children = {
-      { frame = a, size = 100 },
-      { frame = b, size = 100 },
-      { frame = c, size = 100 },
+      { frame = a, width = 100 },
+      { frame = b, width = 100 },
+      { frame = c, width = 100 },
     }
   }):Layout()
 
@@ -136,7 +136,7 @@ do
     height = 60,
     padding = 10,
     children = {
-      { frame = a, size = 50 },
+      { frame = a, width = 50 },
       { frame = b }, -- flex: (220 - 20 padding) - 50 = 150
     }
   }):Layout()
@@ -165,7 +165,7 @@ do
     width = 100,
     height = 50,
     children = {
-      { frame = fixed, size = 150 }, -- already exceeds the container
+      { frame = fixed, width = 150 }, -- already exceeds the container
       { frame = flex },
     }
   }):Layout()
@@ -184,7 +184,7 @@ do
     direction = "ROW",
     width = 300,
     height = 50,
-    children = { { frame = child, size = 100 } }
+    children = { { frame = child, width = 100 } }
   }):Layout()
 
   assert(parent._test.width == 300 and parent._test.height == 50)
@@ -200,7 +200,7 @@ do
     width = 200,
     height = 50,
     children = {
-      { frame = a, size = 50 },
+      { frame = a, width = 50 },
       { frame = b },
     }
   }):Layout()

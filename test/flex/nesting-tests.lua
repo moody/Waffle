@@ -16,7 +16,7 @@ do
     width = 400,
     height = 300,
     children = {
-      { frame = Mocks:CreateFrame(), size = 50 }, -- e.g. a title bar, unused here
+      { frame = Mocks:CreateFrame(), height = 50 }, -- e.g. a title bar, unused here
       {
         frame = middle,
         onLayout = function(frame, width, height)
@@ -26,7 +26,7 @@ do
             width = width,
             height = height,
             children = {
-              { frame = leftChild, size = 150 },
+              { frame = leftChild, width = 150 },
               { frame = rightChild },
             }
           }):Layout()
@@ -63,12 +63,12 @@ do
     width = 400,
     height = 300,
     children = {
-      { frame = Mocks:CreateFrame(), size = 50 },
+      { frame = Mocks:CreateFrame(), height = 50 },
       {
         frame = middle,
         direction = "ROW",
         children = {
-          { frame = leftChild, size = 150 },
+          { frame = leftChild, width = 150 },
           { frame = rightChild },
         }
       },
@@ -106,7 +106,7 @@ do
         frame = middle,
         -- no `direction` here at all
         children = {
-          { frame = left, size = 30 },
+          { frame = left, width = 30 },
           { frame = right },
         }
       },
@@ -137,8 +137,8 @@ do
         gap = 10,
         padding = 5,
         children = {
-          { frame = a, size = 50 },
-          { frame = b, size = 50 },
+          { frame = a, width = 50 },
+          { frame = b, width = 50 },
         }
       },
     }

@@ -10,7 +10,7 @@ do
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = parent, direction = "ROW", width = 200, height = 50 })
-  container:AddChild({ frame = a, size = 50 })
+  container:AddChild({ frame = a, width = 50 })
   container:AddChild({ frame = b })
   container:Layout()
 
@@ -43,7 +43,7 @@ do
     direction = "ROW",
     width = 200,
     height = 50,
-    children = { { frame = a, size = 50 } }
+    children = { { frame = a, width = 50 } }
   })
   container:AddChild({ frame = b })
   container:Layout()
@@ -61,10 +61,10 @@ do
   local left, right = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "COLUMN", width = 400, height = 300 })
-  container:AddChild({ frame = titleBar, size = 50 })
+  container:AddChild({ frame = titleBar, height = 50 })
 
   local row = container:AddRow({ frame = rowFrame })
-  row:AddChild({ frame = left, size = 150 })
+  row:AddChild({ frame = left, width = 150 })
   row:AddChild({ frame = right })
 
   container:Layout()
@@ -85,7 +85,7 @@ do
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
   local col = container:AddColumn({ frame = colFrame })
-  col:AddChild({ frame = top, size = 30 })
+  col:AddChild({ frame = top, height = 30 })
   col:AddChild({ frame = bottom })
 
   container:Layout()
@@ -103,9 +103,9 @@ do
   local leaf = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
-  local row = container:AddRow({ frame = rowFrame, size = 100 })
+  local row = container:AddRow({ frame = rowFrame, width = 100 })
   local col = row:AddColumn({ frame = colFrame })
-  col:AddChild({ frame = leaf, size = 40 })
+  col:AddChild({ frame = leaf, height = 40 })
 
   container:Layout()
 

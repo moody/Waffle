@@ -49,22 +49,6 @@ do
   assert(root._test.showCalls == 2)
 end
 
--- Test: `size` on the root has no effect, its frame is still sized to
--- `width`/`height`, nothing above it reads its `size`.
-do
-  local root = Mocks:CreateFrame()
-
-  Waffle:Flex({
-    frame = root,
-    size = 999,
-    width = 300,
-    height = 100,
-    children = {}
-  }):Layout()
-
-  assert(root._test.width == 300 and root._test.height == 100)
-end
-
 -- Test: `order` on the root has no effect, nothing above it to sort it
 -- among siblings; layout still runs normally.
 do
@@ -77,7 +61,7 @@ do
     width = 200,
     height = 50,
     children = {
-      { frame = child, size = 100 },
+      { frame = child, width = 100 },
     }
   }):Layout()
 

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-09-03
+
+### Added
+
+- `align`/`SetAlign()` (container) and `alignSelf`/`SetAlignSelf()` (any node, overriding the parent's `align`): cross-axis alignment, `"STRETCH"` (default, unchanged behavior), `"START"`, `"CENTER"`, or `"END"`. Anything other than `STRETCH` requires the node's own cross-axis dimension, errors otherwise, alignment never falls back to stretching.
+- `justify`/`SetJustify()` (container): main-axis distribution of leftover space, `"START"` (default, unchanged behavior), `"CENTER"`, `"END"`, `"SPACE_BETWEEN"`, `"SPACE_AROUND"`, or `"SPACE_EVENLY"`. Only has anything to distribute when nothing among the children is flexible, a flexible child already consumes all the leftover space.
+- `"AUTO"`, accepted by `width`/`height`: computes that dimension from this node's own children instead of a fixed number, a sum along a node's own main axis (plus `gap`/`padding`) or a max along its cross axis (plus `padding`), since children stack one after another along the main axis but share the same band along the cross axis. Works on the root too, on either axis. Every visible child needs its own number or `"AUTO"`, a flexible child errors.
+- `wrap`/`SetWrap()` (container): overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (the same max-over-children formula as cross-axis `"AUTO"`) and stacks after the previous one, `gap` between lines too. `align`/`justify` apply per line, independently, not once across the whole container. Combined with cross-axis `"AUTO"`, that dimension sums every line's own max instead of one flat max over every child regardless of line. Default `false`, unchanged behavior.
+
+### Changed
+
+- **Breaking:** `size`/`SetSize()` renamed to `width`; `crossSize`/`SetCrossSize()` renamed to `height`. Both are now genuinely physical (always horizontal/vertical, regardless of `direction`), rather than always meaning "main axis"/"cross axis". A node's own main-axis dimension within its parent is still whichever one that parent's `direction` puts on that axis (`width` for a ROW parent, `height` for a COLUMN one); the other one is its cross-axis size, same roles as before, just renamed.
+- The root passed to `Waffle:Flex()` no longer has its own type (`WaffleFlexRootNode` is gone); it shares `WaffleFlexNode` with every other node, `width`/`height` included, and needs both explicitly (one as `"AUTO"` if that's its own main axis), same requirement it already had before this change.
+- `defaultFrameFactory` is no longer root-exclusive. Any node can declare one, applying to everything below it and overriding whatever's inherited from further up the tree. Never applies to the node that declares it, root included, the root now needs its own `frame`/`frameFactory` too, `defaultFrameFactory` alone is no longer enough to resolve it.
+- Improved `Layout()` performance for containers using `"AUTO"` sizing or `wrap`, especially deeply nested or heavily wrapped trees, by eliminating redundant recomputation within a single call.
+
+### Fixed
+
+- `GetChildren()` returned children in visual `order`, not declaration order as documented, once any child had a non-default `order` and `Layout()` had run. Now consistently returns declaration order.
+
 ## [0.2.0] - 2026-09-01
 
 ### Added
