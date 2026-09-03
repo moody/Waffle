@@ -190,4 +190,31 @@ do
   assert(a._test.width == nil) -- excluded entirely
 end
 
+-- Test: `GetChildren()` stays in true declaration order after `Layout()`
+-- reorders siblings visually, and after another `Layout()` reorders them
+-- again; visual `order` never leaks into it.
+do
+  local root = Mocks:CreateFrame()
+  local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
+  local leafA = container:AddChild({ frame = a, width = 100 })
+  local leafB = container:AddChild({ frame = b, width = 100 })
+  container:AddChild({ frame = c, width = 100 })
+
+  leafB:SetOrder(-10) -- b now positioned first, still declared second
+  container:Layout()
+
+  assert(b._test.point.offsetX == 0) -- visually first
+  local frames = container:GetChildren()
+  assert(frames[1]:GetFrame() == a and frames[2]:GetFrame() == b and frames[3]:GetFrame() == c)
+
+  leafA:SetOrder(10) -- a now positioned last, still declared first
+  container:Layout()
+
+  assert(a._test.point.offsetX == 200) -- visually last
+  frames = container:GetChildren()
+  assert(frames[1]:GetFrame() == a and frames[2]:GetFrame() == b and frames[3]:GetFrame() == c)
+end
+
 print("All assertions passed.")
