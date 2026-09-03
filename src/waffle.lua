@@ -1,5 +1,5 @@
 -- =============================================================================
--- Waffle: 0.3.0 - https://github.com/moody/Waffle
+-- Waffle: 0.4.0 - https://github.com/moody/Waffle
 -- =============================================================================
 
 local _, Addon = ...
@@ -34,9 +34,10 @@ local Waffle = Addon.Waffle
 --- @field children? WaffleFlexNode[] Positioned in a row or column, per `direction`.
 --- @field direction? WaffleFlexDirection Default `ROW`.
 --- @field align? WaffleFlexAlign Cross-axis alignment for this node's own children. Default `STRETCH`. A child's own `alignSelf` overrides this.
---- @field justify? WaffleFlexJustify Main-axis distribution of leftover space among this node's own children. Default `START`. No effect if any child is flexible, it already consumes the leftover space.
+--- @field justify? WaffleFlexJustify Main-axis distribution of leftover space among this node's own children. Default `START`. No effect if any child has a positive `grow` share, it already claims the leftover space.
 --- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
 --- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
+--- @field grow? number This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
 --- @field wrap? boolean Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `gap` between lines too. Default `false`.
 --- @field gap? integer Between children only, not the edges. Default `0`.
@@ -497,7 +498,9 @@ end
 --- every one of `node.children` when `node.wrap` isn't set, or one
 --- wrapped line's worth of them when it is. Non-STRETCH alignment
 --- requires the child's own cross-axis value, it never falls back to
---- stretching.
+--- stretching. A flexible child's own share of the leftover space is
+--- proportional to its `grow` (default `1`), split across every
+--- flexible child on the line.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param lineChildren WaffleFlexNode[]
@@ -515,25 +518,24 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
   local visibleCount = #lineChildren
 
   local fixedTotal = 0
-  local flexCount = 0
+  local totalGrow = 0
   for _, child in ipairs(lineChildren) do
     local size = _W.resolveDimension(child, mainAxis)
     if size then
       fixedTotal = fixedTotal + size
     else
-      flexCount = flexCount + 1
+      totalGrow = totalGrow + (child.grow or 1)
     end
   end
 
   local totalGap = gap * math.max(visibleCount - 1, 0)
-  local remaining = mainSize - fixedTotal - totalGap
-  local flexSize = flexCount > 0 and math.max(remaining / flexCount, 0) or 0
+  local remaining = math.max(mainSize - fixedTotal - totalGap, 0)
 
-  -- A flexible child already consumes all of `remaining` via `flexSize`
-  -- above, leaving `justify` nothing to distribute.
+  -- A child with a positive `grow` share already claims some or all of
+  -- `remaining`; `justify` only has anything left once no child does.
   local justifyOffset, justifyGap = 0, 0
-  if flexCount == 0 then
-    local leftover = math.max(remaining, 0)
+  if totalGrow == 0 then
+    local leftover = remaining
     local justify = (node.justify or "START"):upper()
     if justify == "END" then
       justifyOffset = leftover
@@ -558,7 +560,10 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
     childFrame:ClearAllPoints()
     childFrame:SetParent(frame)
 
-    local size = _W.resolveDimension(child, mainAxis) or flexSize
+    local size = _W.resolveDimension(child, mainAxis)
+    if not size then
+      size = totalGrow > 0 and (remaining * (child.grow or 1) / totalGrow) or 0
+    end
 
     local align = (child.alignSelf or node.align or "STRETCH"):upper()
     local childCrossSize
@@ -788,6 +793,17 @@ end
 function _W.FlexComponent:SetHeight(height)
   if self.node.height ~= height then
     self.node.height = height
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets this node's own share of its parent's leftover main-axis space,
+--- relative to its equally-flexible siblings. `nil` resets to the
+--- default (`1`).
+--- @param grow? number
+function _W.FlexComponent:SetGrow(grow)
+  if self.node.grow ~= grow then
+    self.node.grow = grow
     _W.markDirty(self.node)
   end
 end
