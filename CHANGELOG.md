@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `grow`/`SetGrow()` (any node): a flexible child's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`, matching the previous always-even split; `grow = 0` claims none of the leftover. No effect on a node with its own explicit main-axis `width`/`height`, or on the root. `justify` now only matters when nothing among its children has a positive `grow` share, not merely when nothing is flexible.
 - `minWidth`/`maxWidth`/`minHeight`/`maxHeight` and their setters (any node): a floor or ceiling on a node's own flexible size, whether that's its flexed main-axis share or a `STRETCH`-ed cross-axis size. No effect on a node with its own explicit `width`/`height`, `"AUTO"`, or non-`STRETCH` alignment. Errors if a node's own min is greater than its max. On the main axis, if clamping leaves every flexible child on a line without any more space to claim, `justify` distributes whatever's left, the same as when nothing on that line is flexible at all.
+- `paddingTop`/`paddingRight`/`paddingBottom`/`paddingLeft` and their setters (container): override `padding` for one side only, falling back to it for any side not given. `"AUTO"` sizing on either axis sums in the matching pair instead of `padding` uniformly on both ends.
 
 ## [0.3.0] - 2026-09-03
 
