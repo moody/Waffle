@@ -23,7 +23,58 @@ do
   assert(b._test.point.offsetX == 60)
 end
 
--- Test: `SetPadding` changes the padding applied on the next `Layout()` call.
+-- Test: `SetPadding` changes the padding applied on the next `Layout()`
+-- call, on all four sides at once.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
+  container:AddChild({ frame = a })
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0 and a._test.width == 200)
+  assert(a._test.point.offsetY == 0 and a._test.height == 100)
+
+  container:SetPadding(10)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 10 and a._test.width == 180)
+  assert(a._test.point.offsetY == -10 and a._test.height == 80)
+
+  container:SetPadding(nil)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0 and a._test.width == 200)
+  assert(a._test.point.offsetY == 0 and a._test.height == 100)
+end
+
+-- Test: `SetPaddingTop` insets the cross axis on the next `Layout()`
+-- call; `SetPaddingTop(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
+  container:AddChild({ frame = a })
+  container:Layout()
+
+  assert(a._test.height == 100 and a._test.point.offsetY == 0)
+
+  container:SetPaddingTop(10)
+  container:Layout()
+
+  assert(a._test.height == 90 and a._test.point.offsetY == -10)
+
+  container:SetPaddingTop(nil)
+  container:Layout()
+
+  assert(a._test.height == 100 and a._test.point.offsetY == 0)
+end
+
+-- Test: `SetPaddingRight` shrinks the main axis on the next `Layout()`
+-- call without moving its content, unlike `SetPaddingLeft`, which shifts
+-- it too; `SetPaddingRight(nil)` removes it.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -32,14 +83,41 @@ do
   container:AddChild({ frame = a })
   container:Layout()
 
-  assert(a._test.point.offsetX == 0)
-  assert(a._test.width == 200)
+  assert(a._test.width == 200 and a._test.point.offsetX == 0)
 
-  container:SetPadding(10)
+  container:SetPaddingRight(30)
   container:Layout()
 
-  assert(a._test.point.offsetX == 10)
-  assert(a._test.width == 180)
+  assert(a._test.width == 170 and a._test.point.offsetX == 0)
+
+  container:SetPaddingRight(nil)
+  container:Layout()
+
+  assert(a._test.width == 200 and a._test.point.offsetX == 0)
+end
+
+-- Test: `SetPaddingBottom` shrinks the cross axis on the next `Layout()`
+-- call without moving its content, unlike `SetPaddingTop`, which shifts
+-- it too; `SetPaddingBottom(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
+  container:AddChild({ frame = a })
+  container:Layout()
+
+  assert(a._test.height == 100 and a._test.point.offsetY == 0)
+
+  container:SetPaddingBottom(20)
+  container:Layout()
+
+  assert(a._test.height == 80 and a._test.point.offsetY == 0)
+
+  container:SetPaddingBottom(nil)
+  container:Layout()
+
+  assert(a._test.height == 100 and a._test.point.offsetY == 0)
 end
 
 -- Test: `SetPaddingLeft` overrides `SetPadding` for that side only on the
@@ -289,7 +367,7 @@ do
   container:AddChild({ frame = a, height = 40 })
   container:Layout()
 
-  assert(a._test.point.offsetY == 0) -- default STRETCH; a fixed height just isn't stretched, still starts at 0
+  assert(a._test.point.offsetY == 0) -- default `STRETCH`; a fixed height just isn't stretched, still starts at 0
 
   container:SetAlign("CENTER")
   container:Layout()
@@ -495,9 +573,8 @@ do
   assert(b._test.point.offsetX == 60 and b._test.point.offsetY == 0) -- back to one overflowing line
 end
 
--- Test: `SetGap`/`SetPadding`/`SetWidth`/`SetHeight` mark the tree dirty,
--- but only on an actual value change; calling any of them with the current
--- value is a no-op.
+-- Test: every setter marks the tree dirty, but only on an actual value
+-- change; calling one with its current value is a no-op.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -662,12 +739,10 @@ do
   assert(container:IsDirty() == false)
 end
 
--- Test: `SetGap`/`SetPadding`/`SetPaddingTop`/`SetPaddingRight`/
--- `SetPaddingBottom`/`SetPaddingLeft`/`SetAlign`/`SetJustify`/`SetWrap`
--- are container-only, a leaf can never have children so it never gets
--- them; `SetWidth`/`SetHeight`/`SetGrow`/`SetAlignSelf`/`SetMinWidth`/
--- `SetMaxWidth`/`SetMinHeight`/`SetMaxHeight`/`SetMargin`/`SetMarginTop`/
--- `SetMarginRight`/`SetMarginBottom`/`SetMarginLeft` are shared by both.
+-- Test: a container-only setter (`SetGap`, `SetPadding` and its per-side
+-- overrides, `SetAlign`, `SetJustify`, `SetWrap`) is absent from a leaf,
+-- a leaf can never have children so it never gets one; every other
+-- setter is shared by both.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
