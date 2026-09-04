@@ -414,7 +414,7 @@ function _W.computeAutoCrossSize(node, axis)
 end
 
 --- A line's own cross-size: the max of every child's own resolved size
---- along `axis` that has one, skipping any that don't (e.g. a STRETCH
+--- along `axis` that has one, skipping any that don't (e.g. a `STRETCH`
 --- child on its cross axis) rather than erroring. `fallback` covers a
 --- line with nothing explicit at all.
 --- @param children WaffleFlexNode[]
@@ -497,37 +497,44 @@ function _W.splitFlexLines(children, axis, mainSize, gap)
   return lines
 end
 
---- Positions `lineChildren` along `mainAxis`, starting at `mainStart`, and
---- aligns each within `crossSize` starting at `crossStart`. One line is
---- every one of `node.children` when `node.wrap` isn't set, or one
---- wrapped line's worth of them when it is. Non-STRETCH alignment
---- requires the child's own cross-axis value, it never falls back to
---- stretching; STRETCH itself clamps to the child's own cross-axis
---- `min`/`max`, if either is set. A flexible child's own share of the
---- leftover space is proportional to its `grow` (default `1`), split
---- across every flexible child on the line, then clamped to its own
---- main-axis `min`/`max`; whatever a clamped child doesn't claim
---- redistributes among the rest, possibly pushing one of them past its
---- own bound too, repeating until a round clamps nobody new.
+--- Clamps `value` to `node[minField]`/`node[maxField]`, whichever is
+--- set. Errors if both are set and the min is greater than the max.
 --- @param node WaffleFlexNode
---- @param frame WaffleFrame
+--- @param value number
+--- @param minField string
+--- @param maxField string
+--- @return number
+function _W.clampToBounds(node, value, minField, maxField)
+  local min, max = node[minField], node[maxField]
+  assert(not min or not max or min <= max,
+    "Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node")
+
+  if min and value < min then
+    return min
+  elseif max and value > max then
+    return max
+  end
+
+  return value
+end
+
+--- Clamps whichever of `lineChildren`'s own flexible children need it to
+--- their main-axis `min`/`max`, split proportional to `grow` across the
+--- line first. Whatever a clamped child doesn't claim redistributes
+--- among the rest, possibly pushing one of them past its own bound too,
+--- repeating until a round clamps nobody new.
 --- @param lineChildren WaffleFlexNode[]
 --- @param mainAxis "width" | "height"
---- @param crossAxis "width" | "height"
 --- @param mainSize integer
---- @param crossSize integer
---- @param mainStart integer
---- @param crossStart integer
---- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
-function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, crossSize, mainStart, crossStart,
-                           defaultFrameFactory)
-  local gap = node.gap or 0
+--- @param gap integer
+--- @return table<WaffleFlexNode, number>? clampedSizes `nil` unless a flexible child on this line actually has a `min`/`max`.
+--- @return number remaining Unclaimed space after every child's own share, for `justify`.
+--- @return number totalGrow Surviving flexible weight, `0` once nothing has a positive share left.
+function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
   local isRow = mainAxis == "width"
-  local visibleCount = #lineChildren
   local minField = isRow and "minWidth" or "minHeight"
   local maxField = isRow and "maxWidth" or "maxHeight"
-  local crossMinField = isRow and "minHeight" or "minWidth"
-  local crossMaxField = isRow and "maxHeight" or "maxWidth"
+  local visibleCount = #lineChildren
 
   local fixedTotal = 0
   local totalGrow = 0
@@ -550,12 +557,13 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
 
   -- Skipped unless a flexible child on this line has a `min`/`max`;
   -- `constrained` holds only those, an unconstrained child never needs
-  -- checking here, only in the fallback share below. Each round computes
-  -- every still-unfrozen constrained child's share from the same
-  -- pool/weight snapshot, freezes anyone whose share violates its own
-  -- bound at that bound, and shrinks the pool/weight left for the next
-  -- round. Ends once a round freezes nobody, or nothing is left unfrozen;
-  -- each round freezes at least one child, so this always ends.
+  -- checking here, only in the fallback share `layoutFlexLine` computes
+  -- itself. Each round computes every still-unfrozen constrained child's
+  -- share from the same pool/weight snapshot, freezes anyone whose share
+  -- violates its own bound at that bound, and shrinks the pool/weight
+  -- left for the next round. Ends once a round freezes nobody, or
+  -- nothing is left unfrozen; each round freezes at least one child, so
+  -- this always ends.
   local clampedSizes
   if constrained then
     clampedSizes = {}
@@ -568,16 +576,7 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
         if not clampedSizes[child] then
           local grow = child.grow or 1
           local share = roundGrow > 0 and (roundPool * grow / roundGrow) or 0
-          local min, max = child[minField], child[maxField]
-          assert(not min or not max or min <= max,
-            "Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node")
-
-          local clamped = share
-          if min and clamped < min then
-            clamped = min
-          elseif max and clamped > max then
-            clamped = max
-          end
+          local clamped = _W.clampToBounds(child, share, minField, maxField)
 
           if clamped ~= share then
             clampedSizes[child] = clamped
@@ -595,26 +594,70 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
     totalGrow = poolGrow
   end
 
-  -- A child with a positive `grow` share already claims some or all of
-  -- `remaining`; `justify` only has anything left once no child does.
-  local justifyOffset, justifyGap = 0, 0
-  if totalGrow == 0 then
-    local leftover = remaining
-    local justify = (node.justify or "START"):upper()
-    if justify == "END" then
-      justifyOffset = leftover
-    elseif justify == "CENTER" then
-      justifyOffset = leftover / 2
-    elseif justify == "SPACE_BETWEEN" and visibleCount > 1 then
-      justifyGap = leftover / (visibleCount - 1)
-    elseif justify == "SPACE_AROUND" and visibleCount > 0 then
-      justifyGap = leftover / visibleCount
-      justifyOffset = justifyGap / 2
-    elseif justify == "SPACE_EVENLY" then
-      justifyGap = leftover / (visibleCount + 1)
-      justifyOffset = justifyGap
-    end
+  return clampedSizes, remaining, totalGrow
+end
+
+--- Resolves `node.justify`'s main-axis offset/gap for one line. A child
+--- with a positive `grow` share already claims some or all of
+--- `remaining`, `justify` only has anything left once no child does,
+--- `totalGrow == 0`.
+--- @param node WaffleFlexNode
+--- @param totalGrow number
+--- @param remaining number
+--- @param visibleCount integer
+--- @return number justifyOffset
+--- @return number justifyGap
+function _W.resolveLineJustify(node, totalGrow, remaining, visibleCount)
+  if totalGrow ~= 0 then
+    return 0, 0
   end
+
+  local justifyOffset, justifyGap = 0, 0
+  local justify = (node.justify or "START"):upper()
+  if justify == "END" then
+    justifyOffset = remaining
+  elseif justify == "CENTER" then
+    justifyOffset = remaining / 2
+  elseif justify == "SPACE_BETWEEN" and visibleCount > 1 then
+    justifyGap = remaining / (visibleCount - 1)
+  elseif justify == "SPACE_AROUND" and visibleCount > 0 then
+    justifyGap = remaining / visibleCount
+    justifyOffset = justifyGap / 2
+  elseif justify == "SPACE_EVENLY" then
+    justifyGap = remaining / (visibleCount + 1)
+    justifyOffset = justifyGap
+  end
+
+  return justifyOffset, justifyGap
+end
+
+--- Positions `lineChildren` along `mainAxis`, starting at `mainStart`, and
+--- aligns each within `crossSize` starting at `crossStart`. One line is
+--- every one of `node.children` when `node.wrap` isn't set, or one
+--- wrapped line's worth of them when it is. Non-`STRETCH` alignment
+--- requires the child's own cross-axis value, it never falls back to
+--- stretching; `STRETCH` itself clamps to the child's own cross-axis
+--- `min`/`max`, if either is set.
+--- @param node WaffleFlexNode
+--- @param frame WaffleFrame
+--- @param lineChildren WaffleFlexNode[]
+--- @param mainAxis "width" | "height"
+--- @param crossAxis "width" | "height"
+--- @param mainSize integer
+--- @param crossSize integer
+--- @param mainStart integer
+--- @param crossStart integer
+--- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, crossSize, mainStart, crossStart,
+                           defaultFrameFactory)
+  local gap = node.gap or 0
+  local isRow = mainAxis == "width"
+  local visibleCount = #lineChildren
+  local crossMinField = isRow and "minHeight" or "minWidth"
+  local crossMaxField = isRow and "maxHeight" or "maxWidth"
+
+  local clampedSizes, remaining, totalGrow = _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
+  local justifyOffset, justifyGap = _W.resolveLineJustify(node, totalGrow, remaining, visibleCount)
 
   local mainOffset = mainStart + justifyOffset
   for _, child in ipairs(lineChildren) do
@@ -635,19 +678,8 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
     local align = (child.alignSelf or node.align or "STRETCH"):upper()
     local childCrossSize
     if align == "STRETCH" then
-      childCrossSize = _W.resolveDimension(child, crossAxis)
-      if not childCrossSize then
-        childCrossSize = crossSize
-        local min, max = child[crossMinField], child[crossMaxField]
-        assert(not min or not max or min <= max,
-          "Waffle: `" .. crossMinField .. "` cannot be greater than `" .. crossMaxField .. "` on the same node")
-
-        if min and childCrossSize < min then
-          childCrossSize = min
-        elseif max and childCrossSize > max then
-          childCrossSize = max
-        end
-      end
+      childCrossSize = _W.resolveDimension(child, crossAxis) or
+          _W.clampToBounds(child, crossSize, crossMinField, crossMaxField)
     else
       childCrossSize = _W.resolveDimension(child, crossAxis)
       assert(childCrossSize,
