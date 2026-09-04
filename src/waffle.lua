@@ -38,6 +38,10 @@ local Waffle = Addon.Waffle
 --- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
 --- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
 --- @field grow? number This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root.
+--- @field minWidth? number A floor on this node's own `width`. No effect on a node with its own explicit `width`, or `"AUTO"`. Errors if greater than `maxWidth`.
+--- @field maxWidth? number A ceiling on this node's own `width`. No effect on a node with its own explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
+--- @field minHeight? number Same as `minWidth`, for `height`.
+--- @field maxHeight? number Same as `maxWidth`, for `height`.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
 --- @field wrap? boolean Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `gap` between lines too. Default `false`.
 --- @field gap? integer Between children only, not the edges. Default `0`.
@@ -500,7 +504,10 @@ end
 --- requires the child's own cross-axis value, it never falls back to
 --- stretching. A flexible child's own share of the leftover space is
 --- proportional to its `grow` (default `1`), split across every
---- flexible child on the line.
+--- flexible child on the line, then clamped to its own `min`/`max`;
+--- whatever a clamped child doesn't claim redistributes among the rest,
+--- possibly pushing one of them past its own bound too, repeating until
+--- a round clamps nobody new.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param lineChildren WaffleFlexNode[]
@@ -516,20 +523,74 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
   local gap = node.gap or 0
   local isRow = mainAxis == "width"
   local visibleCount = #lineChildren
+  local minField = isRow and "minWidth" or "minHeight"
+  local maxField = isRow and "maxWidth" or "maxHeight"
 
   local fixedTotal = 0
   local totalGrow = 0
+  local constrained
   for _, child in ipairs(lineChildren) do
     local size = _W.resolveDimension(child, mainAxis)
     if size then
       fixedTotal = fixedTotal + size
     else
       totalGrow = totalGrow + (child.grow or 1)
+      if child[minField] or child[maxField] then
+        constrained = constrained or {}
+        constrained[#constrained + 1] = child
+      end
     end
   end
 
   local totalGap = gap * math.max(visibleCount - 1, 0)
   local remaining = math.max(mainSize - fixedTotal - totalGap, 0)
+
+  -- Skipped unless a flexible child on this line has a `min`/`max`;
+  -- `constrained` holds only those, an unconstrained child never needs
+  -- checking here, only in the fallback share below. Each round computes
+  -- every still-unfrozen constrained child's share from the same
+  -- pool/weight snapshot, freezes anyone whose share violates its own
+  -- bound at that bound, and shrinks the pool/weight left for the next
+  -- round. Ends once a round freezes nobody, or nothing is left unfrozen;
+  -- each round freezes at least one child, so this always ends.
+  local clampedSizes
+  if constrained then
+    clampedSizes = {}
+    local pool, poolGrow = remaining, totalGrow
+    local frozeAny = true
+    while frozeAny and poolGrow > 0 do
+      frozeAny = false
+      local roundPool, roundGrow = pool, poolGrow
+      for _, child in ipairs(constrained) do
+        if not clampedSizes[child] then
+          local grow = child.grow or 1
+          local share = roundGrow > 0 and (roundPool * grow / roundGrow) or 0
+          local min, max = child[minField], child[maxField]
+          assert(not min or not max or min <= max,
+            "Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node")
+
+          local clamped = share
+          if min and clamped < min then
+            clamped = min
+          elseif max and clamped > max then
+            clamped = max
+          end
+
+          if clamped ~= share then
+            clampedSizes[child] = clamped
+            pool = pool - clamped
+            poolGrow = poolGrow - grow
+            frozeAny = true
+          end
+        end
+      end
+    end
+
+    -- Floored the same way `remaining` is above: a min floor can claim
+    -- more space than this line has left to give.
+    remaining = math.max(pool, 0)
+    totalGrow = poolGrow
+  end
 
   -- A child with a positive `grow` share already claims some or all of
   -- `remaining`; `justify` only has anything left once no child does.
@@ -562,7 +623,10 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
 
     local size = _W.resolveDimension(child, mainAxis)
     if not size then
-      size = totalGrow > 0 and (remaining * (child.grow or 1) / totalGrow) or 0
+      size = clampedSizes and clampedSizes[child]
+      if not size then
+        size = totalGrow > 0 and (remaining * (child.grow or 1) / totalGrow) or 0
+      end
     end
 
     local align = (child.alignSelf or node.align or "STRETCH"):upper()
@@ -804,6 +868,42 @@ end
 function _W.FlexComponent:SetGrow(grow)
   if self.node.grow ~= grow then
     self.node.grow = grow
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets a floor on this node's own `width`. `nil` removes it.
+--- @param minWidth? number
+function _W.FlexComponent:SetMinWidth(minWidth)
+  if self.node.minWidth ~= minWidth then
+    self.node.minWidth = minWidth
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets a ceiling on this node's own `width`. `nil` removes it.
+--- @param maxWidth? number
+function _W.FlexComponent:SetMaxWidth(maxWidth)
+  if self.node.maxWidth ~= maxWidth then
+    self.node.maxWidth = maxWidth
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets a floor on this node's own `height`. `nil` removes it.
+--- @param minHeight? number
+function _W.FlexComponent:SetMinHeight(minHeight)
+  if self.node.minHeight ~= minHeight then
+    self.node.minHeight = minHeight
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets a ceiling on this node's own `height`. `nil` removes it.
+--- @param maxHeight? number
+function _W.FlexComponent:SetMaxHeight(maxHeight)
+  if self.node.maxHeight ~= maxHeight then
+    self.node.maxHeight = maxHeight
     _W.markDirty(self.node)
   end
 end
