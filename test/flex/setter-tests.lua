@@ -321,6 +321,133 @@ do
   assert(a._test.point.offsetY == 0) -- back to inheriting the container's START
 end
 
+-- Test: `SetMargin` sets all four sides at once on the next `Layout()`
+-- call, affecting both axes; `SetMargin(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 100 })
+  local leafA = container:AddChild({ frame = a, width = 50 })
+  container:AddChild({ frame = b })
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0 and a._test.height == 100 and a._test.point.offsetY == 0)
+  assert(b._test.width == 250 and b._test.point.offsetX == 50)
+
+  leafA:SetMargin(10)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 10 and a._test.height == 80 and a._test.point.offsetY == -10)
+  assert(b._test.width == 230 and b._test.point.offsetX == 70) -- 10 + 50 + 10
+
+  leafA:SetMargin(nil)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0 and a._test.height == 100 and a._test.point.offsetY == 0)
+  assert(b._test.width == 250 and b._test.point.offsetX == 50)
+end
+
+-- Test: `SetMarginTop` insets a `STRETCH`-ed child's cross-axis size on
+-- the next `Layout()` call; `SetMarginTop(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
+  local leafA = container:AddChild({ frame = a })
+  container:Layout()
+
+  assert(a._test.height == 100 and a._test.point.offsetY == 0)
+
+  leafA:SetMarginTop(10)
+  container:Layout()
+
+  assert(a._test.height == 90 and a._test.point.offsetY == -10)
+
+  leafA:SetMarginTop(nil)
+  container:Layout()
+
+  assert(a._test.height == 100 and a._test.point.offsetY == 0)
+end
+
+-- Test: `SetMarginRight` adds space after this node on the next
+-- `Layout()` call, taken out of its flexible sibling's own share;
+-- `SetMarginRight(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
+  local leafA = container:AddChild({ frame = a, width = 50 })
+  container:AddChild({ frame = b })
+  container:Layout()
+
+  assert(b._test.width == 250 and b._test.point.offsetX == 50)
+
+  leafA:SetMarginRight(20)
+  container:Layout()
+
+  assert(b._test.width == 230 and b._test.point.offsetX == 70) -- 50 + 20
+
+  leafA:SetMarginRight(nil)
+  container:Layout()
+
+  assert(b._test.width == 250 and b._test.point.offsetX == 50)
+end
+
+-- Test: `SetMarginBottom` shrinks a `STRETCH`-ed child's cross-axis size
+-- on the next `Layout()` call without moving it, unlike `SetMarginTop`,
+-- which shifts it too; `SetMarginBottom(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 100 })
+  local leafA = container:AddChild({ frame = a })
+  container:Layout()
+
+  assert(a._test.height == 100 and a._test.point.offsetY == 0)
+
+  leafA:SetMarginBottom(10)
+  container:Layout()
+
+  assert(a._test.height == 90 and a._test.point.offsetY == 0)
+
+  leafA:SetMarginBottom(nil)
+  container:Layout()
+
+  assert(a._test.height == 100 and a._test.point.offsetY == 0)
+end
+
+-- Test: `SetMarginLeft` shifts this node's own position on the next
+-- `Layout()` call, unlike `SetMarginRight`, which only shifts what comes
+-- after it; `SetMarginLeft(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
+  local leafA = container:AddChild({ frame = a, width = 50 })
+  container:AddChild({ frame = b })
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0)
+  assert(b._test.width == 250 and b._test.point.offsetX == 50)
+
+  leafA:SetMarginLeft(20)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 20)
+  assert(b._test.width == 230 and b._test.point.offsetX == 70) -- 20 + 50
+
+  leafA:SetMarginLeft(nil)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0)
+  assert(b._test.width == 250 and b._test.point.offsetX == 50)
+end
+
 -- Test: `SetJustify` changes a container's main-axis distribution on the
 -- next `Layout()` call.
 do
@@ -422,6 +549,41 @@ do
   container:Layout()
   assert(container:IsDirty() == false)
 
+  leaf:SetMargin(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMargin(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetMarginTop(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMarginTop(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetMarginRight(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMarginRight(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetMarginBottom(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMarginBottom(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetMarginLeft(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMarginLeft(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
   leaf:SetWidth(50)
   assert(container:IsDirty() == false)
   leaf:SetWidth(60)
@@ -504,7 +666,8 @@ end
 -- `SetPaddingBottom`/`SetPaddingLeft`/`SetAlign`/`SetJustify`/`SetWrap`
 -- are container-only, a leaf can never have children so it never gets
 -- them; `SetWidth`/`SetHeight`/`SetGrow`/`SetAlignSelf`/`SetMinWidth`/
--- `SetMaxWidth`/`SetMinHeight`/`SetMaxHeight` are shared by both.
+-- `SetMaxWidth`/`SetMinHeight`/`SetMaxHeight`/`SetMargin`/`SetMarginTop`/
+-- `SetMarginRight`/`SetMarginBottom`/`SetMarginLeft` are shared by both.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -537,6 +700,16 @@ do
   assert(container.SetMaxHeight ~= nil)
   assert(leaf.SetAlignSelf ~= nil)
   assert(container.SetAlignSelf ~= nil)
+  assert(leaf.SetMargin ~= nil)
+  assert(container.SetMargin ~= nil)
+  assert(leaf.SetMarginTop ~= nil)
+  assert(container.SetMarginTop ~= nil)
+  assert(leaf.SetMarginRight ~= nil)
+  assert(container.SetMarginRight ~= nil)
+  assert(leaf.SetMarginBottom ~= nil)
+  assert(container.SetMarginBottom ~= nil)
+  assert(leaf.SetMarginLeft ~= nil)
+  assert(container.SetMarginLeft ~= nil)
   assert(container.SetJustify ~= nil)
   assert(container.SetWrap ~= nil)
   assert(container.SetPaddingTop ~= nil)
