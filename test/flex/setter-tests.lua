@@ -42,6 +42,32 @@ do
   assert(a._test.width == 180)
 end
 
+-- Test: `SetPaddingLeft` overrides `SetPadding` for that side only on the
+-- next `Layout()` call; `nil` reverts to it.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50, padding = 10 })
+  container:AddChild({ frame = a })
+  container:Layout()
+
+  assert(a._test.point.offsetX == 10)
+  assert(a._test.width == 180)
+
+  container:SetPaddingLeft(30)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 30)
+  assert(a._test.width == 160) -- 200 - 30 - 10 (padding, right)
+
+  container:SetPaddingLeft(nil)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 10)
+  assert(a._test.width == 180)
+end
+
 -- Test: `SetWidth` makes a leaf's width fixed on the next `Layout()` call, taking
 -- space from its flexible sibling; `SetWidth(nil)` un-fixes it.
 do
@@ -368,6 +394,34 @@ do
   container:Layout()
   assert(container:IsDirty() == false)
 
+  container:SetPaddingTop(nil)
+  assert(container:IsDirty() == false)
+  container:SetPaddingTop(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  container:SetPaddingRight(nil)
+  assert(container:IsDirty() == false)
+  container:SetPaddingRight(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  container:SetPaddingBottom(nil)
+  assert(container:IsDirty() == false)
+  container:SetPaddingBottom(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  container:SetPaddingLeft(nil)
+  assert(container:IsDirty() == false)
+  container:SetPaddingLeft(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
   leaf:SetWidth(50)
   assert(container:IsDirty() == false)
   leaf:SetWidth(60)
@@ -446,9 +500,10 @@ do
   assert(container:IsDirty() == false)
 end
 
--- Test: `SetGap`/`SetPadding`/`SetAlign`/`SetJustify`/`SetWrap` are
--- container-only, a leaf can never have children so it never gets them;
--- `SetWidth`/`SetHeight`/`SetGrow`/`SetAlignSelf`/`SetMinWidth`/
+-- Test: `SetGap`/`SetPadding`/`SetPaddingTop`/`SetPaddingRight`/
+-- `SetPaddingBottom`/`SetPaddingLeft`/`SetAlign`/`SetJustify`/`SetWrap`
+-- are container-only, a leaf can never have children so it never gets
+-- them; `SetWidth`/`SetHeight`/`SetGrow`/`SetAlignSelf`/`SetMinWidth`/
 -- `SetMaxWidth`/`SetMinHeight`/`SetMaxHeight` are shared by both.
 do
   local root = Mocks:CreateFrame()
@@ -459,6 +514,10 @@ do
 
   assert(leaf.SetGap == nil)
   assert(leaf.SetPadding == nil)
+  assert(leaf.SetPaddingTop == nil)
+  assert(leaf.SetPaddingRight == nil)
+  assert(leaf.SetPaddingBottom == nil)
+  assert(leaf.SetPaddingLeft == nil)
   assert(leaf.SetJustify == nil)
   assert(leaf.SetAlign == nil)
   assert(leaf.SetWrap == nil)
@@ -480,6 +539,10 @@ do
   assert(container.SetAlignSelf ~= nil)
   assert(container.SetJustify ~= nil)
   assert(container.SetWrap ~= nil)
+  assert(container.SetPaddingTop ~= nil)
+  assert(container.SetPaddingRight ~= nil)
+  assert(container.SetPaddingBottom ~= nil)
+  assert(container.SetPaddingLeft ~= nil)
 end
 
 print("All assertions passed.")
