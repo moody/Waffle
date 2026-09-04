@@ -236,46 +236,30 @@ end
 
 --- A small pool of reusable scratch tables for repeated, short-lived use
 --- elsewhere: `resolveLineSizes`'s own `constrained`/`clampedSizes`,
---- `flexLayout`'s own `children`/`visibleChildren`. Capped so it cannot
---- grow without bound; tolerates as many of these being simultaneously
---- checked out as any of them need at once, bounded by how deeply a
---- tree nests, at most, falling back to a fresh table whenever none are
---- free.
+--- `flexLayout`'s own `children`/`visibleChildren`. Uncapped; a
+--- session's own UI tree rarely changes shape, so this settles at a
+--- small size on its own and stays there.
 _W.Scratch = {
-  items = {},
-  cap = 100,
+  pool = {}
 }
 
---- Returns an empty table for scratch use: the most recently released
---- one, if the pool has one, otherwise a fresh table.
+--- Returns an empty table for scratch use: an arbitrary one already in
+--- the pool, if it has any, otherwise a fresh table.
 --- @return table
 function _W.Scratch:Get()
-  local items = self.items
-  local n = #items
-  if n == 0 then
-    return {}
-  end
-  local t = items[n]
-  items[n] = nil
+  local t = next(self.pool)
+  if not t then return {} end
+  self.pool[t] = nil
   return t
 end
 
---- Clears every key in `t` and returns it for the next caller to reuse,
---- unless the pool is already at `cap`, in which case `t` is simply
---- left for the garbage collector. No-ops on `nil`.
+--- Clears every key in `t` and returns it to the pool for the next
+--- caller to reuse. No-ops on `nil`.
 --- @param t table?
 function _W.Scratch:Release(t)
-  if t == nil then
-    return
-  end
-
-  for k in pairs(t) do
-    t[k] = nil
-  end
-
-  if #self.items < self.cap then
-    self.items[#self.items + 1] = t
-  end
+  if not t then return end
+  for k in pairs(t) do t[k] = nil end
+  self.pool[t] = true
 end
 
 -- =============================================================================
