@@ -14,6 +14,9 @@ local Waffle = Addon.Waffle
 
 --- @alias WafflePoint "TOPLEFT" | "TOP" | "TOPRIGHT" | "LEFT" | "CENTER" | "RIGHT" | "BOTTOMLEFT" | "BOTTOM" | "BOTTOMRIGHT"
 
+--- Not necessarily an actual `Frame`: any WoW UI object exposing this
+--- exact call surface (a `Region`) works, `Texture`/`FontString`/etc.
+--- included.
 --- @class WaffleFrame
 --- @field ClearAllPoints fun(self: WaffleFrame)
 --- @field Hide fun(self: WaffleFrame)
@@ -31,18 +34,15 @@ local Waffle = Addon.Waffle
 --- @class WaffleFlexNode
 --- @field frame? WaffleFrame Cannot be given together with `frameFactory`.
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Cannot be given together with `frame`. `parent` is `nil` for the root, nothing sits above it to pass in.
+--- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Applies to descendants only, not this node itself.
 --- @field children? WaffleFlexNode[] Positioned in a row or column, per `direction`.
 --- @field direction? WaffleFlexDirection Default `ROW`.
---- @field align? WaffleFlexAlign Cross-axis alignment for this node's own children. Default `STRETCH`. A child's own `alignSelf` overrides this.
---- @field justify? WaffleFlexJustify Main-axis distribution of leftover space among this node's own children. Default `START`. No effect if any child has a positive `grow` share, it already claims the leftover space.
 --- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
 --- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
 --- @field grow? number This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root.
---- @field minWidth? number A floor on this node's own `width`: the flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, or `"AUTO"`. Errors if greater than `maxWidth`.
---- @field maxWidth? number A ceiling on this node's own `width`: the flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
---- @field minHeight? number Same as `minWidth`, for `height`.
---- @field maxHeight? number Same as `maxWidth`, for `height`.
+--- @field align? WaffleFlexAlign Cross-axis alignment for this node's own children. Default `STRETCH`. A child's own `alignSelf` overrides this.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
+--- @field justify? WaffleFlexJustify Main-axis distribution of leftover space among this node's own children. Default `START`. No effect if any child has a positive `grow` share, it already claims the leftover space.
 --- @field wrap? boolean Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `gap` between lines too. Default `false`.
 --- @field gap? integer Between children only, not the edges. Default `0`.
 --- @field padding? integer On all four sides. Default `0`. Overridden per side by `paddingTop`/`paddingRight`/`paddingBottom`/`paddingLeft`.
@@ -55,11 +55,14 @@ local Waffle = Addon.Waffle
 --- @field marginRight? integer Overrides `margin` for the right side only.
 --- @field marginBottom? integer Overrides `margin` for the bottom side only.
 --- @field marginLeft? integer Overrides `margin` for the left side only.
+--- @field minWidth? number A floor on this node's own `width`: the flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, or `"AUTO"`. Errors if greater than `maxWidth`.
+--- @field maxWidth? number A ceiling on this node's own `width`: the flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
+--- @field minHeight? number Same as `minWidth`, for `height`.
+--- @field maxHeight? number Same as `maxWidth`, for `height`.
 --- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. Default `false`.
 --- @field key? string For lookup via `GetChild(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Fires after `children` (if any) are already laid out.
---- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Applies to descendants only, not this node itself.
 
 -- =============================================================================
 -- Internal Data Table
