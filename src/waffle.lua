@@ -50,6 +50,11 @@ local Waffle = Addon.Waffle
 --- @field paddingRight? integer Overrides `padding` for the right side only.
 --- @field paddingBottom? integer Overrides `padding` for the bottom side only.
 --- @field paddingLeft? integer Overrides `padding` for the left side only.
+--- @field margin? integer Space around this node itself, on all four sides. Default `0`. Overridden per side by `marginTop`/`marginRight`/`marginBottom`/`marginLeft`.
+--- @field marginTop? integer Overrides `margin` for the top side only.
+--- @field marginRight? integer Overrides `margin` for the right side only.
+--- @field marginBottom? integer Overrides `margin` for the bottom side only.
+--- @field marginLeft? integer Overrides `margin` for the left side only.
 --- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. Default `false`.
 --- @field key? string For lookup via `GetChild(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
@@ -324,27 +329,42 @@ end
 -- Auto Sizing
 -- =============================================================================
 
---- Resolves `node`'s own padding for one physical axis: `paddingLeft`/
---- `paddingRight` for `"width"`, `paddingTop`/`paddingBottom` for
---- `"height"`. Each falls back to `padding` (default `0`) unless given
---- its own value.
+--- Resolves a shorthand-plus-per-side box value (`padding`, `margin`)
+--- for one physical axis: `<prefix>Left`/`<prefix>Right` for `"width"`,
+--- `<prefix>Top`/`<prefix>Bottom` for `"height"`. Each side falls back
+--- to `node[prefix]` (default `0`) unless given its own value.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
+--- @param prefix "padding" | "margin"
 --- @return number leading
 --- @return number trailing
-function _W.resolvePaddingAxis(node, axis)
-  local padding = node.padding or 0
+function _W.resolveBoxAxis(node, axis, prefix)
+  local shorthand = node[prefix] or 0
   if axis == "width" then
-    return node.paddingLeft or padding, node.paddingRight or padding
+    return node[prefix .. "Left"] or shorthand, node[prefix .. "Right"] or shorthand
   else
-    return node.paddingTop or padding, node.paddingBottom or padding
+    return node[prefix .. "Top"] or shorthand, node[prefix .. "Bottom"] or shorthand
   end
 end
 
+--- `child`'s own resolved size along `axis`, plus its own `margin` on
+--- both ends. `nil` if it's flexible there.
+--- @param child WaffleFlexNode
+--- @param axis "width" | "height"
+--- @return integer?
+function _W.resolveOuterDimension(child, axis)
+  local size = _W.resolveDimension(child, axis)
+  if not size then
+    return nil
+  end
+  local leading, trailing = _W.resolveBoxAxis(child, axis, "margin")
+  return size + leading + trailing
+end
+
 --- Computes `node`'s size along its own main axis (`axis`) as the sum of
---- its children's own sizes along that same axis, plus `gap` between them
---- and padding on each end. Errors if any visible child is flexible,
---- there's no space yet for it to split.
+--- its children's own outer sizes (own size plus `margin`) along that
+--- same axis, plus `gap` between them and padding on each end. Errors if
+--- any visible child is flexible, there's no space yet for it to split.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @return integer
@@ -358,7 +378,7 @@ function _W.computeAutoSize(node, axis)
   for _, child in ipairs(node.children) do
     if not child.hidden then
       visibleCount = visibleCount + 1
-      local size = _W.resolveDimension(child, axis)
+      local size = _W.resolveOuterDimension(child, axis)
       assert(size,
         "Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
         axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split")
@@ -366,20 +386,21 @@ function _W.computeAutoSize(node, axis)
     end
   end
 
-  local leading, trailing = _W.resolvePaddingAxis(node, axis)
+  local leading, trailing = _W.resolveBoxAxis(node, axis, "padding")
   return total + gap * math.max(visibleCount - 1, 0) + leading + trailing
 end
 
---- The max of every one of `children`'s own resolved sizes along `axis`.
---- Errors if any is flexible, there's nothing of its own to measure.
---- The strict counterpart to `lineCrossSize`, which falls back instead.
+--- The max of every one of `children`'s own outer sizes (own size plus
+--- `margin`) along `axis`. Errors if any is flexible, there's nothing of
+--- its own to measure. The strict counterpart to `lineCrossSize`, which
+--- falls back instead.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @return integer
 function _W.maxCrossSize(children, axis)
   local max = 0
   for _, child in ipairs(children) do
-    local size = _W.resolveDimension(child, axis)
+    local size = _W.resolveOuterDimension(child, axis)
     assert(size,
       "Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
       axis .. "`, a flexible child (`nil`) has nothing of its own to measure")
@@ -430,14 +451,14 @@ function _W.computeAutoCrossSize(node, axis)
     total = total + _W.maxCrossSize(lineChildren, axis)
   end
 
-  local leading, trailing = _W.resolvePaddingAxis(node, axis)
+  local leading, trailing = _W.resolveBoxAxis(node, axis, "padding")
   return total + gap * math.max(#lines - 1, 0) + leading + trailing
 end
 
---- A line's own cross-size: the max of every child's own resolved size
---- along `axis` that has one, skipping any that don't (e.g. a `STRETCH`
---- child on its cross axis) rather than erroring. `fallback` covers a
---- line with nothing explicit at all.
+--- A line's own cross-size: the max of every child's own outer size (own
+--- size plus `margin`) along `axis` that has one, skipping any that
+--- don't (e.g. a `STRETCH` child on its cross axis) rather than
+--- erroring. `fallback` covers a line with nothing explicit at all.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @param fallback integer
@@ -445,7 +466,7 @@ end
 function _W.lineCrossSize(children, axis, fallback)
   local max
   for _, child in ipairs(children) do
-    local size = _W.resolveDimension(child, axis)
+    local size = _W.resolveOuterDimension(child, axis)
     if size then
       max = max and math.max(max, size) or size
     end
@@ -481,12 +502,13 @@ end
 
 --- Splits `children` (already sorted, already visible-only) into lines
 --- along `axis`: each line is as many children as fit within `mainSize`,
---- in order. A fixed-size child that would overflow the current line
---- starts a new one instead, unless the current line is still empty, a
---- lone child bigger than `mainSize` still gets placed on one rather than
---- looping forever. A flexible child (no fixed size of its own yet)
---- always joins the current line, there's nothing of its own yet to check
---- for overflow.
+--- in order, counting each child's own `margin` as part of its size. A
+--- fixed-size child that would overflow the current line starts a new
+--- one instead, unless the current line is still empty, a lone child
+--- bigger than `mainSize` still gets placed on one rather than looping
+--- forever. A flexible child (no fixed size of its own yet) always joins
+--- the current line, there's nothing of its own yet to check for
+--- overflow, though its `margin` still counts toward the running total.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @param mainSize integer
@@ -499,16 +521,18 @@ function _W.splitFlexLines(children, axis, mainSize, gap)
 
   for _, child in ipairs(children) do
     local size = _W.resolveDimension(child, axis)
-    if size and #currentLine > 0 and currentLineTotal + gap + size > mainSize then
+    local marginLeading, marginTrailing = _W.resolveBoxAxis(child, axis, "margin")
+    local margin = marginLeading + marginTrailing
+    local outerSize = size and (size + margin)
+
+    if outerSize and #currentLine > 0 and currentLineTotal + gap + outerSize > mainSize then
       table.insert(lines, currentLine)
       currentLine = {}
       currentLineTotal = 0
     end
 
     table.insert(currentLine, child)
-    if size then
-      currentLineTotal = currentLineTotal + size + (#currentLine > 1 and gap or 0)
-    end
+    currentLineTotal = currentLineTotal + (outerSize or margin) + (#currentLine > 1 and gap or 0)
   end
 
   if #currentLine > 0 then
@@ -549,7 +573,7 @@ end
 --- @param mainSize integer
 --- @param gap integer
 --- @return table<WaffleFlexNode, number>? clampedSizes `nil` unless a flexible child on this line actually has a `min`/`max`.
---- @return number remaining Unclaimed space after every child's own share, for `justify`.
+--- @return number remaining Unclaimed space after every child's own share and `margin`, for `justify`.
 --- @return number totalGrow Surviving flexible weight, `0` once nothing has a positive share left.
 function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
   local isRow = mainAxis == "width"
@@ -561,6 +585,9 @@ function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
   local totalGrow = 0
   local constrained
   for _, child in ipairs(lineChildren) do
+    local marginLeading, marginTrailing = _W.resolveBoxAxis(child, mainAxis, "margin")
+    fixedTotal = fixedTotal + marginLeading + marginTrailing
+
     local size = _W.resolveDimension(child, mainAxis)
     if size then
       fixedTotal = fixedTotal + size
@@ -658,7 +685,8 @@ end
 --- wrapped line's worth of them when it is. Non-`STRETCH` alignment
 --- requires the child's own cross-axis value, it never falls back to
 --- stretching; `STRETCH` itself clamps to the child's own cross-axis
---- `min`/`max`, if either is set.
+--- `min`/`max`, if either is set. Each child's own `margin` insets it
+--- from wherever it would otherwise sit, on both axes.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param lineChildren WaffleFlexNode[]
@@ -696,11 +724,14 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
       end
     end
 
+    local marginMainLeading, marginMainTrailing = _W.resolveBoxAxis(child, mainAxis, "margin")
+    local marginCrossLeading, marginCrossTrailing = _W.resolveBoxAxis(child, crossAxis, "margin")
+
     local align = (child.alignSelf or node.align or "STRETCH"):upper()
     local childCrossSize
     if align == "STRETCH" then
       childCrossSize = _W.resolveDimension(child, crossAxis) or
-          _W.clampToBounds(child, crossSize, crossMinField, crossMaxField)
+          _W.clampToBounds(child, crossSize - marginCrossLeading - marginCrossTrailing, crossMinField, crossMaxField)
     else
       childCrossSize = _W.resolveDimension(child, crossAxis)
       assert(childCrossSize,
@@ -710,21 +741,22 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
         crossAxis .. "`, alignment doesn't fall back to the container's cross size")
     end
 
-    local crossOffset = crossStart
-    if align == "CENTER" then
-      crossOffset = crossStart + (crossSize - childCrossSize) / 2
-    elseif align == "END" then
-      crossOffset = crossStart + (crossSize - childCrossSize)
+    local crossOffset = crossStart + marginCrossLeading
+    if align == "CENTER" or align == "END" then
+      local outerCrossSize = childCrossSize + marginCrossLeading + marginCrossTrailing
+      local leftover = crossSize - outerCrossSize
+      crossOffset = crossStart + (align == "CENTER" and leftover / 2 or leftover) + marginCrossLeading
     end
 
+    local childMainOffset = mainOffset + marginMainLeading
     local childWidth, childHeight
 
     if isRow then
       childWidth, childHeight = size, childCrossSize
-      childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", mainOffset, -crossOffset)
+      childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", childMainOffset, -crossOffset)
     else
       childWidth, childHeight = childCrossSize, size
-      childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", crossOffset, -mainOffset)
+      childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", crossOffset, -childMainOffset)
     end
 
     childFrame:SetWidth(childWidth)
@@ -738,7 +770,7 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
       child.onLayout(childFrame, childWidth, childHeight)
     end
 
-    mainOffset = mainOffset + size + gap + justifyGap
+    mainOffset = mainOffset + marginMainLeading + size + marginMainTrailing + gap + justifyGap
   end
 end
 
@@ -756,8 +788,8 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   local mainAxis = isRow and "width" or "height"
   local crossAxis = isRow and "height" or "width"
 
-  local mainLeading, mainTrailing = _W.resolvePaddingAxis(node, mainAxis)
-  local crossLeading, crossTrailing = _W.resolvePaddingAxis(node, crossAxis)
+  local mainLeading, mainTrailing = _W.resolveBoxAxis(node, mainAxis, "padding")
+  local crossLeading, crossTrailing = _W.resolveBoxAxis(node, crossAxis, "padding")
 
   local mainSize = (isRow and width or height) - mainLeading - mainTrailing
   local crossSize = (isRow and height or width) - crossLeading - crossTrailing
@@ -983,6 +1015,57 @@ end
 function _W.FlexComponent:SetAlignSelf(alignSelf)
   if self.node.alignSelf ~= alignSelf then
     self.node.alignSelf = alignSelf
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets the space around this node itself, on all four sides. `nil`
+--- removes it. Overridden per side by `SetMarginTop()`/`SetMarginRight()`/
+--- `SetMarginBottom()`/`SetMarginLeft()`.
+--- @param margin? integer
+function _W.FlexComponent:SetMargin(margin)
+  if self.node.margin ~= margin then
+    self.node.margin = margin
+    _W.markDirty(self.node)
+  end
+end
+
+--- Overrides `SetMargin()` for this node's top side only. `nil` reverts
+--- to it.
+--- @param marginTop? integer
+function _W.FlexComponent:SetMarginTop(marginTop)
+  if self.node.marginTop ~= marginTop then
+    self.node.marginTop = marginTop
+    _W.markDirty(self.node)
+  end
+end
+
+--- Overrides `SetMargin()` for this node's right side only. `nil`
+--- reverts to it.
+--- @param marginRight? integer
+function _W.FlexComponent:SetMarginRight(marginRight)
+  if self.node.marginRight ~= marginRight then
+    self.node.marginRight = marginRight
+    _W.markDirty(self.node)
+  end
+end
+
+--- Overrides `SetMargin()` for this node's bottom side only. `nil`
+--- reverts to it.
+--- @param marginBottom? integer
+function _W.FlexComponent:SetMarginBottom(marginBottom)
+  if self.node.marginBottom ~= marginBottom then
+    self.node.marginBottom = marginBottom
+    _W.markDirty(self.node)
+  end
+end
+
+--- Overrides `SetMargin()` for this node's left side only. `nil` reverts
+--- to it.
+--- @param marginLeft? integer
+function _W.FlexComponent:SetMarginLeft(marginLeft)
+  if self.node.marginLeft ~= marginLeft then
+    self.node.marginLeft = marginLeft
     _W.markDirty(self.node)
   end
 end
