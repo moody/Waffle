@@ -38,8 +38,8 @@ local Waffle = Addon.Waffle
 --- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
 --- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
 --- @field grow? number This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root.
---- @field minWidth? number A floor on this node's own `width`, when `width` is this node's own main axis. No effect on its cross axis, an explicit `width`, or `"AUTO"`. Errors if greater than `maxWidth`.
---- @field maxWidth? number A ceiling on this node's own `width`, when `width` is this node's own main axis. No effect on its cross axis, an explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
+--- @field minWidth? number A floor on this node's own `width`: the flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, or `"AUTO"`. Errors if greater than `maxWidth`.
+--- @field maxWidth? number A ceiling on this node's own `width`: the flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
 --- @field minHeight? number Same as `minWidth`, for `height`.
 --- @field maxHeight? number Same as `maxWidth`, for `height`.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
@@ -502,12 +502,13 @@ end
 --- every one of `node.children` when `node.wrap` isn't set, or one
 --- wrapped line's worth of them when it is. Non-STRETCH alignment
 --- requires the child's own cross-axis value, it never falls back to
---- stretching. A flexible child's own share of the leftover space is
---- proportional to its `grow` (default `1`), split across every
---- flexible child on the line, then clamped to its own `min`/`max`;
---- whatever a clamped child doesn't claim redistributes among the rest,
---- possibly pushing one of them past its own bound too, repeating until
---- a round clamps nobody new.
+--- stretching; STRETCH itself clamps to the child's own cross-axis
+--- `min`/`max`, if either is set. A flexible child's own share of the
+--- leftover space is proportional to its `grow` (default `1`), split
+--- across every flexible child on the line, then clamped to its own
+--- main-axis `min`/`max`; whatever a clamped child doesn't claim
+--- redistributes among the rest, possibly pushing one of them past its
+--- own bound too, repeating until a round clamps nobody new.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param lineChildren WaffleFlexNode[]
@@ -525,6 +526,8 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
   local visibleCount = #lineChildren
   local minField = isRow and "minWidth" or "minHeight"
   local maxField = isRow and "maxWidth" or "maxHeight"
+  local crossMinField = isRow and "minHeight" or "minWidth"
+  local crossMaxField = isRow and "maxHeight" or "maxWidth"
 
   local fixedTotal = 0
   local totalGrow = 0
@@ -632,7 +635,19 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
     local align = (child.alignSelf or node.align or "STRETCH"):upper()
     local childCrossSize
     if align == "STRETCH" then
-      childCrossSize = _W.resolveDimension(child, crossAxis) or crossSize
+      childCrossSize = _W.resolveDimension(child, crossAxis)
+      if not childCrossSize then
+        childCrossSize = crossSize
+        local min, max = child[crossMinField], child[crossMaxField]
+        assert(not min or not max or min <= max,
+          "Waffle: `" .. crossMinField .. "` cannot be greater than `" .. crossMaxField .. "` on the same node")
+
+        if min and childCrossSize < min then
+          childCrossSize = min
+        elseif max and childCrossSize > max then
+          childCrossSize = max
+        end
+      end
     else
       childCrossSize = _W.resolveDimension(child, crossAxis)
       assert(childCrossSize,
