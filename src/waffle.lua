@@ -45,7 +45,11 @@ local Waffle = Addon.Waffle
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
 --- @field wrap? boolean Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `gap` between lines too. Default `false`.
 --- @field gap? integer Between children only, not the edges. Default `0`.
---- @field padding? integer On all four sides. Default `0`.
+--- @field padding? integer On all four sides. Default `0`. Overridden per side by `paddingTop`/`paddingRight`/`paddingBottom`/`paddingLeft`.
+--- @field paddingTop? integer Overrides `padding` for the top side only.
+--- @field paddingRight? integer Overrides `padding` for the right side only.
+--- @field paddingBottom? integer Overrides `padding` for the bottom side only.
+--- @field paddingLeft? integer Overrides `padding` for the left side only.
 --- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. Default `false`.
 --- @field key? string For lookup via `GetChild(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
@@ -320,9 +324,26 @@ end
 -- Auto Sizing
 -- =============================================================================
 
+--- Resolves `node`'s own padding for one physical axis: `paddingLeft`/
+--- `paddingRight` for `"width"`, `paddingTop`/`paddingBottom` for
+--- `"height"`. Each falls back to `padding` (default `0`) unless given
+--- its own value.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @return number leading
+--- @return number trailing
+function _W.resolvePaddingAxis(node, axis)
+  local padding = node.padding or 0
+  if axis == "width" then
+    return node.paddingLeft or padding, node.paddingRight or padding
+  else
+    return node.paddingTop or padding, node.paddingBottom or padding
+  end
+end
+
 --- Computes `node`'s size along its own main axis (`axis`) as the sum of
 --- its children's own sizes along that same axis, plus `gap` between them
---- and `padding` on both ends. Errors if any visible child is flexible,
+--- and padding on each end. Errors if any visible child is flexible,
 --- there's no space yet for it to split.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
@@ -331,7 +352,6 @@ function _W.computeAutoSize(node, axis)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a size from")
 
   local gap = node.gap or 0
-  local padding = node.padding or 0
   local total = 0
   local visibleCount = 0
 
@@ -346,7 +366,8 @@ function _W.computeAutoSize(node, axis)
     end
   end
 
-  return total + gap * math.max(visibleCount - 1, 0) + padding * 2
+  local leading, trailing = _W.resolvePaddingAxis(node, axis)
+  return total + gap * math.max(visibleCount - 1, 0) + leading + trailing
 end
 
 --- The max of every one of `children`'s own resolved sizes along `axis`.
@@ -369,9 +390,9 @@ end
 
 --- Computes `node`'s size along its own cross axis (`axis`) as the sum
 --- of every line's own `maxCrossSize`, plus `gap` between lines and
---- `padding` on both ends. One line, a flat max with no `gap` term,
---- unless `node.wrap` is set and its own main axis resolves to a number
---- to wrap against.
+--- padding on each end. One line, a flat max with no `gap` term, unless
+--- `node.wrap` is set and its own main axis resolves to a number to wrap
+--- against.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @return integer
@@ -379,7 +400,6 @@ function _W.computeAutoCrossSize(node, axis)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from")
 
   local gap = node.gap or 0
-  local padding = node.padding or 0
 
   local visibleChildren = {}
   for _, child in ipairs(node.children) do
@@ -410,7 +430,8 @@ function _W.computeAutoCrossSize(node, axis)
     total = total + _W.maxCrossSize(lineChildren, axis)
   end
 
-  return total + gap * math.max(#lines - 1, 0) + padding * 2
+  local leading, trailing = _W.resolvePaddingAxis(node, axis)
+  return total + gap * math.max(#lines - 1, 0) + leading + trailing
 end
 
 --- A line's own cross-size: the max of every child's own resolved size
@@ -731,13 +752,15 @@ end
 --- @param height integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
 function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
-  local padding = node.padding or 0
   local isRow = (node.direction or "ROW"):upper() == "ROW"
   local mainAxis = isRow and "width" or "height"
   local crossAxis = isRow and "height" or "width"
 
-  local mainSize = (isRow and width or height) - (padding * 2)
-  local crossSize = (isRow and height or width) - (padding * 2)
+  local mainLeading, mainTrailing = _W.resolvePaddingAxis(node, mainAxis)
+  local crossLeading, crossTrailing = _W.resolvePaddingAxis(node, crossAxis)
+
+  local mainSize = (isRow and width or height) - mainLeading - mainTrailing
+  local crossSize = (isRow and height or width) - crossLeading - crossTrailing
 
   -- Declaration order/parent are assigned here, not in their own pass,
   -- since this loop is already walking every child anyway. `children`
@@ -781,17 +804,17 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
 
   if node.wrap then
     local gap = node.gap or 0
-    local crossOffset = padding
+    local crossOffset = crossLeading
 
     for _, lineChildren in ipairs(lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)) do
       local thisLineCrossSize = _W.lineCrossSize(lineChildren, crossAxis, crossSize)
-      _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, thisLineCrossSize, padding,
+      _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, thisLineCrossSize, mainLeading,
         crossOffset, defaultFrameFactory)
       crossOffset = crossOffset + thisLineCrossSize + gap
     end
   else
-    _W.layoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, mainSize, crossSize, padding, padding,
-      defaultFrameFactory)
+    _W.layoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, mainSize, crossSize, mainLeading,
+      crossLeading, defaultFrameFactory)
   end
 end
 
@@ -1156,11 +1179,52 @@ function _W.FlexComponentContainer:SetGap(gap)
 end
 
 --- Sets the space between this container's edge and its children, on all
---- four sides.
+--- four sides. Overridden per side by `SetPaddingTop()`/`SetPaddingRight()`/
+--- `SetPaddingBottom()`/`SetPaddingLeft()`.
 --- @param padding? integer
 function _W.FlexComponentContainer:SetPadding(padding)
   if self.node.padding ~= padding then
     self.node.padding = padding
+    _W.markDirty(self.node)
+  end
+end
+
+--- Overrides `SetPadding()` for this container's top side only. `nil`
+--- reverts to it.
+--- @param paddingTop? integer
+function _W.FlexComponentContainer:SetPaddingTop(paddingTop)
+  if self.node.paddingTop ~= paddingTop then
+    self.node.paddingTop = paddingTop
+    _W.markDirty(self.node)
+  end
+end
+
+--- Overrides `SetPadding()` for this container's right side only. `nil`
+--- reverts to it.
+--- @param paddingRight? integer
+function _W.FlexComponentContainer:SetPaddingRight(paddingRight)
+  if self.node.paddingRight ~= paddingRight then
+    self.node.paddingRight = paddingRight
+    _W.markDirty(self.node)
+  end
+end
+
+--- Overrides `SetPadding()` for this container's bottom side only. `nil`
+--- reverts to it.
+--- @param paddingBottom? integer
+function _W.FlexComponentContainer:SetPaddingBottom(paddingBottom)
+  if self.node.paddingBottom ~= paddingBottom then
+    self.node.paddingBottom = paddingBottom
+    _W.markDirty(self.node)
+  end
+end
+
+--- Overrides `SetPadding()` for this container's left side only. `nil`
+--- reverts to it.
+--- @param paddingLeft? integer
+function _W.FlexComponentContainer:SetPaddingLeft(paddingLeft)
+  if self.node.paddingLeft ~= paddingLeft then
+    self.node.paddingLeft = paddingLeft
     _W.markDirty(self.node)
   end
 end
