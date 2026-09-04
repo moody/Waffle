@@ -12,6 +12,7 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 - Weighted growth (`grow`), so a flexible child can claim a bigger or smaller share of leftover space than its equally-flexible siblings
 - Size floors and ceilings (`minWidth`/`maxWidth`/`minHeight`/`maxHeight`), so a flexible child's share of leftover space never shrinks below or grows past a bound you set
 - Per-side padding (`paddingTop`/`paddingRight`/`paddingBottom`/`paddingLeft`), overriding the uniform `padding` on whichever sides you need to differ
+- Per-child margin (`margin`/`marginTop`/`marginRight`/`marginBottom`/`marginLeft`), so one child can get extra space around it beyond the container's own `gap`
 - A fluent API (`AddRow`, `AddColumn`, `AddChild`) for composing nested layouts, or a fully declarative table if you'd rather write it that way
 - `Layout()` is a pure recompute of the current tree, not a one-time construction step, call it again any time state changes and the layout needs to catch up
 - An optional frame factory so you don't have to `CreateFrame` every wrapper container yourself
@@ -75,6 +76,20 @@ Waffle:Flex({
   paddingBottom = 30, -- taller gap below the content than the other three sides
   children = {
     { frame = content },
+  }
+}):Layout()
+```
+
+**Per-child margin.** `margin`/`marginTop`/`marginRight`/`marginBottom`/`marginLeft` work the same way as `padding`'s own shorthand and per-side overrides, but on the node itself rather than a container's edge, and independent of the container's own `gap`. On the main axis it adds to the space this node consumes, coming out of a flexible sibling's own share; on the cross axis it insets a `STRETCH`-ed size, or shifts a `CENTER`/`END`-aligned one:
+
+```lua
+Waffle:Flex({
+  frame = frame,
+  width = 300,
+  height = 40,
+  children = {
+    { frame = icon, width = 40, marginRight = 12 }, -- extra gap after just this child
+    { frame = label },
   }
 }):Layout()
 ```
@@ -266,6 +281,8 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`hidden`** — Excludes this node from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this node for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
 - **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. No effect on the root, nothing above it to reorder it among. Can also be toggled after the fact with `SetOrder()`.
+- **`margin`** — Space around this node itself, on all four sides, independent of the container's own `gap`. Defaults to `0`. Can also be toggled after the fact with `SetMargin()`.
+- **`marginTop`** / **`marginRight`** / **`marginBottom`** / **`marginLeft`** — Overrides `margin` for that one side. Falls back to `margin` for any side not given. Can also be toggled after the fact with `SetMarginTop()`/`SetMarginRight()`/`SetMarginBottom()`/`SetMarginLeft()`.
 - **`width`** — This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it from this node's own children instead: a sum of their own `width` (plus `gap`/`padding`) along this node's own main axis (`direction` is `ROW`), or a max of them (plus `padding`) along its cross axis; every visible child needs its own number or `"AUTO"`, a flexible child errors. Can also be toggled after the fact with `SetWidth()`.
 - **`height`** — This node's own physical height, always vertical. Same as `width` in every other respect, `"AUTO"` sums along the main axis when `direction` is `COLUMN`, maxes along the cross axis otherwise. Can also be toggled after the fact with `SetHeight()`.
 - **`onLayout`** — Called with this node's frame and resolved width/height, after its `children` (if any) are laid out. Re-fires on every `Layout()` call, keep it idempotent.
@@ -298,6 +315,8 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`Container:SetJustify(justify?)`** — Sets how this container distributes leftover main-axis space among its own children. Container-only. Pass `nil` to reset to the default (`"START"`). No-ops if already that value.
 - **`Container:SetWrap(wrap?)`** — Sets whether this container's overflowing children wrap onto a new line. Container-only. Pass `nil` to reset to the default (`false`). No-ops if already that value.
 - **`Container:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that order.
+- **`Container:SetMargin(margin?)`** — Sets the space around this node itself, on all four sides. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that value.
+- **`Container:SetMarginTop(marginTop?)`** / **`Container:SetMarginRight(marginRight?)`** / **`Container:SetMarginBottom(marginBottom?)`** / **`Container:SetMarginLeft(marginLeft?)`** — Overrides `SetMargin()` for one side. Works on any container or leaf. Pass `nil` to revert to it. No-ops if already that value.
 
 ## Testing
 
