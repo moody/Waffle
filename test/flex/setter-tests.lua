@@ -193,6 +193,66 @@ do
   assert(a._test.width == 150 and b._test.width == 150)
 end
 
+-- Test: `SetMinWidth`/`SetMaxWidth` clamp a flexible child's own share of
+-- leftover space on the next `Layout()` call; `nil` removes the clamp.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
+  local leafA = container:AddChild({ frame = a })
+  container:AddChild({ frame = b })
+  container:Layout()
+
+  assert(a._test.width == 150 and b._test.width == 150)
+
+  leafA:SetMaxWidth(50)
+  container:Layout()
+
+  assert(a._test.width == 50 and b._test.width == 250)
+
+  leafA:SetMaxWidth(nil)
+  leafA:SetMinWidth(200)
+  container:Layout()
+
+  assert(a._test.width == 200 and b._test.width == 100)
+
+  leafA:SetMinWidth(nil)
+  container:Layout()
+
+  assert(a._test.width == 150 and b._test.width == 150)
+end
+
+-- Test: `SetMinHeight`/`SetMaxHeight` do the same on a COLUMN, main axis
+-- there is height instead of width.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "COLUMN", width = 50, height = 300 })
+  local leafA = container:AddChild({ frame = a })
+  container:AddChild({ frame = b })
+  container:Layout()
+
+  assert(a._test.height == 150 and b._test.height == 150)
+
+  leafA:SetMaxHeight(50)
+  container:Layout()
+
+  assert(a._test.height == 50 and b._test.height == 250)
+
+  leafA:SetMaxHeight(nil)
+  leafA:SetMinHeight(200)
+  container:Layout()
+
+  assert(a._test.height == 200 and b._test.height == 100)
+
+  leafA:SetMinHeight(nil)
+  container:Layout()
+
+  assert(a._test.height == 150 and b._test.height == 150)
+end
+
 -- Test: `SetAlign` changes a container's default alignment on the next
 -- `Layout()` call.
 do
@@ -343,6 +403,34 @@ do
   container:Layout()
   assert(container:IsDirty() == false)
 
+  leaf:SetMinWidth(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMinWidth(100)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetMaxWidth(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMaxWidth(150)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetMinHeight(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMinHeight(10)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetMaxHeight(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetMaxHeight(40)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
   container:SetJustify(nil)
   assert(container:IsDirty() == false)
   container:SetJustify("CENTER")
@@ -360,7 +448,8 @@ end
 
 -- Test: `SetGap`/`SetPadding`/`SetAlign`/`SetJustify`/`SetWrap` are
 -- container-only, a leaf can never have children so it never gets them;
--- `SetWidth`/`SetHeight`/`SetGrow`/`SetAlignSelf` are shared by both.
+-- `SetWidth`/`SetHeight`/`SetGrow`/`SetAlignSelf`/`SetMinWidth`/
+-- `SetMaxWidth`/`SetMinHeight`/`SetMaxHeight` are shared by both.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -379,6 +468,14 @@ do
   assert(container.SetHeight ~= nil)
   assert(leaf.SetGrow ~= nil)
   assert(container.SetGrow ~= nil)
+  assert(leaf.SetMinWidth ~= nil)
+  assert(container.SetMinWidth ~= nil)
+  assert(leaf.SetMaxWidth ~= nil)
+  assert(container.SetMaxWidth ~= nil)
+  assert(leaf.SetMinHeight ~= nil)
+  assert(container.SetMinHeight ~= nil)
+  assert(leaf.SetMaxHeight ~= nil)
+  assert(container.SetMaxHeight ~= nil)
   assert(leaf.SetAlignSelf ~= nil)
   assert(container.SetAlignSelf ~= nil)
   assert(container.SetJustify ~= nil)
