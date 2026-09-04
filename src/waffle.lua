@@ -38,8 +38,8 @@ local Waffle = Addon.Waffle
 --- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
 --- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
 --- @field grow? number This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root.
---- @field minWidth? number A floor on this node's own `width`. No effect on a node with its own explicit `width`, or `"AUTO"`. Errors if greater than `maxWidth`.
---- @field maxWidth? number A ceiling on this node's own `width`. No effect on a node with its own explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
+--- @field minWidth? number A floor on this node's own `width`, when `width` is this node's own main axis. No effect on its cross axis, an explicit `width`, or `"AUTO"`. Errors if greater than `maxWidth`.
+--- @field maxWidth? number A ceiling on this node's own `width`, when `width` is this node's own main axis. No effect on its cross axis, an explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
 --- @field minHeight? number Same as `minWidth`, for `height`.
 --- @field maxHeight? number Same as `maxWidth`, for `height`.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
