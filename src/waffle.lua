@@ -181,16 +181,6 @@ _W.Cache.CurrentPass = 0
 --- collected.
 _W.Cache.ResolvedDimensions = setmetatable({}, { __mode = "k" })
 
---- `node`'s own children, sorted for positioning, one persistent table
---- per node reused across every `Layout()` call instead of allocated
---- fresh each time. Weak keys so an unreferenced node can still be
---- garbage collected.
-_W.Cache.SortedChildren = setmetatable({}, { __mode = "k" })
-
---- `node`'s own visible (non-hidden) children, same reuse as
---- `SortedChildren` and for the same reason.
-_W.Cache.VisibleChildren = setmetatable({}, { __mode = "k" })
-
 --- Returns `node`'s cached `"AUTO"` result for `axis`, `nil` if it was
 --- never computed or is from a stale pass.
 --- @param node WaffleFlexNode
@@ -240,30 +230,51 @@ function _W.Cache:SetWrapLines(node, lines)
   self.WrapLines[node] = lines
 end
 
---- Returns `node`'s own table in `pool` (`SortedChildren`/
---- `VisibleChildren` above), creating it on the first ask. Never
---- replaced once created; callers overwrite it by index and finish
---- with `Truncate` below.
---- @param pool table<WaffleFlexNode, WaffleFlexNode[]>
---- @param node WaffleFlexNode
---- @return WaffleFlexNode[]
-function _W.Cache:GetReusableTable(pool, node)
-  local t = pool[node]
-  if not t then
-    t = {}
-    pool[node] = t
+-- =============================================================================
+-- Scratch
+-- =============================================================================
+
+--- A small pool of reusable scratch tables for repeated, short-lived use
+--- elsewhere: `resolveLineSizes`'s own `constrained`/`clampedSizes`,
+--- `flexLayout`'s own `children`/`visibleChildren`. Capped so it cannot
+--- grow without bound; tolerates as many of these being simultaneously
+--- checked out as any of them need at once, bounded by how deeply a
+--- tree nests, at most, falling back to a fresh table whenever none are
+--- free.
+_W.Scratch = {
+  items = {},
+  cap = 100,
+}
+
+--- Returns an empty table for scratch use: the most recently released
+--- one, if the pool has one, otherwise a fresh table.
+--- @return table
+function _W.Scratch:Get()
+  local items = self.items
+  local n = #items
+  if n == 0 then
+    return {}
   end
+  local t = items[n]
+  items[n] = nil
   return t
 end
 
---- Clears every entry in `t` past index `count`, so reusing it for a
---- shorter list than last time doesn't leave stale entries past its new
---- logical length.
---- @param t table
---- @param count integer
-function _W.Cache:Truncate(t, count)
-  for i = count + 1, #t do
-    t[i] = nil
+--- Clears every key in `t` and returns it for the next caller to reuse,
+--- unless the pool is already at `cap`, in which case `t` is simply
+--- left for the garbage collector. No-ops on `nil`.
+--- @param t table?
+function _W.Scratch:Release(t)
+  if t == nil then
+    return
+  end
+
+  for k in pairs(t) do
+    t[k] = nil
+  end
+
+  if #self.items < self.cap then
+    self.items[#self.items + 1] = t
   end
 end
 
@@ -379,9 +390,10 @@ function _W.computeAutoSize(node, axis)
     if not child.hidden then
       visibleCount = visibleCount + 1
       local size = _W.resolveOuterDimension(child, axis)
-      assert(size,
-        "Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
-        axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split")
+      if not size then
+        error("Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
+          axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split", 0)
+      end
       total = total + size
     end
   end
@@ -401,9 +413,10 @@ function _W.maxCrossSize(children, axis)
   local max = 0
   for _, child in ipairs(children) do
     local size = _W.resolveOuterDimension(child, axis)
-    assert(size,
-      "Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
-      axis .. "`, a flexible child (`nil`) has nothing of its own to measure")
+    if not size then
+      error("Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
+        axis .. "`, a flexible child (`nil`) has nothing of its own to measure", 0)
+    end
     max = math.max(max, size)
   end
   return max
@@ -551,8 +564,9 @@ end
 --- @return number
 function _W.clampToBounds(node, value, minField, maxField)
   local min, max = node[minField], node[maxField]
-  assert(not min or not max or min <= max,
-    "Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node")
+  if min and max and min > max then
+    error("Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node", 0)
+  end
 
   if min and value < min then
     return min
@@ -572,7 +586,7 @@ end
 --- @param mainAxis "width" | "height"
 --- @param mainSize integer
 --- @param gap integer
---- @return table<WaffleFlexNode, number>? clampedSizes `nil` unless a flexible child on this line actually has a `min`/`max`.
+--- @return table<WaffleFlexNode, number>? clampedSizes `nil` unless a flexible child on this line actually ends up clamped; pooled, `layoutFlexLine` releases it once done, not this function.
 --- @return number remaining Unclaimed space after every child's own share and `margin`, for `justify`.
 --- @return number totalGrow Surviving flexible weight, `0` once nothing has a positive share left.
 function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
@@ -583,6 +597,8 @@ function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
 
   local fixedTotal = 0
   local totalGrow = 0
+
+  --- @type WaffleFlexNode[]
   local constrained
   for _, child in ipairs(lineChildren) do
     local marginLeading, marginTrailing = _W.resolveBoxAxis(child, mainAxis, "margin")
@@ -594,7 +610,7 @@ function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
     else
       totalGrow = totalGrow + (child.grow or 1)
       if child[minField] or child[maxField] then
-        constrained = constrained or {}
+        constrained = constrained or _W.Scratch:Get()
         constrained[#constrained + 1] = child
       end
     end
@@ -604,29 +620,33 @@ function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
   local remaining = math.max(mainSize - fixedTotal - totalGap, 0)
 
   -- Skipped unless a flexible child on this line has a `min`/`max`;
-  -- `constrained` holds only those, an unconstrained child never needs
-  -- checking here, only in the fallback share `layoutFlexLine` computes
-  -- itself. Each round computes every still-unfrozen constrained child's
+  -- `constrained` (pooled, released below) holds only those, an
+  -- unconstrained child never needs checking here, only in the fallback
+  -- share `layoutFlexLine` computes itself. `clampedSizes` itself stays
+  -- `nil` until a round actually clamps someone, a `min`/`max` present
+  -- but never violated (the common case) costs nothing beyond the
+  -- check. Each round computes every still-unfrozen constrained child's
   -- share from the same pool/weight snapshot, freezes anyone whose share
   -- violates its own bound at that bound, and shrinks the pool/weight
   -- left for the next round. Ends once a round freezes nobody, or
   -- nothing is left unfrozen; each round freezes at least one child, so
   -- this always ends.
+  --- @type table<WaffleFlexNode, number>
   local clampedSizes
   if constrained then
-    clampedSizes = {}
     local pool, poolGrow = remaining, totalGrow
     local frozeAny = true
     while frozeAny and poolGrow > 0 do
       frozeAny = false
       local roundPool, roundGrow = pool, poolGrow
       for _, child in ipairs(constrained) do
-        if not clampedSizes[child] then
+        if not (clampedSizes and clampedSizes[child]) then
           local grow = child.grow or 1
           local share = roundGrow > 0 and (roundPool * grow / roundGrow) or 0
           local clamped = _W.clampToBounds(child, share, minField, maxField)
 
           if clamped ~= share then
+            clampedSizes = clampedSizes or _W.Scratch:Get()
             clampedSizes[child] = clamped
             pool = pool - clamped
             poolGrow = poolGrow - grow
@@ -640,6 +660,8 @@ function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
     -- more space than this line has left to give.
     remaining = math.max(pool, 0)
     totalGrow = poolGrow
+
+    _W.Scratch:Release(constrained)
   end
 
   return clampedSizes, remaining, totalGrow
@@ -734,11 +756,12 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
           _W.clampToBounds(child, crossSize - marginCrossLeading - marginCrossTrailing, crossMinField, crossMaxField)
     else
       childCrossSize = _W.resolveDimension(child, crossAxis)
-      assert(childCrossSize,
-        "Waffle: a child aligned '" ..
-        align ..
-        "' (not STRETCH) needs its own `" ..
-        crossAxis .. "`, alignment doesn't fall back to the container's cross size")
+      if not childCrossSize then
+        error("Waffle: a child aligned '" ..
+          align ..
+          "' (not 'STRETCH') needs its own `" ..
+          crossAxis .. "`, alignment doesn't fall back to the container's cross size", 0)
+      end
     end
 
     local crossOffset = crossStart + marginCrossLeading
@@ -772,6 +795,10 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
 
     mainOffset = mainOffset + marginMainLeading + size + marginMainTrailing + gap + justifyGap
   end
+
+  -- Acquired by `resolveLineSizes`, released here instead: still read by
+  -- the loop above.
+  _W.Scratch:Release(clampedSizes)
 end
 
 --- Positions `node.children` in a row or column within `frame`, sized to
@@ -795,17 +822,18 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   local crossSize = (isRow and height or width) - crossLeading - crossTrailing
 
   -- Declaration order/parent are assigned here, not in their own pass,
-  -- since this loop is already walking every child anyway. `children`
-  -- is `node`'s own reused scratch copy, not `node.children` itself, so
+  -- since this loop is already walking every child anyway. `children` is
+  -- a scratch copy of `node.children`, not `node.children` itself, so
   -- sorting it doesn't disturb `GetChildren()`'s own declaration-order
-  -- guarantee.
-  local children = _W.Cache:GetReusableTable(_W.Cache.SortedChildren, node)
+  -- guarantee. Pooled; released right below, once this function is done
+  -- reading it.
+  --- @type WaffleFlexNode[]
+  local children = _W.Scratch:Get()
   for i, child in ipairs(node.children) do
     _W.DeclarationOrder:Assign(child)
     _W.NodeParent:Claim(child, node)
     children[i] = child
   end
-  _W.Cache:Truncate(children, #node.children)
 
   _W.sortFlexChildren(children)
 
@@ -817,7 +845,11 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   -- Hidden children are hidden and dropped here, once, so neither
   -- `splitFlexLines` nor `layoutFlexLine` needs to care about them at
   -- all. Left `nil`, not built, when `lines` already covers `node`.
-  local visibleChildren = not lines and _W.Cache:GetReusableTable(_W.Cache.VisibleChildren, node) or nil
+  -- Pooled; released below, safe by then either way: `splitFlexLines`
+  -- is done with it under `wrap`, and `layoutFlexLine` already returned
+  -- without it.
+  --- @type WaffleFlexNode[]?
+  local visibleChildren = not lines and _W.Scratch:Get() or nil
 
   local visibleCount = 0
   for _, child in ipairs(children) do
@@ -830,9 +862,8 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
       visibleChildren[visibleCount] = child
     end
   end
-  if visibleChildren then
-    _W.Cache:Truncate(visibleChildren, visibleCount)
-  end
+
+  _W.Scratch:Release(children)
 
   if node.wrap then
     local gap = node.gap or 0
@@ -848,6 +879,8 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     _W.layoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, mainSize, crossSize, mainLeading,
       crossLeading, defaultFrameFactory)
   end
+
+  _W.Scratch:Release(visibleChildren)
 end
 
 -- =============================================================================
