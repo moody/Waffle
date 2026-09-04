@@ -26,7 +26,7 @@ local Waffle = Addon.Waffle
 --- @field SetWidth fun(self: WaffleFrame, width: integer)
 --- @field Show fun(self: WaffleFrame)
 
---- @alias WaffleFlexDirection "ROW" | "COLUMN"
+--- @alias WaffleFlexDirection "ROW" | "COLUMN" | "ROW_REVERSE" | "COLUMN_REVERSE"
 --- @alias WaffleFlexAlign "START" | "CENTER" | "END" | "STRETCH"
 --- @alias WaffleFlexJustify "START" | "CENTER" | "END" | "SPACE_BETWEEN" | "SPACE_AROUND" | "SPACE_EVENLY"
 
@@ -36,7 +36,7 @@ local Waffle = Addon.Waffle
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Cannot be given together with `frame`. `parent` is `nil` for the root, nothing sits above it to pass in.
 --- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Applies to descendants only, not this node itself.
 --- @field children? WaffleFlexNode[] Positioned in a row or column, per `direction`.
---- @field direction? WaffleFlexDirection Default `ROW`.
+--- @field direction? WaffleFlexDirection Default `ROW`. `_REVERSE` keeps the same main axis, only the starting edge (and visual order along it) flips.
 --- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
 --- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
 --- @field grow? number This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root.
@@ -299,6 +299,19 @@ function _W.sortFlexChildren(children)
 end
 
 -- =============================================================================
+-- Array Helpers
+-- =============================================================================
+
+--- Reverses `t` in place.
+--- @param t table
+function _W.reverseArray(t)
+  local n = #t
+  for i = 1, math.floor(n / 2) do
+    t[i], t[n - i + 1] = t[n - i + 1], t[i]
+  end
+end
+
+-- =============================================================================
 -- Frame Resolution
 -- =============================================================================
 
@@ -474,6 +487,17 @@ function _W.lineCrossSize(children, axis, fallback)
   return max or fallback
 end
 
+--- Parses `node`'s own `direction`, defaulting to `"ROW"`.
+--- @param node WaffleFlexNode
+--- @return boolean isRow `true` for `"ROW"`/`"ROW_REVERSE"`, `false` for `"COLUMN"`/`"COLUMN_REVERSE"`.
+--- @return boolean isReverse `true` for either `_REVERSE` variant.
+function _W.parseFlexDirection(node)
+  local direction = (node.direction or "ROW"):upper()
+  return
+      (direction == "ROW" or direction == "ROW_REVERSE"),
+      (direction == "ROW_REVERSE" or direction == "COLUMN_REVERSE")
+end
+
 --- Resolves `node`'s size along `axis`: the given number, computed from
 --- its children if `"AUTO"` (a sum along `node`'s own main axis, a max
 --- along its cross axis), or `nil` if `node` is flexible along `axis`
@@ -486,7 +510,7 @@ function _W.resolveDimension(node, axis)
   if value == "AUTO" then
     local cached = _W.Cache:GetResolvedDimension(node, axis)
     if cached == nil then
-      local isMainAxis = ((node.direction or "ROW"):upper() == "ROW") == (axis == "width")
+      local isMainAxis = _W.parseFlexDirection(node) == (axis == "width")
       cached = isMainAxis and _W.computeAutoSize(node, axis) or _W.computeAutoCrossSize(node, axis)
       _W.Cache:SetResolvedDimension(node, axis, cached)
     end
@@ -662,15 +686,24 @@ end
 --- @param totalGrow number
 --- @param remaining number
 --- @param visibleCount integer
+--- @param isReverse boolean If true, swaps `START`/`END`, since the packing math itself has no other way to know the main-start edge moved. `CENTER`/`SPACE_*` need no such swap, already symmetric.
 --- @return number justifyOffset
 --- @return number justifyGap
-function _W.resolveLineJustify(node, totalGrow, remaining, visibleCount)
+function _W.resolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
   if totalGrow ~= 0 then
     return 0, 0
   end
 
   local justifyOffset, justifyGap = 0, 0
   local justify = (node.justify or "START"):upper()
+  if isReverse then
+    if justify == "START" then
+      justify = "END"
+    elseif justify == "END" then
+      justify = "START"
+    end
+  end
+
   if justify == "END" then
     justifyOffset = remaining
   elseif justify == "CENTER" then
@@ -701,13 +734,14 @@ end
 --- @param lineChildren WaffleFlexNode[]
 --- @param mainAxis "width" | "height"
 --- @param crossAxis "width" | "height"
+--- @param isReverse boolean If true, `lineChildren` arrives already reversed by the caller.
 --- @param mainSize integer
 --- @param crossSize integer
 --- @param mainStart integer
 --- @param crossStart integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
-function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, crossSize, mainStart, crossStart,
-                           defaultFrameFactory)
+function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize, mainStart,
+                           crossStart, defaultFrameFactory)
   local gap = node.gap or 0
   local isRow = mainAxis == "width"
   local visibleCount = #lineChildren
@@ -715,7 +749,7 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainS
   local crossMaxField = isRow and "maxHeight" or "maxWidth"
 
   local clampedSizes, remaining, totalGrow = _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
-  local justifyOffset, justifyGap = _W.resolveLineJustify(node, totalGrow, remaining, visibleCount)
+  local justifyOffset, justifyGap = _W.resolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
 
   local mainOffset = mainStart + justifyOffset
   for _, child in ipairs(lineChildren) do
@@ -798,7 +832,7 @@ end
 --- @param height integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
 function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
-  local isRow = (node.direction or "ROW"):upper() == "ROW"
+  local isRow, isReverse = _W.parseFlexDirection(node)
   local mainAxis = isRow and "width" or "height"
   local crossAxis = isRow and "height" or "width"
 
@@ -857,13 +891,21 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     local crossOffset = crossLeading
 
     for _, lineChildren in ipairs(lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)) do
+      if isReverse then
+        _W.reverseArray(lineChildren)
+      end
+
       local thisLineCrossSize = _W.lineCrossSize(lineChildren, crossAxis, crossSize)
-      _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, mainSize, thisLineCrossSize, mainLeading,
-        crossOffset, defaultFrameFactory)
+      _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, thisLineCrossSize,
+        mainLeading, crossOffset, defaultFrameFactory)
       crossOffset = crossOffset + thisLineCrossSize + gap
     end
   else
-    _W.layoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, mainSize, crossSize, mainLeading,
+    if isReverse then
+      _W.reverseArray(visibleChildren)
+    end
+
+    _W.layoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize, mainLeading,
       crossLeading, defaultFrameFactory)
   end
 
