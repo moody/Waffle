@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `direction` accepts `"ROW_REVERSE"`/`"COLUMN_REVERSE"` (any node): the same main axis as `"ROW"`/`"COLUMN"`, but children lay out starting from the opposite edge. `order` still sorts first, the `_REVERSE` variants only flip which edge that sorted sequence starts from.
 - `width`/`height` accept a percentage string (`"50%"`), sizing relative to the parent's own width/height instead of a fixed number. No effect on `minWidth`/`maxWidth`, same as any other fixed size. Errors without a parent whose own size is already resolved: the root, or a parent whose own main axis is itself still being computed from `"AUTO"`.
+- `shrink`/`SetShrink()` (any node): an overflowing child's own share of its parent's main-axis deficit, weighted by this value times the child's own size, not the value alone. Default `1`; `shrink = 0` never gives up any of a child's own stated size. `minWidth`/`minHeight` floors how far a child shrinks, the same as it already floors a flexible child's own share; `maxWidth`/`maxHeight` has no effect, a child only ever shrinks down from its own stated size, never up past it. No effect on a flexible node, or on the root.
 
 ### Changed
 
