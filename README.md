@@ -10,6 +10,7 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 - Shrink-to-fit sizing (`width`/`height` accepting `"AUTO"`), so a container can size itself from its own children instead of a fixed number
 - Percentage sizing (`width`/`height` accepting `"50%"`), sized relative to the parent instead of a fixed number
 - Wrapping (`wrap`), so children that would overflow the main axis start a new line instead, each line sized and aligned independently
+- Independent line spacing (`lineGap`), so wrapped lines can be spaced apart differently than the children within each one
 - Weighted growth (`grow`), so a flexible child can claim a bigger or smaller share of leftover space than its equally-flexible siblings
 - Weighted shrinking (`shrink`), so overflowing children give up a bigger or smaller share of the deficit than their equally-shrinkable siblings, instead of overflowing
 - Size floors and ceilings (`minWidth`/`maxWidth`/`minHeight`/`maxHeight`), so a flexible child's share of leftover space never shrinks below or grows past a bound you set
@@ -203,6 +204,25 @@ Waffle:Flex({
 }):Layout()
 ```
 
+**Line gap.** `lineGap`, set on a container, spaces wrapped lines apart independently of `gap` between the children within each one. Falls back to `gap` when unset, same as before this field existed:
+
+```lua
+Waffle:Flex({
+  frame = frame,
+  width = 100,
+  height = 200,
+  wrap = true,
+  gap = 8,      -- between icons on the same line
+  lineGap = 24, -- between the two lines themselves
+  children = {
+    { frame = icon1, width = 32, height = 32 },
+    { frame = icon2, width = 32, height = 32 },
+    { frame = icon3, width = 32, height = 32 }, -- doesn't fit next to icon1/icon2, starts a new line
+    { frame = icon4, width = 32, height = 32 },
+  }
+}):Layout()
+```
+
 **Nesting.** A child with its own `children` becomes a nested container, laid out within its own resolved width/height once the parent knows it.
 
 ```lua
@@ -307,7 +327,8 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`shrink`** — This node's own share of its parent's main-axis deficit, when its siblings' own sizes don't all fit, weighted by this value times this node's own main-axis size, not the value alone. Defaults to `1`. No effect on a flexible node (nothing stated to reduce), or on the root. Can also be toggled after the fact with `SetShrink()`.
 - **`minWidth`** / **`maxWidth`** — A floor/ceiling on this node's own `width`: its flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, `"AUTO"`, or non-`STRETCH` alignment. Errors if `minWidth` is greater than `maxWidth`. Can also be toggled after the fact with `SetMinWidth()`/`SetMaxWidth()`.
 - **`minHeight`** / **`maxHeight`** — Same as `minWidth`/`maxWidth`, for `height`. Can also be toggled after the fact with `SetMinHeight()`/`SetMaxHeight()`.
-- **`wrap`** — Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `gap` between lines too. Default `false`. Can also be toggled after the fact with `SetWrap()`.
+- **`wrap`** — Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `lineGap` between lines too. Default `false`. Can also be toggled after the fact with `SetWrap()`.
+- **`lineGap`** — Space between wrapped lines only, instead of `gap`. Falls back to `gap` when unset. No effect unless `wrap` actually produces more than one line. Can also be toggled after the fact with `SetLineGap()`.
 - **`children`** — Can be given directly for a fully declarative style, instead of `AddChild`/`AddRow`/`AddColumn`; a node written directly into this table is still tracked and protected against double-attachment the same way.
 - **`hidden`** — Excludes this node from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
 - **`key`** — Registers this node for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins.
@@ -346,6 +367,7 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`Container:SetMinHeight(minHeight?)`** / **`Container:SetMaxHeight(maxHeight?)`** — Same as `SetMinWidth()`/`SetMaxWidth()`, for `height`.
 - **`Container:SetJustify(justify?)`** — Sets how this container distributes leftover main-axis space among its own children. Container-only. Pass `nil` to reset to the default (`"START"`). No-ops if already that value.
 - **`Container:SetWrap(wrap?)`** — Sets whether this container's overflowing children wrap onto a new line. Container-only. Pass `nil` to reset to the default (`false`). No-ops if already that value.
+- **`Container:SetLineGap(lineGap?)`** — Sets the space between this container's own wrapped lines, instead of `SetGap()`. Container-only. Pass `nil` to fall back to `SetGap()`'s own value. No-ops if already that value.
 - **`Container:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that order.
 - **`Container:SetMargin(margin?)`** — Sets the space around this node itself, on all four sides. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that value.
 - **`Container:SetMarginTop(marginTop?)`** / **`Container:SetMarginRight(marginRight?)`** / **`Container:SetMarginBottom(marginBottom?)`** / **`Container:SetMarginLeft(marginLeft?)`** — Overrides `SetMargin()` for one side. Works on any container or leaf. Pass `nil` to revert to it. No-ops if already that value.
