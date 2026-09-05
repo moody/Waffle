@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `direction` accepts `"ROW_REVERSE"`/`"COLUMN_REVERSE"` (any node): the same main axis as `"ROW"`/`"COLUMN"`, but children lay out starting from the opposite edge. `order` still sorts first, the `_REVERSE` variants only flip which edge that sorted sequence starts from.
+- `width`/`height` accept a percentage string (`"50%"`), sizing relative to the parent's own width/height instead of a fixed number. No effect on `minWidth`/`maxWidth`, same as any other fixed size. Errors without a parent whose own size is already resolved: the root, or a parent whose own main axis is itself still being computed from `"AUTO"`.
 
 ### Changed
 
