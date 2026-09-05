@@ -8,6 +8,7 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 
 - Row/column flex layout, plus reversed variants of each, with fixed and flexible sizing, gap, and padding, no manual `SetPoint` math
 - Shrink-to-fit sizing (`width`/`height` accepting `"AUTO"`), so a container can size itself from its own children instead of a fixed number
+- Percentage sizing (`width`/`height` accepting `"50%"`), sized relative to the parent instead of a fixed number
 - Wrapping (`wrap`), so children that would overflow the main axis start a new line instead, each line sized and aligned independently
 - Weighted growth (`grow`), so a flexible child can claim a bigger or smaller share of leftover space than its equally-flexible siblings
 - Size floors and ceilings (`minWidth`/`maxWidth`/`minHeight`/`maxHeight`), so a flexible child's share of leftover space never shrinks below or grows past a bound you set
@@ -61,6 +62,20 @@ Waffle:Flex({
   children = {
     { frame = icon, width = 24, height = 24 },
     { frame = label, width = 80, height = 16 },
+  }
+}):Layout()
+```
+
+**Percentage sizing.** `width`/`height` also accept a percentage string like `"50%"` instead of a fixed number, sized relative to the parent's own width/height (after its own padding) instead. Errors without a parent whose own size is already resolved: the root, or a parent whose own main axis is itself still being computed from `"AUTO"`. Has no effect on `minWidth`/`maxWidth`, same as any other fixed size.
+
+```lua
+Waffle:Flex({
+  frame = frame,
+  width = 300,
+  height = 40,
+  children = {
+    { frame = sidebar, width = "30%" }, -- 90, thirty percent of 300
+    { frame = content },                -- takes the rest: 210
   }
 }):Layout()
 ```
@@ -283,8 +298,8 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. No effect on the root, nothing above it to reorder it among. Can also be toggled after the fact with `SetOrder()`.
 - **`margin`** — Space around this node itself, on all four sides, independent of the container's own `gap`. Defaults to `0`. Can also be toggled after the fact with `SetMargin()`.
 - **`marginTop`** / **`marginRight`** / **`marginBottom`** / **`marginLeft`** — Overrides `margin` for that one side. Falls back to `margin` for any side not given. Can also be toggled after the fact with `SetMarginTop()`/`SetMarginRight()`/`SetMarginBottom()`/`SetMarginLeft()`.
-- **`width`** — This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it from this node's own children instead: a sum of their own `width` (plus `gap`/`padding`) along this node's own main axis (`direction` is `ROW`), or a max of them (plus `padding`) along its cross axis; every visible child needs its own number or `"AUTO"`, a flexible child errors. Can also be toggled after the fact with `SetWidth()`.
-- **`height`** — This node's own physical height, always vertical. Same as `width` in every other respect, `"AUTO"` sums along the main axis when `direction` is `COLUMN`, maxes along the cross axis otherwise. Can also be toggled after the fact with `SetHeight()`.
+- **`width`** — This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it from this node's own children instead: a sum of their own `width` (plus `gap`/`padding`) along this node's own main axis (`direction` is `ROW`), or a max of them (plus `padding`) along its cross axis; every visible child needs its own number or `"AUTO"`, a flexible child errors. A percentage string (`"50%"`) sizes it relative to the parent's own width instead, erroring without one already resolved (the root, or a parent whose own width is itself still being computed from `"AUTO"`). Can also be toggled after the fact with `SetWidth()`.
+- **`height`** — This node's own physical height, always vertical. Same as `width` in every other respect, `"AUTO"` sums along the main axis when `direction` is `COLUMN`, maxes along the cross axis otherwise, a percentage sizes it relative to the parent's own height. Can also be toggled after the fact with `SetHeight()`.
 - **`onLayout`** — Called with this node's frame and resolved width/height, after its `children` (if any) are laid out. Re-fires on every `Layout()` call, keep it idempotent.
 - **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node; even the tree's actual root needs its own `frame`/`frameFactory`, nothing above it to inherit a fallback from.
 
@@ -302,7 +317,7 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`Container:IsContainer()`** — Returns `true` if this node is a container. Works from a container or a leaf.
 - **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space, and hides its own frame. Its position in the tree is preserved, `Show()` brings it back, no re-inserting needed. Works from a container or a leaf. No-ops if already hidden.
 - **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
-- **`Container:SetWidth(width?)`** — Sets this node's own physical width. Works from a container or a leaf. Pass `nil` to let it flex/stretch instead (whichever applies), or `"AUTO"` to compute it from this node's own children (a sum along its main axis, a max along its cross axis). No-ops if already that value.
+- **`Container:SetWidth(width?)`** — Sets this node's own physical width. Works from a container or a leaf. Pass `nil` to let it flex/stretch instead (whichever applies), `"AUTO"` to compute it from this node's own children (a sum along its main axis, a max along its cross axis), or a percentage string (`"50%"`) to size it relative to the parent. No-ops if already that value.
 - **`Container:SetHeight(height?)`** — Sets this node's own physical height. Same as `SetWidth()` in every other respect, the vertical axis instead.
 - **`Container:SetGap(gap?)`** — Sets the space between this container's children. Container-only. No-ops if already that gap.
 - **`Container:SetPadding(padding?)`** — Sets the space between this container's edge and its children, on all four sides. Container-only. No-ops if already that padding.
