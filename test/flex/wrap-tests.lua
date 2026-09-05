@@ -105,6 +105,7 @@ end
 
 -- Test: a single child larger than the main axis on its own still gets
 -- placed, on its own line, rather than looping or leaving a line empty.
+-- Shrinks to fit that line (default `shrink`), rather than overflowing.
 do
   local parent = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -118,7 +119,7 @@ do
     children = { { frame = a, width = 100 } }
   }):Layout()
 
-  assert(a._test.width == 100)
+  assert(a._test.width == 50)
   assert(a._test.point.offsetX == 0)
 end
 
@@ -147,7 +148,8 @@ do
 end
 
 -- Test: omitting `wrap` (or `false`) is unaffected, overflowing children
--- still stay on one line, same as before this feature existed.
+-- still stay on one line, shrinking to fit it (default `shrink`) rather
+-- than wrapping.
 do
   local parent = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
@@ -164,7 +166,7 @@ do
   }):Layout()
 
   assert(a._test.point.offsetX == 0)
-  assert(b._test.point.offsetX == 60) -- not wrapped, despite overflowing
+  assert(b._test.point.offsetX == 50) -- not wrapped, both shrink to fit instead
 end
 
 -- Test: wrapping works the same way on a COLUMN, main axis is height,

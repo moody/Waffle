@@ -547,8 +547,9 @@ do
 end
 
 -- Test: `SetWrap` makes overflowing children wrap onto a new line on the
--- next `Layout()` call; `SetWrap(false)` reverts to a single, overflowing
--- line.
+-- next `Layout()` call, each fitting on its own so neither needs to
+-- shrink; `SetWrap(false)` reverts to one line, both shrinking to fit
+-- it since default `shrink` gives some back rather than overflowing.
 do
   local root = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
@@ -559,7 +560,7 @@ do
   container:Layout()
 
   assert(a._test.point.offsetX == 0 and a._test.point.offsetY == 0)
-  assert(b._test.point.offsetX == 60 and b._test.point.offsetY == 0) -- overflowing, same line
+  assert(b._test.point.offsetX == 50 and b._test.point.offsetY == 0) -- both shrink to 50, same line
 
   container:SetWrap(true)
   container:Layout()
@@ -570,7 +571,7 @@ do
   container:SetWrap(false)
   container:Layout()
 
-  assert(b._test.point.offsetX == 60 and b._test.point.offsetY == 0) -- back to one overflowing line
+  assert(b._test.point.offsetX == 50 and b._test.point.offsetY == 0) -- back to one line, shrinking again
 end
 
 -- Test: every setter marks the tree dirty, but only on an actual value
