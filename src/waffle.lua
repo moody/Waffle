@@ -44,8 +44,9 @@ local Waffle = Addon.Waffle
 --- @field align? WaffleFlexAlign Cross-axis alignment for this node's own children. Default `STRETCH`. A child's own `alignSelf` overrides this.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
 --- @field justify? WaffleFlexJustify Main-axis distribution of leftover space among this node's own children. Default `START`. No effect if any child has a positive `grow` share, it already claims the leftover space.
---- @field wrap? boolean Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `gap` between lines too. Default `false`.
+--- @field wrap? boolean Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `lineGap` between lines too. Default `false`.
 --- @field gap? integer Between children only, not the edges. Default `0`.
+--- @field lineGap? integer Between wrapped lines only, instead of `gap`. No effect unless `wrap` actually produces more than one. Falls back to `gap` if unset.
 --- @field padding? integer On all four sides. Default `0`. Overridden per side by `paddingTop`/`paddingRight`/`paddingBottom`/`paddingLeft`.
 --- @field paddingTop? integer Overrides `padding` for the top side only.
 --- @field paddingRight? integer Overrides `padding` for the right side only.
@@ -422,8 +423,8 @@ function _W.maxCrossSize(children, axis)
 end
 
 --- Computes `node`'s size along its own cross axis (`axis`) as the sum
---- of every line's own `maxCrossSize`, plus `gap` between lines and
---- padding on each end. One line, a flat max with no `gap` term, unless
+--- of every line's own `maxCrossSize`, plus `lineGap` between lines and
+--- padding on each end. One line, a flat max with no gap term, unless
 --- `node.wrap` is set and its own main axis resolves to a number to wrap
 --- against.
 --- @param node WaffleFlexNode
@@ -435,6 +436,7 @@ function _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from")
 
   local gap = node.gap or 0
+  local lineGap = node.lineGap or gap
 
   --- @type WaffleFlexNode[]
   local visibleChildren = _W.Scratch:Get()
@@ -454,6 +456,7 @@ function _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
       -- sorts before splitting; without this, a child moved earlier by
       -- `order` could land on a different line here than it really will.
       _W.sortFlexChildren(visibleChildren)
+
       -- `axis` itself (`node`'s own cross axis) is what this whole
       -- function is computing, genuinely unresolvable yet; a child's own
       -- percentage on it errors, same as a child's own `"AUTO"` needing
@@ -484,7 +487,7 @@ function _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
   _W.Scratch:Release(visibleChildren)
 
   local leading, trailing = _W.resolveBoxAxis(node, axis, "padding")
-  return total + gap * math.max(lineCount - 1, 0) + leading + trailing
+  return total + lineGap * math.max(lineCount - 1, 0) + leading + trailing
 end
 
 --- A line's own cross-size: the max of every child's own outer size (own
@@ -1067,6 +1070,7 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
 
   if node.wrap then
     local gap = node.gap or 0
+    local lineGap = node.lineGap or gap
     local crossOffset = crossLeading
 
     -- Pooled either way, from `splitFlexLines`, whether `lines` came
@@ -1083,7 +1087,7 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
       local thisLineCrossSize = _W.lineCrossSize(lineChildren, crossAxis, crossSize)
       _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, thisLineCrossSize,
         mainLeading, crossOffset, defaultFrameFactory)
-      crossOffset = crossOffset + thisLineCrossSize + gap
+      crossOffset = crossOffset + thisLineCrossSize + lineGap
 
       _W.Scratch:Release(lineChildren)
     end
@@ -1518,6 +1522,16 @@ end
 function _W.FlexComponentContainer:SetGap(gap)
   if self.node.gap ~= gap then
     self.node.gap = gap
+    _W.markDirty(self.node)
+  end
+end
+
+--- Sets the space between this container's own wrapped lines, instead
+--- of `SetGap()`. `nil` falls back to it.
+--- @param lineGap? integer
+function _W.FlexComponentContainer:SetLineGap(lineGap)
+  if self.node.lineGap ~= lineGap then
+    self.node.lineGap = lineGap
     _W.markDirty(self.node)
   end
 end
