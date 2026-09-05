@@ -37,8 +37,8 @@ local Waffle = Addon.Waffle
 --- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Applies to descendants only, not this node itself.
 --- @field children? WaffleFlexNode[] Positioned in a row or column, per `direction`.
 --- @field direction? WaffleFlexDirection Default `ROW`. `_REVERSE` keeps the same main axis, only the starting edge (and visual order along it) flips.
---- @field width? integer | "AUTO" Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead.
---- @field height? integer | "AUTO" Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise.
+--- @field width? integer | "AUTO" | string Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead. A percentage string (`"50%"`) resolves against the parent's own `width`, erroring without one available (the root, or a parent whose own `width` is itself still being computed from `"AUTO"`). Has no effect on `minWidth`/`maxWidth`, same as any other fixed `width`.
+--- @field height? integer | "AUTO" | string Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise, a percentage resolves against the parent's own `height`.
 --- @field grow? number This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root.
 --- @field align? WaffleFlexAlign Cross-axis alignment for this node's own children. Default `STRETCH`. A child's own `alignSelf` overrides this.
 --- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
@@ -427,8 +427,10 @@ end
 --- against.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
+--- @param parentWidth? integer Needed only if `node`'s own main axis is itself a percentage.
+--- @param parentHeight? integer Same as `parentWidth`, for `height`.
 --- @return integer
-function _W.computeAutoCrossSize(node, axis)
+function _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from")
 
   local gap = node.gap or 0
@@ -445,13 +447,17 @@ function _W.computeAutoCrossSize(node, axis)
   local lines
   if node.wrap then
     local mainAxis = axis == "width" and "height" or "width"
-    local mainSize = _W.resolveDimension(node, mainAxis)
+    local mainSize = _W.resolveDimension(node, mainAxis, parentWidth, parentHeight)
     if mainSize then
       -- Lines have to match what `flexLayout` will actually produce, which
       -- sorts before splitting; without this, a child moved earlier by
       -- `order` could land on a different line here than it really will.
       _W.sortFlexChildren(visibleChildren)
-      lines = _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)
+      -- `axis` itself (`node`'s own cross axis) is what this whole
+      -- function is computing, genuinely unresolvable yet; a child's own
+      -- percentage on it errors, same as a child's own `"AUTO"` needing
+      -- to sum along it would.
+      lines = _W.splitFlexLines(visibleChildren, mainAxis, mainSize, nil, gap)
 
       -- Cached for `node`'s own upcoming `flexLayout` call, which would
       -- otherwise redo this same sort and split; released there instead
@@ -510,26 +516,53 @@ function _W.parseFlexDirection(node)
       (direction == "ROW_REVERSE" or direction == "COLUMN_REVERSE")
 end
 
---- Resolves `node`'s size along `axis`: the given number, computed from
---- its children if `"AUTO"` (a sum along `node`'s own main axis, a max
+--- Resolves `node`'s size along `axis`: the given number, a percentage of
+--- `parentWidth`/`parentHeight` (whichever matches `axis`), computed from
+--- its own children if `"AUTO"` (a sum along `node`'s own main axis, a max
 --- along its cross axis), or `nil` if `node` is flexible along `axis`
---- instead. An `"AUTO"` result is cached for the rest of the current pass.
+--- instead. An `"AUTO"` result is cached for the rest of the current
+--- pass, a percentage isn't, resolving it is a single multiply.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
+--- @param parentWidth? integer Needed only if `node`'s own `width` needs it: directly, if `width` is a percentage, or indirectly, if a cross-axis `"AUTO"` needs `width` resolved as a step first.
+--- @param parentHeight? integer Same as `parentWidth`, for `height`.
 --- @return integer?
-function _W.resolveDimension(node, axis)
+function _W.resolveDimension(node, axis, parentWidth, parentHeight)
   local value = node[axis]
+
+  if type(value) ~= "string" then
+    return value
+  end
+
   if value == "AUTO" then
     local cached = _W.Cache:GetResolvedDimension(node, axis)
     if cached == nil then
       local isMainAxis = _W.parseFlexDirection(node) == (axis == "width")
-      cached = isMainAxis and _W.computeAutoSize(node, axis) or _W.computeAutoCrossSize(node, axis)
+      cached = (
+        isMainAxis and
+        _W.computeAutoSize(node, axis) or
+        _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
+      )
       _W.Cache:SetResolvedDimension(node, axis, cached)
     end
-
     return cached
   end
-  return value
+
+  local number = value:match("^(%d+%.?%d*)%%$")
+  number = number and tonumber(number)
+  if not number then
+    error("Waffle: `" .. axis .. "` must be a number, `\"AUTO\"`, or a percentage string like `\"50%\"`, got `" ..
+      value .. "`", 0)
+  end
+
+  local parentSize = axis == "width" and parentWidth or parentHeight
+  if not parentSize then
+    error("Waffle: `" .. axis .. "` given as a percentage needs a resolvable parent `" ..
+      axis .. "` to size against; none here, either this is the root or the parent's own `" ..
+      axis .. "` is itself still being computed", 0)
+  end
+
+  return parentSize * (number / 100)
 end
 
 -- =============================================================================
@@ -548,17 +581,21 @@ end
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @param mainSize integer
+--- @param crossSize? integer The container's own cross size, if resolved yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `computeAutoCrossSize`, that's the container's own cross axis, what it's still computing.
 --- @param gap integer
 --- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; released by whichever of `computeAutoCrossSize`/`flexLayout` is done reading them.
-function _W.splitFlexLines(children, axis, mainSize, gap)
+function _W.splitFlexLines(children, axis, mainSize, crossSize, gap)
   --- @type WaffleFlexNode[][]
   local lines = _W.Scratch:Get()
   --- @type WaffleFlexNode[]
   local currentLine = _W.Scratch:Get()
   local currentLineTotal = 0
 
+  local parentWidth = axis == "width" and mainSize or crossSize
+  local parentHeight = axis == "height" and mainSize or crossSize
+
   for _, child in ipairs(children) do
-    local size = _W.resolveDimension(child, axis)
+    local size = _W.resolveDimension(child, axis, parentWidth, parentHeight)
     local marginLeading, marginTrailing = _W.resolveBoxAxis(child, axis, "margin")
     local margin = marginLeading + marginTrailing
     local outerSize = size and (size + margin)
@@ -610,15 +647,19 @@ end
 --- @param lineChildren WaffleFlexNode[]
 --- @param mainAxis "width" | "height"
 --- @param mainSize integer
+--- @param crossSize integer Needed only for a child's own percentage/`"AUTO"` along the cross axis.
 --- @param gap integer
 --- @return table<WaffleFlexNode, number>? clampedSizes `nil` unless a flexible child on this line actually ends up clamped; pooled, `layoutFlexLine` releases it once done, not this function.
 --- @return number remaining Unclaimed space after every child's own share and `margin`, for `justify`.
 --- @return number totalGrow Surviving flexible weight, `0` once nothing has a positive share left.
-function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
+function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
   local isRow = mainAxis == "width"
   local minField = isRow and "minWidth" or "minHeight"
   local maxField = isRow and "maxWidth" or "maxHeight"
   local visibleCount = #lineChildren
+
+  local parentWidth = isRow and mainSize or crossSize
+  local parentHeight = isRow and crossSize or mainSize
 
   local fixedTotal = 0
   local totalGrow = 0
@@ -629,7 +670,7 @@ function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
     local marginLeading, marginTrailing = _W.resolveBoxAxis(child, mainAxis, "margin")
     fixedTotal = fixedTotal + marginLeading + marginTrailing
 
-    local size = _W.resolveDimension(child, mainAxis)
+    local size = _W.resolveDimension(child, mainAxis, parentWidth, parentHeight)
     if size then
       fixedTotal = fixedTotal + size
     else
@@ -762,7 +803,10 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isRev
   local crossMinField = isRow and "minHeight" or "minWidth"
   local crossMaxField = isRow and "maxHeight" or "maxWidth"
 
-  local clampedSizes, remaining, totalGrow = _W.resolveLineSizes(lineChildren, mainAxis, mainSize, gap)
+  local parentWidth = isRow and mainSize or crossSize
+  local parentHeight = isRow and crossSize or mainSize
+
+  local clampedSizes, remaining, totalGrow = _W.resolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
   local justifyOffset, justifyGap = _W.resolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
 
   local mainOffset = mainStart + justifyOffset
@@ -773,7 +817,7 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isRev
     childFrame:ClearAllPoints()
     childFrame:SetParent(frame)
 
-    local size = _W.resolveDimension(child, mainAxis)
+    local size = _W.resolveDimension(child, mainAxis, parentWidth, parentHeight)
     if not size then
       size = clampedSizes and clampedSizes[child]
       if not size then
@@ -787,10 +831,10 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isRev
     local align = (child.alignSelf or node.align or "STRETCH"):upper()
     local childCrossSize
     if align == "STRETCH" then
-      childCrossSize = _W.resolveDimension(child, crossAxis) or
+      childCrossSize = _W.resolveDimension(child, crossAxis, parentWidth, parentHeight) or
           _W.clampToBounds(child, crossSize - marginCrossLeading - marginCrossTrailing, crossMinField, crossMaxField)
     else
-      childCrossSize = _W.resolveDimension(child, crossAxis)
+      childCrossSize = _W.resolveDimension(child, crossAxis, parentWidth, parentHeight)
       if not childCrossSize then
         error("Waffle: a child aligned '" ..
           align ..
@@ -909,7 +953,7 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     -- here. Released below: `lineChildren` once its own line is done,
     -- `lines` once every line is.
     --- @type WaffleFlexNode[][]
-    lines = lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)
+    lines = lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, crossSize, gap)
     for _, lineChildren in ipairs(lines) do
       if isReverse then
         _W.reverseArray(lineChildren)
@@ -1030,8 +1074,9 @@ end
 
 --- Sets this node's own width. `nil` flexes/stretches instead; `"AUTO"`
 --- computes it from this node's own children (a sum along its main axis,
---- a max along its cross axis).
---- @param width? integer | "AUTO"
+--- a max along its cross axis); a percentage string (`"50%"`) resolves
+--- against the parent's own width.
+--- @param width? integer | "AUTO" | string
 function _W.FlexComponent:SetWidth(width)
   if self.node.width ~= width then
     self.node.width = width
@@ -1040,7 +1085,7 @@ function _W.FlexComponent:SetWidth(width)
 end
 
 --- Sets this node's own height. Same as `SetWidth()`, vertical instead.
---- @param height? integer | "AUTO"
+--- @param height? integer | "AUTO" | string
 function _W.FlexComponent:SetHeight(height)
   if self.node.height ~= height then
     self.node.height = height
