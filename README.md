@@ -6,7 +6,7 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 
 ## Features
 
-- Row/column flex layout with fixed and flexible sizing, gap, and padding, no manual `SetPoint` math
+- Row/column flex layout, plus reversed variants of each, with fixed and flexible sizing, gap, and padding, no manual `SetPoint` math
 - Shrink-to-fit sizing (`width`/`height` accepting `"AUTO"`), so a container can size itself from its own children instead of a fixed number
 - Wrapping (`wrap`), so children that would overflow the main axis start a new line instead, each line sized and aligned independently
 - Weighted growth (`grow`), so a flexible child can claim a bigger or smaller share of leftover space than its equally-flexible siblings
@@ -267,7 +267,7 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 
 - **`frame`** — An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
 - **`frameFactory`** — Creates this node's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`. If it uses `$parent` name substitution, the parent must be passed in immediately here, not reparented later, substitution happens at creation time.
-- **`direction`** — `"ROW"` or `"COLUMN"`. Defaults to `"ROW"`. Applies to this node's own children, if it has any.
+- **`direction`** — `"ROW"`, `"COLUMN"`, `"ROW_REVERSE"`, or `"COLUMN_REVERSE"`. Defaults to `"ROW"`. Applies to this node's own children, if it has any. The `_REVERSE` variants keep the same main axis, just flip which edge is main-start; `order` still sorts first.
 - **`gap`** / **`padding`** — Space between/around this node's own children, if it has any. Can also be toggled after the fact with `SetGap()`/`SetPadding()`.
 - **`paddingTop`** / **`paddingRight`** / **`paddingBottom`** / **`paddingLeft`** — Overrides `padding` for that one side. Falls back to `padding` for any side not given. Can also be toggled after the fact with `SetPaddingTop()`/`SetPaddingRight()`/`SetPaddingBottom()`/`SetPaddingLeft()`.
 - **`align`** — How this node aligns its own children along the cross axis, if it has any: `"STRETCH"` (default), `"START"`, `"CENTER"`, or `"END"`. Overridden per-child by that child's own `alignSelf`. Can also be toggled after the fact with `SetAlign()`.
