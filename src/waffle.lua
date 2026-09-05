@@ -238,10 +238,8 @@ end
 -- =============================================================================
 
 --- A small pool of reusable scratch tables for repeated, short-lived use
---- elsewhere: `resolveLineSizes`'s own `constrained`/`clampedSizes`,
---- `flexLayout`'s own `children`/`visibleChildren`. Uncapped; a
---- session's own UI tree rarely changes shape, so this settles at a
---- small size on its own and stays there.
+--- throughout Waffle. Uncapped; a session's own UI tree rarely changes shape,
+--- so this settles at a small size on its own and stays there.
 _W.Scratch = {
   pool = {}
 }
@@ -435,14 +433,16 @@ function _W.computeAutoCrossSize(node, axis)
 
   local gap = node.gap or 0
 
-  local visibleChildren = {}
+  --- @type WaffleFlexNode[]
+  local visibleChildren = _W.Scratch:Get()
   for _, child in ipairs(node.children) do
     if not child.hidden then
       table.insert(visibleChildren, child)
     end
   end
 
-  local lines = { visibleChildren }
+  --- @type WaffleFlexNode[][]?
+  local lines
   if node.wrap then
     local mainAxis = axis == "width" and "height" or "width"
     local mainSize = _W.resolveDimension(node, mainAxis)
@@ -454,18 +454,30 @@ function _W.computeAutoCrossSize(node, axis)
       lines = _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)
 
       -- Cached for `node`'s own upcoming `flexLayout` call, which would
-      -- otherwise redo this same sort and split.
+      -- otherwise redo this same sort and split; released there instead
+      -- of here.
       _W.Cache:SetWrapLines(node, lines)
     end
   end
 
-  local total = 0
-  for _, lineChildren in ipairs(lines) do
-    total = total + _W.maxCrossSize(lineChildren, axis)
+  -- `lines` stays `nil` unless `node.wrap` actually split something:
+  -- `visibleChildren` is the one and only line itself then.
+  local total, lineCount
+  if lines then
+    total = 0
+    lineCount = #lines
+    for _, lineChildren in ipairs(lines) do
+      total = total + _W.maxCrossSize(lineChildren, axis)
+    end
+  else
+    total = _W.maxCrossSize(visibleChildren, axis)
+    lineCount = 1
   end
 
+  _W.Scratch:Release(visibleChildren)
+
   local leading, trailing = _W.resolveBoxAxis(node, axis, "padding")
-  return total + gap * math.max(#lines - 1, 0) + leading + trailing
+  return total + gap * math.max(lineCount - 1, 0) + leading + trailing
 end
 
 --- A line's own cross-size: the max of every child's own outer size (own
@@ -537,10 +549,12 @@ end
 --- @param axis "width" | "height"
 --- @param mainSize integer
 --- @param gap integer
---- @return WaffleFlexNode[][]
+--- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; released by whichever of `computeAutoCrossSize`/`flexLayout` is done reading them.
 function _W.splitFlexLines(children, axis, mainSize, gap)
-  local lines = {}
-  local currentLine = {}
+  --- @type WaffleFlexNode[][]
+  local lines = _W.Scratch:Get()
+  --- @type WaffleFlexNode[]
+  local currentLine = _W.Scratch:Get()
   local currentLineTotal = 0
 
   for _, child in ipairs(children) do
@@ -551,7 +565,7 @@ function _W.splitFlexLines(children, axis, mainSize, gap)
 
     if outerSize and #currentLine > 0 and currentLineTotal + gap + outerSize > mainSize then
       table.insert(lines, currentLine)
-      currentLine = {}
+      currentLine = _W.Scratch:Get()
       currentLineTotal = 0
     end
 
@@ -890,7 +904,13 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     local gap = node.gap or 0
     local crossOffset = crossLeading
 
-    for _, lineChildren in ipairs(lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)) do
+    -- Pooled either way, from `splitFlexLines`, whether `lines` came
+    -- from `computeAutoCrossSize`'s own cached call or gets split fresh
+    -- here. Released below: `lineChildren` once its own line is done,
+    -- `lines` once every line is.
+    --- @type WaffleFlexNode[][]
+    lines = lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, gap)
+    for _, lineChildren in ipairs(lines) do
       if isReverse then
         _W.reverseArray(lineChildren)
       end
@@ -899,7 +919,10 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
       _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, thisLineCrossSize,
         mainLeading, crossOffset, defaultFrameFactory)
       crossOffset = crossOffset + thisLineCrossSize + gap
+
+      _W.Scratch:Release(lineChildren)
     end
+    _W.Scratch:Release(lines)
   else
     if isReverse then
       _W.reverseArray(visibleChildren)
