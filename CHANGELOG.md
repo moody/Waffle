@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `direction` accepts `"ROW_REVERSE"`/`"COLUMN_REVERSE"` (any node): the same main axis as `"ROW"`/`"COLUMN"`, but children lay out starting from the opposite edge. `order` still sorts first, the `_REVERSE` variants only flip which edge that sorted sequence starts from.
 
+### Changed
+
+- Reduced memory allocation on repeated `Layout()` calls for `wrap`/cross-axis-`"AUTO"` trees, previously a real, if bounded and fully garbage-collected, memory sawtooth on heavier trees.
+
 ## [0.4.0] - 2026-09-04
 
 ### Added
