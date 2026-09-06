@@ -257,6 +257,20 @@ body:AddChild({ frame = content })
 root:Layout()
 ```
 
+**Attaching an existing component.** `AttachComponent` grafts an already-composed container or leaf, built independently with its own `Waffle:Flex()` call, into another container's children as-is. Its own direction, size, and structure carry over unchanged, unlike `AddRow`/`AddColumn`, which force a fresh node's direction. Useful for composing a widget's own tree separately, then joining it into a caller's tree once it's ready:
+
+```lua
+local sidebar = Waffle:Flex({ frame = sidebarFrame, direction = "COLUMN", width = 100, height = 300 })
+sidebar:AddChild({ frame = sidebarHeader, height = 40 })
+sidebar:AddChild({ frame = sidebarBody })
+
+local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
+root:AttachComponent(sidebar)
+root:AddChild({ frame = content })
+
+root:Layout()
+```
+
 **Frame factory.** Give a node a `defaultFrameFactory` and any descendant below it that omits both `frame` and its own `frameFactory` gets one automatically, reaching every level of nesting below that point. Handy when most of a layout is just plain positioning boxes, so you don't have to `CreateFrame` each one by hand:
 
 ```lua
@@ -344,6 +358,7 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 
 - **`Container:AddChild(child)`** — Appends a child as-is, returning its wrapper: a container if `child` already has its own `children`, a leaf otherwise. Errors if `child` already belongs to a different container, call `RemoveChild()` on that one first to move it here. No-ops if `child` is already this container's own.
 - **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it. Errors if `child` already belongs to a different container, call `RemoveChild()` on that one first to move it here. No-ops if `child` is already this container's own.
+- **`Container:AttachComponent(component)`** — Grafts an already-composed container or leaf into this container's children, as-is: its own direction, size, and structure are unchanged, unlike `AddRow`/`AddColumn`. Errors if `component` already belongs to a different container, call `RemoveChild()` on that one first to move it here. No-ops if `component` is already this container's own.
 - **`Container:GetChildren()`** — Returns every one of this container's children, wrapped, in declaration order. Container-only. Doesn't recurse into grandchildren.
 - **`Container:RemoveChild(child)`** — Removes `child` from this container's children entirely, detaching it (and its own children, if it's itself a container) from the tree rather than excluding it from layout the way `Hide()` does. Doesn't touch `child`'s own frame. Container-only. Returns `true` if `child` was actually found and removed.
 - **`Container:Clear()`** — Removes every child from this container, same as calling `RemoveChild` on each one. Container-only. No-ops if already empty.
