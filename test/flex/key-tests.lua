@@ -83,7 +83,6 @@ do
     children = { { frame = a, key = "sidebar" } }
   })
 
-  --- @diagnostic disable-next-line: invisible
   assert(container:GetChild("sidebar").node.frame == a)
 end
 
@@ -131,7 +130,6 @@ do
     }
   })
 
-  --- @diagnostic disable-next-line: invisible
   assert(container:GetChild("deep").node.frame == leaf)
 end
 
