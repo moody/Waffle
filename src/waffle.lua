@@ -1054,7 +1054,7 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory)
   local mainSize = (isRow and width or height) - mainLeading - mainTrailing
   local crossSize = (isRow and height or width) - crossLeading - crossTrailing
 
-  -- Declaration order/parent are assigned here, not in their own pass,
+  -- Declaration order/ownership are assigned here, not in their own pass,
   -- since this loop is already walking every child anyway. `children` is
   -- a scratch copy of `node.children`, not `node.children` itself, so
   -- sorting it doesn't disturb `GetChildren()`'s own declaration-order
