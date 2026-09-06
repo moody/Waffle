@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Breaking:** `WaffleFlexComponentContainer` and `WaffleFlexComponentLeaf` are merged into one `WaffleFlexComponent`. Whether a node has children was already just a fact about it, not a fixed type; every method (`AddChild`, `SetGap`, etc.) is now available on every component regardless. `IsContainer()` is removed, having no meaning left to report: check `#component:GetChildren() > 0` instead if needed.
 - **Breaking:** `RemoveChild()` renamed to `DetachComponent()`, and now takes/describes a `component`, matching the type it always actually took. Behavior is unchanged.
+- **Breaking:** `onLayout` receives this node's own component instead of its frame, as its first argument (`onLayout(component, width, height)`, not `onLayout(frame, width, height)`). Use `component:GetFrame()` to get the frame; the component also reaches anywhere else in the tree with `GetChild`, letting a callback react to what was just resolved by adjusting a sibling.
 
 ## [0.5.0] - 2026-09-06
 
