@@ -72,6 +72,12 @@ local Waffle = Addon.Waffle
 
 local _W = {}
 
+--- Stand-in for a node's own `children` when it doesn't have any, so
+--- reading one that was never set doesn't allocate a fresh empty table on
+--- every call. Never assign this to a node's own `children`, only ever
+--- read through it.
+local EMPTY_CHILDREN = {}
+
 -- =============================================================================
 -- Utils
 -- =============================================================================
@@ -1138,23 +1144,26 @@ end
 -- FlexComponent
 -- =============================================================================
 
---- Shared behavior between `WaffleFlexComponentContainer` and
---- `WaffleFlexComponentLeaf`.
+--- Wraps a single node, leaf or container alike: whether it has children
+--- is a fact about that node, not a fixed type, so one wrapper covers
+--- both. Returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `AddColumn`,
+--- `AttachComponent`, `GetChild`, and `GetChildren`.
 --- @class WaffleFlexComponent
 --- @field package node WaffleFlexNode
 _W.FlexComponent = {}
 _W.FlexComponent.__index = _W.FlexComponent
 
---- Never `setmetatable`'d onto anything: a `FlexComponent`/`Leaf`/
---- `Container` method is reachable from any wrapper a consumer holds (it
---- is that wrapper's own metatable), so construction stays a separate
---- table instead, out of reach from `someContainer:___()`.
+--- Never `setmetatable`'d onto anything: a `FlexComponent` method is
+--- reachable from any wrapper a consumer holds (it is that wrapper's own
+--- metatable), so construction stays a separate table instead, out of
+--- reach from `someComponent:___()`.
 _W.FlexComponentFactory = {}
 
---- Returns a table whose missing methods fall back to `FlexComponent`.
+--- Constructs a component wrapping `node` as-is.
+--- @param node WaffleFlexNode
 --- @return WaffleFlexComponent
-function _W.FlexComponentFactory:New()
-  return setmetatable({}, _W.FlexComponent)
+function _W.FlexComponentFactory:New(node)
+  return setmetatable({ node = node }, _W.FlexComponent)
 end
 
 --- Recursively searches `node` and its descendants, depth-first, for one
@@ -1181,22 +1190,12 @@ end
 --- Looks up a child anywhere in the tree by its `key`, erroring if none is
 --- found. A duplicate key isn't validated against, the first match wins.
 --- @param key string
---- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
+--- @return WaffleFlexComponent
 function _W.FlexComponent:GetChild(key)
   local root = _W.Ownership:FindRoot(self.node)
   local found = _W.FlexComponentFactory:FindNodeByKey(root, key)
   assert(found, "Waffle: no child registered under key '" .. key .. "'")
-  if found.children then
-    return _W.FlexComponentFactory:NewContainer(found)
-  else
-    return _W.FlexComponentFactory:NewLeaf(found)
-  end
-end
-
---- Returns `true` if this node is a container.
---- @return boolean
-function _W.FlexComponent:IsContainer()
-  return self.node.children ~= nil
+  return _W.FlexComponentFactory:New(found)
 end
 
 --- Returns this node's frame, `nil` if not resolved yet, e.g. a
@@ -1409,7 +1408,10 @@ function _W.FlexComponent:Layout()
       frame:SetWidth(width)
       frame:SetHeight(height)
 
-      _W.FlexLayout:Layout(root, frame, width, height, root.defaultFrameFactory)
+      -- Same rule as every other node: nothing to lay out without children.
+      if root.children then
+        _W.FlexLayout:Layout(root, frame, width, height, root.defaultFrameFactory)
+      end
 
       if root.onLayout then
         root.onLayout(frame, width, height)
@@ -1420,130 +1422,94 @@ function _W.FlexComponent:Layout()
   end
 end
 
--- =============================================================================
--- FlexComponentLeaf
--- =============================================================================
+-- Vivifies `self.node.children` on first use: a direct node mutation, but
+-- the same kind `AddRow`/`AddColumn` already make forcing a fresh node's
+-- own `direction`, since adding a child inherently needs somewhere to put it.
 
---- Returned by `AddChild`. A leaf child; cannot have children.
---- @class WaffleFlexComponentLeaf : WaffleFlexComponent
-_W.FlexComponentLeaf = _W.FlexComponentFactory:New()
-_W.FlexComponentLeaf.__index = _W.FlexComponentLeaf
-
---- Constructs a leaf wrapping `node` as-is.
---- @param node WaffleFlexNode
---- @return WaffleFlexComponentLeaf
-function _W.FlexComponentFactory:NewLeaf(node)
-  return setmetatable({ node = node }, _W.FlexComponentLeaf)
-end
-
--- =============================================================================
--- FlexComponentContainer
--- =============================================================================
-
---- Returned by `Waffle:Flex()`. Composes a container's children fluently;
---- nothing runs until `Layout()` is called.
---- @class WaffleFlexComponentContainer : WaffleFlexComponent
-_W.FlexComponentContainer = _W.FlexComponentFactory:New()
-_W.FlexComponentContainer.__index = _W.FlexComponentContainer
-
---- Constructs a container wrapping `node` as-is. May mutate `node` in
---- place, giving it `children` if it didn't already have any, turning a
---- leaf-shaped table into a container-shaped one.
---- @param node WaffleFlexNode
---- @return WaffleFlexComponentContainer
-function _W.FlexComponentFactory:NewContainer(node)
-  node.children = node.children or {}
-  return setmetatable({ node = node }, _W.FlexComponentContainer)
-end
-
---- Appends a child as-is, returning its wrapper: a container if `child`
---- already has its own `children`, a leaf otherwise. Errors if `child`
+--- Appends a child as-is, returning its own wrapper. Errors if `child`
 --- already belongs to a different container, call `RemoveChild()` on
 --- that one first to move it here. No-ops if `child` is already this
---- container's own, still returns a wrapper.
+--- node's own, still returns a wrapper.
 --- @param child WaffleFlexNode
---- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
-function _W.FlexComponentContainer:AddChild(child)
+--- @return WaffleFlexComponent
+function _W.FlexComponent:AddChild(child)
   if _W.Ownership:Claim(child, self.node) then
+    self.node.children = self.node.children or {}
     table.insert(self.node.children, child)
     _W.DirtyRoots:Mark(self.node)
   end
-  if child.children then
-    return _W.FlexComponentFactory:NewContainer(child)
-  else
-    return _W.FlexComponentFactory:NewLeaf(child)
-  end
+  return _W.FlexComponentFactory:New(child)
 end
 
---- Appends a new ROW container as a child, returning it for further
---- composition. Errors if `child` already belongs to a different
---- container, call `RemoveChild()` on that one first to move it here.
+--- Appends a new ROW child, returning it for further composition. Errors
+--- if `child` already belongs to a different container, call
+--- `RemoveChild()` on that one first to move it here.
 --- @param child? WaffleFlexNode
---- @return WaffleFlexComponentContainer
-function _W.FlexComponentContainer:AddRow(child)
+--- @return WaffleFlexComponent
+function _W.FlexComponent:AddRow(child)
   child = child or {}
   child.direction = "ROW"
   if _W.Ownership:Claim(child, self.node) then
+    self.node.children = self.node.children or {}
     table.insert(self.node.children, child)
     _W.DirtyRoots:Mark(self.node)
   end
-  return _W.FlexComponentFactory:NewContainer(child)
+  return _W.FlexComponentFactory:New(child)
 end
 
---- Appends a new COLUMN container as a child, returning it for further
---- composition. Errors if `child` already belongs to a different
---- container, call `RemoveChild()` on that one first to move it here.
+--- Appends a new COLUMN child, returning it for further composition.
+--- Errors if `child` already belongs to a different container, call
+--- `RemoveChild()` on that one first to move it here.
 --- @param child? WaffleFlexNode
---- @return WaffleFlexComponentContainer
-function _W.FlexComponentContainer:AddColumn(child)
+--- @return WaffleFlexComponent
+function _W.FlexComponent:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
   if _W.Ownership:Claim(child, self.node) then
+    self.node.children = self.node.children or {}
     table.insert(self.node.children, child)
     _W.DirtyRoots:Mark(self.node)
   end
-  return _W.FlexComponentFactory:NewContainer(child)
+  return _W.FlexComponentFactory:New(child)
 end
 
---- Grafts an already-composed `component` into this container's children,
+--- Grafts an already-composed `component` into this node's children,
 --- as-is: its own direction, size, and structure are unchanged, unlike
 --- `AddRow`/`AddColumn` which force a fresh node's direction. Errors if
 --- `component` already belongs to a different container, call
 --- `RemoveChild()` on that one first to move it here. No-ops if
---- `component` is already this container's own, still returns it.
---- @param component WaffleFlexComponentContainer | WaffleFlexComponentLeaf
---- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
-function _W.FlexComponentContainer:AttachComponent(component)
+--- `component` is already this node's own, still returns it.
+--- @param component WaffleFlexComponent
+--- @return WaffleFlexComponent
+function _W.FlexComponent:AttachComponent(component)
   local node = component.node
   if _W.Ownership:Claim(node, self.node) then
+    self.node.children = self.node.children or {}
     table.insert(self.node.children, node)
     _W.DirtyRoots:Mark(self.node)
   end
   return component
 end
 
---- Returns every one of this container's children, wrapped, in
---- declaration order, not necessarily visual `order`. Not recursive.
---- @return (WaffleFlexComponentContainer | WaffleFlexComponentLeaf)[]
-function _W.FlexComponentContainer:GetChildren()
+--- Returns every one of this node's own children, wrapped, in declaration
+--- order, not necessarily visual `order`. Not recursive. Empty if this
+--- node has none.
+--- @return WaffleFlexComponent[]
+function _W.FlexComponent:GetChildren()
   local children = {}
-  for i, node in ipairs(self.node.children) do
+  for i, node in ipairs(self.node.children or EMPTY_CHILDREN) do
     _W.Ownership:Claim(node, self.node)
-    if node.children then
-      children[i] = _W.FlexComponentFactory:NewContainer(node)
-    else
-      children[i] = _W.FlexComponentFactory:NewLeaf(node)
-    end
+    children[i] = _W.FlexComponentFactory:New(node)
   end
   return children
 end
 
 --- Detaches from the tree entirely, unlike `Hide()`. Doesn't touch
 --- `child`'s own `frame`.
---- @param child WaffleFlexComponentContainer | WaffleFlexComponentLeaf
+--- @param child WaffleFlexComponent
 --- @return boolean removed
-function _W.FlexComponentContainer:RemoveChild(child)
-  for i, node in ipairs(self.node.children) do
+function _W.FlexComponent:RemoveChild(child)
+  for i, node in ipairs(self.node.children or EMPTY_CHILDREN) do
     if node == child.node then
       table.remove(self.node.children, i)
       _W.DeclarationOrder:Unassign(node)
@@ -1555,112 +1521,114 @@ function _W.FlexComponentContainer:RemoveChild(child)
   return false
 end
 
---- Removes every child from this container, same as calling `RemoveChild`
---- on each one.
-function _W.FlexComponentContainer:Clear()
-  if #self.node.children == 0 then return end
-  for _, node in ipairs(self.node.children) do
-    _W.DeclarationOrder:Unassign(node)
-    _W.Ownership:Release(node)
+--- Removes every child from this node, same as calling `RemoveChild` on
+--- each one.
+function _W.FlexComponent:Clear()
+  local children = self.node.children or EMPTY_CHILDREN
+  if #children == 0 then return end
+  for i = #children, 1, -1 do
+    local child = table.remove(children, i)
+    _W.DeclarationOrder:Unassign(child)
+    _W.Ownership:Release(child)
   end
-  self.node.children = {}
   _W.DirtyRoots:Mark(self.node)
 end
 
 -- Every setter below is a no-op unless the value actually changes, same
--- convention as `FlexComponent`'s own setters above.
+-- convention as this node's other setters above. None of them need this
+-- node to already have children, only relevant once it does.
 
---- Sets the space between this container's children.
+--- Sets the space between this node's own children.
 --- @param gap? integer
-function _W.FlexComponentContainer:SetGap(gap)
+function _W.FlexComponent:SetGap(gap)
   if self.node.gap ~= gap then
     self.node.gap = gap
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Sets the space between this container's own wrapped lines, instead
---- of `SetGap()`. `nil` falls back to it.
+--- Sets the space between this node's own wrapped lines, instead of
+--- `SetGap()`. `nil` falls back to it.
 --- @param lineGap? integer
-function _W.FlexComponentContainer:SetLineGap(lineGap)
+function _W.FlexComponent:SetLineGap(lineGap)
   if self.node.lineGap ~= lineGap then
     self.node.lineGap = lineGap
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Sets the space between this container's edge and its children, on all
+--- Sets the space between this node's edge and its own children, on all
 --- four sides. Overridden per side by `SetPaddingTop()`/`SetPaddingRight()`/
 --- `SetPaddingBottom()`/`SetPaddingLeft()`.
 --- @param padding? integer
-function _W.FlexComponentContainer:SetPadding(padding)
+function _W.FlexComponent:SetPadding(padding)
   if self.node.padding ~= padding then
     self.node.padding = padding
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Overrides `SetPadding()` for this container's top side only. `nil`
---- reverts to it.
+--- Overrides `SetPadding()` for this node's top side only. `nil` reverts
+--- to it.
 --- @param paddingTop? integer
-function _W.FlexComponentContainer:SetPaddingTop(paddingTop)
+function _W.FlexComponent:SetPaddingTop(paddingTop)
   if self.node.paddingTop ~= paddingTop then
     self.node.paddingTop = paddingTop
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Overrides `SetPadding()` for this container's right side only. `nil`
+--- Overrides `SetPadding()` for this node's right side only. `nil`
 --- reverts to it.
 --- @param paddingRight? integer
-function _W.FlexComponentContainer:SetPaddingRight(paddingRight)
+function _W.FlexComponent:SetPaddingRight(paddingRight)
   if self.node.paddingRight ~= paddingRight then
     self.node.paddingRight = paddingRight
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Overrides `SetPadding()` for this container's bottom side only. `nil`
+--- Overrides `SetPadding()` for this node's bottom side only. `nil`
 --- reverts to it.
 --- @param paddingBottom? integer
-function _W.FlexComponentContainer:SetPaddingBottom(paddingBottom)
+function _W.FlexComponent:SetPaddingBottom(paddingBottom)
   if self.node.paddingBottom ~= paddingBottom then
     self.node.paddingBottom = paddingBottom
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Overrides `SetPadding()` for this container's left side only. `nil`
---- reverts to it.
+--- Overrides `SetPadding()` for this node's left side only. `nil` reverts
+--- to it.
 --- @param paddingLeft? integer
-function _W.FlexComponentContainer:SetPaddingLeft(paddingLeft)
+function _W.FlexComponent:SetPaddingLeft(paddingLeft)
   if self.node.paddingLeft ~= paddingLeft then
     self.node.paddingLeft = paddingLeft
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Sets how this container aligns its own children along the cross axis by default.
+--- Sets how this node aligns its own children along the cross axis by default.
 --- @param align? WaffleFlexAlign
-function _W.FlexComponentContainer:SetAlign(align)
+function _W.FlexComponent:SetAlign(align)
   if self.node.align ~= align then
     self.node.align = align
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Sets how this container distributes leftover main-axis space among its own children.
+--- Sets how this node distributes leftover main-axis space among its own children.
 --- @param justify? WaffleFlexJustify
-function _W.FlexComponentContainer:SetJustify(justify)
+function _W.FlexComponent:SetJustify(justify)
   if self.node.justify ~= justify then
     self.node.justify = justify
     _W.DirtyRoots:Mark(self.node)
   end
 end
 
---- Sets whether this container's overflowing children wrap onto a new line.
+--- Sets whether this node's overflowing children wrap onto a new line.
 --- @param wrap? boolean
-function _W.FlexComponentContainer:SetWrap(wrap)
+function _W.FlexComponent:SetWrap(wrap)
   if self.node.wrap ~= wrap then
     self.node.wrap = wrap
     _W.DirtyRoots:Mark(self.node)
@@ -1675,8 +1643,8 @@ end
 --- `AddRow`/`AddColumn`/`AddChild` to populate it, then `Layout()` to run it.
 --- For a fully declarative style, `node.children` may be given directly.
 --- @param node WaffleFlexNode
---- @return WaffleFlexComponentContainer
+--- @return WaffleFlexComponent
 function Waffle:Flex(node)
   _W.DirtyRoots:Mark(node)
-  return _W.FlexComponentFactory:NewContainer(node)
+  return _W.FlexComponentFactory:New(node)
 end
