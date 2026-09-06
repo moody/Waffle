@@ -271,6 +271,31 @@ root:AddChild({ frame = content })
 root:Layout()
 ```
 
+**Detaching a specific child.** `DetachComponent` removes a specific child from this container, validating that it's actually attached here first: it only succeeds if `component` really is one of this container's own children, returning `false` instead of detaching it from wherever it actually is otherwise. Useful when an operation depends on that assumption being true, not just on getting the component out of the tree:
+
+```lua
+local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
+local sidebar = root:AddChild({ frame = sidebarFrame, width = 100 })
+root:AddChild({ frame = content })
+root:Layout()
+
+root:DetachComponent(sidebar) -- true, sidebar really is root's own child
+```
+
+**Detaching a component.** `Detach()` removes a component from its current owner, wherever that owner actually is, without needing to already hold it. Always returns the same component, whether or not it actually had an owner to release, so it composes directly into a single call that moves it straight into a different tree:
+
+```lua
+local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
+root:AddChild({ frame = sidebarFrame, key = "sidebar", width = 100 })
+root:AddChild({ frame = content })
+root:Layout()
+
+-- Later, move the sidebar into a different tree entirely:
+local otherRoot = Waffle:Flex({ frame = otherFrame, width = 400, height = 300, direction = "ROW" })
+otherRoot:AttachComponent(root:GetChild("sidebar"):Detach())
+otherRoot:Layout()
+```
+
 **Frame factory.** Give a node a `defaultFrameFactory` and any descendant below it that omits both `frame` and its own `frameFactory` gets one automatically, reaching every level of nesting below that point. Handy when most of a layout is just plain positioning boxes, so you don't have to `CreateFrame` each one by hand:
 
 ```lua
@@ -362,6 +387,7 @@ Every component, whether returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `Add
 - **`Component:AddRow(child?)`** / **`Component:AddColumn(child?)`** — Appends a new ROW/COLUMN child, returning a new component scoped to it. Errors if `child` already belongs to a different component, call `DetachComponent()` on that one first to move it here. No-ops if `child` is already this node's own.
 - **`Component:AttachComponent(component)`** — Grafts an already-composed component into this node's children, as-is: its own direction, size, and structure are unchanged, unlike `AddRow`/`AddColumn`. Errors if `component` already belongs to a different one, call `DetachComponent()` on that one first to move it here. No-ops if `component` is already this node's own.
 - **`Component:DetachComponent(component)`** — Removes `component` from this node's own children entirely, detaching it (and its own children, if it has any) from the tree rather than excluding it from layout the way `Hide()` does. Doesn't touch `component`'s own frame. Returns `true` if `component` was actually found and detached.
+- **`Component:Detach()`** — Detaches this component from its current owner, if it has one, the same as calling `DetachComponent()` on that owner. Always returns itself, whether or not it actually had an owner to release.
 - **`Component:GetChildren()`** — Returns every one of this node's own children, wrapped, in declaration order. Doesn't recurse into grandchildren. Empty if it has none.
 - **`Component:Clear()`** — Removes every child from this node, same as calling `DetachComponent` on each one. No-ops if already empty.
 - **`Component:Layout()`** — Runs the layout for the tree containing this node, starting from its actual current root. Works from any node in the tree, not just the root. No-ops unless something changed since the last call.
