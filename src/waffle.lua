@@ -64,7 +64,7 @@ local Waffle = Addon.Waffle
 --- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. Default `false`.
 --- @field key? string For lookup via `GetChild(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
---- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Fires after `children` (if any) are already laid out.
+--- @field onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer) Fires after `children` (if any) are already laid out.
 
 -- =============================================================================
 -- Internal Data Table
@@ -1048,7 +1048,7 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
     end
 
     if child.onLayout then
-      child.onLayout(childFrame, childWidth, childHeight)
+      child.onLayout(_W.FlexComponentFactory:New(child), childWidth, childHeight)
     end
 
     mainOffset = mainOffset + marginMainLeading + size + marginMainTrailing + gap + justifyGap
@@ -1434,7 +1434,7 @@ function _W.FlexComponent:Layout()
       end
 
       if root.onLayout then
-        root.onLayout(frame, width, height)
+        root.onLayout(_W.FlexComponentFactory:New(root), width, height)
       end
     end
 
