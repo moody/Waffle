@@ -216,6 +216,26 @@ function _W.Ownership:Release(node)
   self.byNode[node] = nil
 end
 
+--- Detaches `node` from `owner`, if it's actually attached there. `owner`
+--- defaults to `node`'s own actual current owner when omitted.
+--- @param node WaffleFlexNode
+--- @param owner? WaffleFlexNode
+--- @return boolean detached
+function _W.Ownership:Detach(node, owner)
+  owner = owner or self.byNode[node]
+  if not owner or self.byNode[node] ~= owner then return false end
+  for i, child in ipairs(owner.children or EMPTY_CHILDREN) do
+    if child == node then
+      table.remove(owner.children, i)
+      self:Release(node)
+      _W.DeclarationOrder:Unassign(node)
+      _W.DirtyRoots:Mark(owner)
+      return true
+    end
+  end
+  return false
+end
+
 --- Walks up to the tree's actual root, the node with no owner of its
 --- own. Found fresh on every call rather than cached, so a moved node's
 --- component is never stale.
@@ -1491,21 +1511,21 @@ function _W.FlexComponent:AttachComponent(component)
   return component
 end
 
+--- Detaches this component from its current owner, if it has one, the
+--- same as calling `DetachComponent()` on that owner. Always returns
+--- itself, whether or not it actually had an owner to release.
+--- @return WaffleFlexComponent
+function _W.FlexComponent:Detach()
+  _W.Ownership:Detach(self.node)
+  return self
+end
+
 --- Detaches from the tree entirely, unlike `Hide()`. Doesn't touch
 --- `component`'s own `frame`.
 --- @param component WaffleFlexComponent
---- @return boolean removed
+--- @return boolean detached
 function _W.FlexComponent:DetachComponent(component)
-  for i, node in ipairs(self.node.children or EMPTY_CHILDREN) do
-    if node == component.node then
-      table.remove(self.node.children, i)
-      _W.DeclarationOrder:Unassign(node)
-      _W.Ownership:Release(node)
-      _W.DirtyRoots:Mark(self.node)
-      return true
-    end
-  end
-  return false
+  return _W.Ownership:Detach(component.node, self.node)
 end
 
 --- Returns every one of this node's own children, wrapped, in declaration
