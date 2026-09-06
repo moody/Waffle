@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `Component:AttachComponent(component)`: grafts an already-composed component into this node's children, as-is, instead of building a new one from a declarative table. Its own direction, size, and structure are unchanged. Errors if `component` already belongs to a different one, same as `AddChild`.
+- `Component:Detach()`: detaches a component from its current owner without needing to already hold that owner, the same as calling `DetachComponent()` on it. Always returns itself, whether or not it actually had an owner to release, so it composes directly into a single call that moves a component into a different tree.
 
 ### Changed
 
