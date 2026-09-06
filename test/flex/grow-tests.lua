@@ -1,5 +1,3 @@
---- @diagnostic disable: undefined-field
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")

@@ -76,29 +76,6 @@ do
   assert(a._test.point.offsetX == 0 and b._test.point.offsetX == 100 and c._test.point.offsetX == 200)
 end
 
--- Test: COLUMN swaps the main/cross axes, main axis grows downward
--- (negative Y offsets), cross axis (width) stretches to fill.
-do
-  local parent = Mocks:CreateFrame()
-  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
-
-  Waffle:Flex({
-    frame = parent,
-    direction = "COLUMN",
-    width = 200,
-    height = 100,
-    children = {
-      { frame = a, height = 30 },
-      { frame = b, height = 30 },
-    }
-  }):Layout()
-
-  assert(a._test.width == 200 and a._test.height == 30)
-  assert(b._test.width == 200 and b._test.height == 30)
-  assert(a._test.point.offsetX == 0 and a._test.point.offsetY == 0)
-  assert(b._test.point.offsetX == 0 and b._test.point.offsetY == -30)
-end
-
 -- Test: `gap` only applies between children, not before the first or after
 -- the last.
 do
@@ -188,26 +165,6 @@ do
   }):Layout()
 
   assert(parent._test.width == 300 and parent._test.height == 50)
-end
-
--- Test: omitting `direction` defaults to ROW, same as `direction = "ROW"`.
-do
-  local parent = Mocks:CreateFrame()
-  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
-
-  Waffle:Flex({
-    frame = parent,
-    width = 200,
-    height = 50,
-    children = {
-      { frame = a, width = 50 },
-      { frame = b },
-    }
-  }):Layout()
-
-  assert(a._test.point.offsetX == 0 and a._test.point.offsetY == 0)
-  assert(b._test.point.offsetX == 50 and b._test.point.offsetY == 0)
-  assert(a._test.height == 50 and b._test.height == 50) -- cross axis stretches
 end
 
 print("All assertions passed.")

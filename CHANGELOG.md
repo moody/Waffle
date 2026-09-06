@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-06
+
+### Added
+
+- `direction` accepts `"ROW_REVERSE"`/`"COLUMN_REVERSE"` (any node): the same main axis as `"ROW"`/`"COLUMN"`, but children lay out starting from the opposite edge. `order` still sorts first, the `_REVERSE` variants only flip which edge that sorted sequence starts from.
+- `width`/`height` accept a percentage string (`"50%"`), sizing relative to the parent's own width/height instead of a fixed number. No effect on `minWidth`/`maxWidth`, same as any other fixed size. Errors without a parent whose own size is already resolved: the root, or a parent whose own main axis is itself still being computed from `"AUTO"`.
+- `shrink`/`SetShrink()` (any node): an overflowing child's own share of its parent's main-axis deficit, weighted by this value times the child's own size, not the value alone. Default `1`; `shrink = 0` never gives up any of a child's own stated size. `minWidth`/`minHeight` floors how far a child shrinks, the same as it already floors a flexible child's own share; `maxWidth`/`maxHeight` has no effect, a child only ever shrinks down from its own stated size, never up past it. No effect on a flexible node, or on the root.
+- `lineGap`/`SetLineGap()` (container): space between wrapped lines, independent of `gap` between the children within each one. Falls back to `gap` when unset. No effect unless `wrap` actually produces more than one line.
+
+### Changed
+
+- Reduced memory allocation on repeated `Layout()` calls for `wrap`/cross-axis-`"AUTO"` trees, previously a real, if bounded and fully garbage-collected, memory sawtooth on heavier trees.
+
 ## [0.4.0] - 2026-09-04
 
 ### Added
@@ -25,10 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Breaking:** `size`/`SetSize()` renamed to `width`; `crossSize`/`SetCrossSize()` renamed to `height`. Both are now genuinely physical (always horizontal/vertical, regardless of `direction`), rather than always meaning "main axis"/"cross axis". A node's own main-axis dimension within its parent is still whichever one that parent's `direction` puts on that axis (`width` for a ROW parent, `height` for a COLUMN one); the other one is its cross-axis size, same roles as before, just renamed.
+- **Breaking:** `size`/`SetSize()` renamed to `width`, now genuinely physical (always horizontal, regardless of `direction`) instead of always meaning the main-axis dimension. `height`/`SetHeight()` is new: a node's own physical, vertical size, previously fixed to always stretch across the cross axis with no way to override it. A node's own main-axis dimension within its parent is still whichever one that parent's `direction` puts on that axis (`width` for a ROW parent, `height` for a COLUMN one); the other one is its cross-axis size.
 - The root passed to `Waffle:Flex()` no longer has its own type (`WaffleFlexRootNode` is gone); it shares `WaffleFlexNode` with every other node, `width`/`height` included, and needs both explicitly (one as `"AUTO"` if that's its own main axis), same requirement it already had before this change.
 - `defaultFrameFactory` is no longer root-exclusive. Any node can declare one, applying to everything below it and overriding whatever's inherited from further up the tree. Never applies to the node that declares it, root included, the root now needs its own `frame`/`frameFactory` too, `defaultFrameFactory` alone is no longer enough to resolve it.
-- Improved `Layout()` performance for containers using `"AUTO"` sizing or `wrap`, especially deeply nested or heavily wrapped trees, by eliminating redundant recomputation within a single call.
 
 ### Fixed
 
@@ -48,25 +60,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GetFrame()` for retrieving a node's resolved frame.
 - `GetChildren()` for walking a container's direct children.
 - `IsContainer()` for telling a container and a leaf apart.
-- Ownership tracking (`NodeParent`): `AddChild()`/`AddRow()`/`AddColumn()` now error if a node already belongs to a different container, catching accidental double-attachment. Covers purely declarative `children` trees too, not just the fluent API.
+- Ownership tracking: `AddChild()`/`AddRow()`/`AddColumn()` now error if a node already belongs to a different container, catching accidental double-attachment. Covers purely declarative `children` trees too, not just the fluent API.
 - Moving a node to a different container, or even an entirely different `Waffle:Flex()` tree, via `RemoveChild()` then `AddChild()`.
 
 ### Changed
 
-- `GetChild`'s keyed cache replaced with a live tree walk.
-- Internal state wrapped into one internal table instead of loose top-level locals.
 - The root passed to `Waffle:Flex()` is no longer a special shape, it shares `WaffleFlexNode` with every other node in the tree. `frame`, `frameFactory`, `key`, `hidden`, and `onLayout` all now work identically for the root as for any child.
-- `hidden`/`Hide()`/`Show()` now actually take the root's own frame down and back up; previously inert there.
 - `onLayout` no longer replaces `children` being laid out, both fire, `onLayout` after `children` are resolved, not instead of them.
-- `AddChild()` now returns a container wrapper, not always a leaf, when the given node already has its own `children`.
-- `Layout()` moved off `WaffleFlexComponentContainer` onto the shared `WaffleFlexComponent`, callable from any node in the tree, not just the root. It resolves and lays out the tree's actual current root, regardless of which node it's called on.
-- Frame resolution (`frame`/`frameFactory`/`defaultFrameFactory`) extracted into one shared `resolveFrame()`, used identically for the root and every child, instead of duplicated logic.
-- `flexLayout()` no longer builds a throwaway table on every recursive call, takes `node`/`frame`/`width`/`height`/`defaultFrameFactory` directly.
-- Test suite reorganized under `test/flex/`, split further where a file had grown to cover more than one concern (e.g. `on-layout-tests.lua` split out of `nesting-tests.lua`).
-
-### Fixed
-
-- A wrapper held from before its node was moved into a different tree used to stay stale: mutating it, or calling `Layout()` on it, would silently operate on an orphaned, conflicting copy of the old tree instead of the node's actual current one. Wrappers no longer cache their root at construction, it's derived live by walking up through `NodeParent`, so a moved node's wrapper is always correct.
+- `AddChild()` now returns a wrapper for the appended child, a container if it has its own `children`, a leaf otherwise, instead of the same builder it was called on.
+- `Layout()` is callable from any node in the tree, not just the root; it resolves and lays out the tree's actual current root regardless of which node it's called on.
+- Frame resolution (`frame`/`frameFactory`/`defaultFrameFactory`) now behaves identically for the root and every child, instead of following separate, duplicated logic.
+- Reduced memory allocation during `Layout()`, previously one throwaway table per node in the tree on every call.
 
 ## [0.1.0] - 2026-08-30
 
