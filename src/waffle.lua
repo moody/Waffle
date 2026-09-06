@@ -1,5 +1,5 @@
 -- =============================================================================
--- Waffle: 0.5.0 - https://github.com/moody/Waffle
+-- Waffle: 0.6.0 - https://github.com/moody/Waffle
 -- =============================================================================
 
 local _, Addon = ...
@@ -1503,6 +1503,23 @@ function _W.FlexComponentContainer:AddColumn(child)
     _W.DirtyRoots:Mark(self.node)
   end
   return _W.FlexComponentFactory:NewContainer(child)
+end
+
+--- Grafts an already-composed `component` into this container's children,
+--- as-is: its own direction, size, and structure are unchanged, unlike
+--- `AddRow`/`AddColumn` which force a fresh node's direction. Errors if
+--- `component` already belongs to a different container, call
+--- `RemoveChild()` on that one first to move it here. No-ops if
+--- `component` is already this container's own, still returns it.
+--- @param component WaffleFlexComponentContainer | WaffleFlexComponentLeaf
+--- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
+function _W.FlexComponentContainer:AttachComponent(component)
+  local node = component.node
+  if _W.Ownership:Claim(node, self.node) then
+    table.insert(self.node.children, node)
+    _W.DirtyRoots:Mark(self.node)
+  end
+  return component
 end
 
 --- Returns every one of this container's children, wrapped, in
