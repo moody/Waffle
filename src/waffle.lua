@@ -123,37 +123,61 @@ function _W.Utils:ParseFlexDirection(node)
 end
 
 -- =============================================================================
--- DeclarationOrder
+-- Scratch
 -- =============================================================================
 
---- Used to break `order` ties. Weak keys so an unreferenced child can still
---- be garbage collected.
-_W.DeclarationOrder = {
-  next = 0,
-  byChild = setmetatable({}, { __mode = "k" })
+--- A small pool of reusable scratch tables for repeated, short-lived use
+--- throughout Waffle. Uncapped; a session's own UI tree rarely changes shape,
+--- so this settles at a small size on its own and stays there.
+_W.Scratch = {
+  pool = {}
 }
 
---- Returns `child`'s declaration order, `0` if not yet assigned.
---- @param child WaffleFlexNode
---- @return integer
-function _W.DeclarationOrder:Get(child)
-  return self.byChild[child] or 0
+--- Returns an empty table for scratch use: an arbitrary one already in
+--- the pool, if it has any, otherwise a fresh table.
+--- @return table
+function _W.Scratch:Get()
+  local t = next(self.pool)
+  if not t then return {} end
+  self.pool[t] = nil
+  return t
 end
 
---- Assigns `child` the next declaration order. No-ops if it already has one.
---- @param child WaffleFlexNode
-function _W.DeclarationOrder:Assign(child)
-  if not self.byChild[child] then
-    self.next = self.next + 1
-    self.byChild[child] = self.next
-  end
+--- Clears every key in `t` and returns it to the pool for the next
+--- caller to reuse. No-ops on `nil`.
+--- @param t table?
+function _W.Scratch:Release(t)
+  if not t then return end
+  for k in pairs(t) do t[k] = nil end
+  self.pool[t] = true
 end
 
---- Clears `child`'s declaration order, so it's assigned a fresh one if
---- added again later.
---- @param child WaffleFlexNode
-function _W.DeclarationOrder:Unassign(child)
-  self.byChild[child] = nil
+-- =============================================================================
+-- DirtyRoots
+-- =============================================================================
+
+--- Which root nodes have changed since their last `Layout()` call. Weak
+--- keys, an unreferenced root can still be garbage collected.
+_W.DirtyRoots = { roots = setmetatable({}, { __mode = "k" }) }
+
+--- Marks the tree containing `node` dirty, wherever its current root is.
+--- @param node WaffleFlexNode
+function _W.DirtyRoots:Mark(node)
+  self.roots[_W.Ownership:FindRoot(node)] = true
+end
+
+--- Whether `root` (already resolved by the caller) has changed since its
+--- last `Layout()` call.
+--- @param root WaffleFlexNode
+--- @return boolean
+function _W.DirtyRoots:IsDirty(root)
+  return self.roots[root] == true
+end
+
+--- Clears `root`'s own dirty flag, once its `Layout()` call is done.
+--- @param root WaffleFlexNode
+function _W.DirtyRoots:Clear(root)
+  self.roots[root] = nil
 end
 
 -- =============================================================================
@@ -201,61 +225,37 @@ function _W.Ownership:FindRoot(node)
 end
 
 -- =============================================================================
--- DirtyRoots
+-- DeclarationOrder
 -- =============================================================================
 
---- Which root nodes have changed since their last `Layout()` call. Weak
---- keys, an unreferenced root can still be garbage collected.
-_W.DirtyRoots = { roots = setmetatable({}, { __mode = "k" }) }
-
---- Marks the tree containing `node` dirty, wherever its current root is.
---- @param node WaffleFlexNode
-function _W.DirtyRoots:Mark(node)
-  self.roots[_W.Ownership:FindRoot(node)] = true
-end
-
---- Whether `root` (already resolved by the caller) has changed since its
---- last `Layout()` call.
---- @param root WaffleFlexNode
---- @return boolean
-function _W.DirtyRoots:IsDirty(root)
-  return self.roots[root] == true
-end
-
---- Clears `root`'s own dirty flag, once its `Layout()` call is done.
---- @param root WaffleFlexNode
-function _W.DirtyRoots:Clear(root)
-  self.roots[root] = nil
-end
-
--- =============================================================================
--- Scratch
--- =============================================================================
-
---- A small pool of reusable scratch tables for repeated, short-lived use
---- throughout Waffle. Uncapped; a session's own UI tree rarely changes shape,
---- so this settles at a small size on its own and stays there.
-_W.Scratch = {
-  pool = {}
+--- Used to break `order` ties. Weak keys so an unreferenced child can still
+--- be garbage collected.
+_W.DeclarationOrder = {
+  next = 0,
+  byChild = setmetatable({}, { __mode = "k" })
 }
 
---- Returns an empty table for scratch use: an arbitrary one already in
---- the pool, if it has any, otherwise a fresh table.
---- @return table
-function _W.Scratch:Get()
-  local t = next(self.pool)
-  if not t then return {} end
-  self.pool[t] = nil
-  return t
+--- Returns `child`'s declaration order, `0` if not yet assigned.
+--- @param child WaffleFlexNode
+--- @return integer
+function _W.DeclarationOrder:Get(child)
+  return self.byChild[child] or 0
 end
 
---- Clears every key in `t` and returns it to the pool for the next
---- caller to reuse. No-ops on `nil`.
---- @param t table?
-function _W.Scratch:Release(t)
-  if not t then return end
-  for k in pairs(t) do t[k] = nil end
-  self.pool[t] = true
+--- Assigns `child` the next declaration order. No-ops if it already has one.
+--- @param child WaffleFlexNode
+function _W.DeclarationOrder:Assign(child)
+  if not self.byChild[child] then
+    self.next = self.next + 1
+    self.byChild[child] = self.next
+  end
+end
+
+--- Clears `child`'s declaration order, so it's assigned a fresh one if
+--- added again later.
+--- @param child WaffleFlexNode
+function _W.DeclarationOrder:Unassign(child)
+  self.byChild[child] = nil
 end
 
 -- =============================================================================
