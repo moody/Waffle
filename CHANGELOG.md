@@ -9,7 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Container:AttachComponent(component)`: grafts an already-composed container or leaf into this container's children, as-is, instead of building a new one from a declarative table. Its own direction, size, and structure are unchanged. Errors if `component` already belongs to a different container, same as `AddChild`.
+- `Component:AttachComponent(component)`: grafts an already-composed component into this node's children, as-is, instead of building a new one from a declarative table. Its own direction, size, and structure are unchanged. Errors if `component` already belongs to a different one, same as `AddChild`.
+
+### Changed
+
+- **Breaking:** `WaffleFlexComponentContainer` and `WaffleFlexComponentLeaf` are merged into one `WaffleFlexComponent`. Whether a node has children was already just a fact about it, not a fixed type; every method (`AddChild`, `SetGap`, etc.) is now available on every component regardless. `IsContainer()` is removed, having no meaning left to report: check `#component:GetChildren() > 0` instead if needed.
+- **Breaking:** `RemoveChild()` renamed to `DetachComponent()`, and now takes/describes a `component`, matching the type it always actually took. Behavior is unchanged.
 
 ## [0.5.0] - 2026-09-06
 
