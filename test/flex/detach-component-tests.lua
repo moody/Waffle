@@ -135,6 +135,63 @@ do
   assert(b._test.point.offsetX == 200)
 end
 
+-- Test: `Detach` removes a leaf from its current owner, siblings reflow
+-- into the freed space, same as `DetachComponent` called on that owner.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a, width = 100 })
+  container:AddChild({ frame = b, width = 100 })
+  container:Layout()
+
+  assert(b._test.point.offsetX == 100)
+  assert(#container:GetChildren() == 2)
+
+  leaf:Detach()
+  container:Layout()
+
+  assert(b._test.point.offsetX == 0)
+  assert(#container:GetChildren() == 1)
+end
+
+-- Test: `Detach` returns the same component, usable immediately, whether
+-- or not it actually had an owner to release.
+do
+  local leafFrame = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = Mocks:CreateFrame(), direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = leafFrame })
+  local root = Waffle:Flex({ frame = Mocks:CreateFrame(), direction = "ROW", width = 200, height = 50 })
+
+  assert(leaf:Detach() == leaf)
+  assert(leaf:Detach() == leaf) -- already detached, still returns itself
+  assert(root:Detach() == root) -- never had an owner at all, same result
+end
+
+-- Test: `Detach` moves a component straight into a different tree in one
+-- step, no need to already hold its current owner.
+do
+  local rootAFrame, rootBFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
+  local sidebarFrame = Mocks:CreateFrame()
+
+  local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 200, height = 50 })
+  containerA:AddChild({ frame = sidebarFrame, key = "sidebar", width = 100 })
+  containerA:Layout()
+
+  assert(#containerA:GetChildren() == 1)
+  assert(sidebarFrame._test.point.parent == rootAFrame)
+
+  local containerB = Waffle:Flex({ frame = rootBFrame, direction = "ROW", width = 300, height = 50 })
+  containerB:AttachComponent(containerA:GetChild("sidebar"):Detach())
+  containerB:Layout()
+
+  assert(#containerA:GetChildren() == 0)
+  assert(#containerB:GetChildren() == 1)
+  assert(sidebarFrame._test.point.parent == rootBFrame)
+end
+
 -- Test: `Clear` removes every child at once, `Layout()` treats the
 -- container as empty afterward.
 do
