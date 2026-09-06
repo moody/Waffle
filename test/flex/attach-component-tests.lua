@@ -19,7 +19,7 @@ do
   })
 
   local attached = outer:AttachComponent(inner)
-  assert(attached == inner) -- the same component handed back, not a fresh wrapper
+  assert(attached == inner) -- the same component handed back, not a fresh one
 
   outer:Layout()
 

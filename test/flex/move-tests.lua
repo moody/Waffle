@@ -4,7 +4,7 @@
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `AddChild`'s returned wrapper is fully usable for further
+-- Test: `AddChild`'s returned component is fully usable for further
 -- composition, even when the given node already had its own `children`.
 do
   local root = Mocks:CreateFrame()
@@ -12,13 +12,13 @@ do
   local nested = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local wrapper = container:AddChild({
+  local component = container:AddChild({
     frame = middle,
     children = { { frame = nested } },
   })
 
-  wrapper:AddChild({ frame = Mocks:CreateFrame() }) -- further composition works
-  assert(#wrapper:GetChildren() == 2)
+  component:AddChild({ frame = Mocks:CreateFrame() }) -- further composition works
+  assert(#component:GetChildren() == 2)
 end
 
 -- Test: adding the same node to a second container without removing it
@@ -180,16 +180,16 @@ do
   assert(nested._test.width == 200) -- rowFrame's own sole child, flexes to fill it
 end
 
--- Test: once grafted into a different tree, the *original* root wrapper is
--- no longer stale, mutating or calling `Layout()` through it reaches the
--- new tree correctly instead of a conflicting, independent one.
+-- Test: once grafted into a different tree, the *original* root component
+-- is no longer stale, mutating or calling `Layout()` through it reaches
+-- the new tree correctly instead of a conflicting, independent one.
 do
   local rootAFrame = Mocks:CreateFrame()
   local rootBFrame = Mocks:CreateFrame()
   local siblingFrame = Mocks:CreateFrame()
 
   local rootBOptions = { frame = rootBFrame, direction = "ROW" }
-  local staleRootB = Waffle:Flex(rootBOptions) -- tree B's own root wrapper
+  local staleRootB = Waffle:Flex(rootBOptions) -- tree B's own root component
 
   local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 300, height = 50 })
   containerA:AddChild({ frame = siblingFrame, width = 100 })
@@ -200,7 +200,7 @@ do
   assert(rootBFrame._test.width == 200) -- 300 - 100, flexes to fill the rest
   assert(containerA:IsDirty() == false)
 
-  staleRootB:SetWidth(50) -- mutating through the stale wrapper still reaches tree A
+  staleRootB:SetWidth(50) -- mutating through the stale component still reaches tree A
   assert(containerA:IsDirty() == true)
 
   containerA:Layout()

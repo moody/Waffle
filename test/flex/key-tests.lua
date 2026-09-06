@@ -5,18 +5,18 @@ local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
 -- Test: `AddChild` with a `key` registers a leaf, retrievable via
--- `GetChild` on the root. `GetChild` returns a fresh handle each call, not
--- the identical object `AddChild` returned, but both wrap the same node.
+-- `GetChild` on the root. `GetChild` returns a fresh component each call,
+-- not the identical object `AddChild` returned, but both wrap the same node.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a, key = "sidebar" })
-  local wrapper = container:GetChild("sidebar")
+  local component = container:GetChild("sidebar")
 
-  assert(wrapper ~= leaf)
-  assert(wrapper.node == leaf.node)
+  assert(component ~= leaf)
+  assert(component.node == leaf.node)
 end
 
 -- Test: `AddRow`/`AddColumn` with a `key` register the returned container

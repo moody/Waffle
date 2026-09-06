@@ -18,7 +18,7 @@ do
   assert(b._test.width == 150 and b._test.point.offsetX == 50) -- 200 - 50
 end
 
--- Test: `AddChild` returns a wrapper for the child just added, not the
+-- Test: `AddChild` returns a component for the child just added, not the
 -- same container it was called on.
 do
   local parent = Mocks:CreateFrame()
