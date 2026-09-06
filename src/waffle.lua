@@ -73,6 +73,56 @@ local Waffle = Addon.Waffle
 local _W = {}
 
 -- =============================================================================
+-- Utils
+-- =============================================================================
+
+--- Small, otherwise-homeless utilities: each is single-purpose and
+--- doesn't share enough with anything else in the file to earn its own
+--- category.
+_W.Utils = {}
+
+--- Reverses `t` in place.
+--- @param t table
+function _W.Utils:ReverseArray(t)
+  local n = #t
+  for i = 1, math.floor(n / 2) do
+    t[i], t[n - i + 1] = t[n - i + 1], t[i]
+  end
+end
+
+--- Resolves `node.frame` in place, creating it via `frameFactory`/
+--- `defaultFrameFactory` if neither was already given. `parent` is `nil`
+--- for the root, nothing sits above it to hand a factory.
+--- @param node WaffleFlexNode
+--- @param parent WaffleFrame?
+--- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+--- @return WaffleFrame
+function _W.Utils:ResolveFrame(node, parent, defaultFrameFactory)
+  assert(not (node.frame and node.frameFactory),
+    "Waffle: node cannot have both `frame` and `frameFactory`")
+
+  if not node.frame then
+    local factory = node.frameFactory or defaultFrameFactory
+    assert(factory, "Waffle: node has no `frame` and no `frameFactory`/`defaultFrameFactory` was provided")
+    node.frame = factory(parent)
+    node.frameFactory = nil
+  end
+
+  return node.frame
+end
+
+--- Parses `node`'s own `direction`, defaulting to `"ROW"`.
+--- @param node WaffleFlexNode
+--- @return boolean isRow `true` for `"ROW"`/`"ROW_REVERSE"`, `false` for `"COLUMN"`/`"COLUMN_REVERSE"`.
+--- @return boolean isReverse `true` for either `_REVERSE` variant.
+function _W.Utils:ParseFlexDirection(node)
+  local direction = (node.direction or "ROW"):upper()
+  return
+      (direction == "ROW" or direction == "ROW_REVERSE"),
+      (direction == "ROW_REVERSE" or direction == "COLUMN_REVERSE")
+end
+
+-- =============================================================================
 -- DeclarationOrder
 -- =============================================================================
 
@@ -178,78 +228,6 @@ function _W.DirtyRoots:Clear(root)
 end
 
 -- =============================================================================
--- Cache
--- =============================================================================
-
---- Internal memoization and table reuse for `Layout()`.
-_W.Cache = {}
-
---- A wrap node's own children, already split into lines by
---- `_W.Sizing:ComputeAutoCrossSize`, for `_W.FlexLayout:Layout` to reuse
---- instead of splitting them again right after. Weak keys so an
---- unreferenced node can still be garbage collected.
-_W.Cache.WrapLines = setmetatable({}, { __mode = "k" })
-
---- Bumped once per `Layout()` pass (see `FlexComponent:Layout()`).
---- Scopes `ResolvedDimensions` entries to the pass that computed them,
---- so a stale one from an earlier pass is never reused.
-_W.Cache.CurrentPass = 0
-
---- `node`'s own `"AUTO"` result per axis, tagged with the pass that
---- computed it. Weak keys so an unreferenced node can still be garbage
---- collected.
-_W.Cache.ResolvedDimensions = setmetatable({}, { __mode = "k" })
-
---- Returns `node`'s cached `"AUTO"` result for `axis`, `nil` if it was
---- never computed or is from a stale pass.
---- @param node WaffleFlexNode
---- @param axis "width" | "height"
---- @return integer?
-function _W.Cache:GetResolvedDimension(node, axis)
-  local entry = self.ResolvedDimensions[node]
-  if entry and entry.pass == self.CurrentPass then
-    return entry[axis]
-  end
-  return nil
-end
-
---- Records `node`'s `"AUTO"` result for `axis` for the rest of the
---- current pass. Reuses `node`'s own existing entry rather than
---- allocating a new one, resetting it first if it's from a stale pass.
---- @param node WaffleFlexNode
---- @param axis "width" | "height"
---- @param value integer
-function _W.Cache:SetResolvedDimension(node, axis, value)
-  local entry = self.ResolvedDimensions[node]
-  if not entry then
-    entry = { pass = self.CurrentPass }
-    self.ResolvedDimensions[node] = entry
-  elseif entry.pass ~= self.CurrentPass then
-    entry.pass = self.CurrentPass
-    entry.width = nil
-    entry.height = nil
-  end
-  entry[axis] = value
-end
-
---- Returns and clears `node`'s cached wrap lines, even if the caller
---- ends up not using them.
---- @param node WaffleFlexNode
---- @return WaffleFlexNode[][]?
-function _W.Cache:GetWrapLines(node)
-  local lines = self.WrapLines[node]
-  self.WrapLines[node] = nil
-  return lines
-end
-
---- Records `node`'s wrap lines for `_W.FlexLayout:Layout` to take right after.
---- @param node WaffleFlexNode
---- @param lines WaffleFlexNode[][]
-function _W.Cache:SetWrapLines(node, lines)
-  self.WrapLines[node] = lines
-end
-
--- =============================================================================
 -- Scratch
 -- =============================================================================
 
@@ -317,53 +295,75 @@ function _W.Sorting:SortFlexChildren(children)
 end
 
 -- =============================================================================
--- Utils
+-- LayoutCache
 -- =============================================================================
 
---- Small, otherwise-homeless utilities: each is single-purpose and
---- doesn't share enough with anything else in the file to earn its own
---- category.
-_W.Utils = {}
+--- Internal memoization and table reuse for `Layout()`.
+_W.LayoutCache = {}
 
---- Reverses `t` in place.
---- @param t table
-function _W.Utils:ReverseArray(t)
-  local n = #t
-  for i = 1, math.floor(n / 2) do
-    t[i], t[n - i + 1] = t[n - i + 1], t[i]
+--- A wrap node's own children, already split into lines by
+--- `_W.Sizing:ComputeAutoCrossSize`, for `_W.FlexLayout:Layout` to reuse
+--- instead of splitting them again right after. Weak keys so an
+--- unreferenced node can still be garbage collected.
+_W.LayoutCache.wrapLines = setmetatable({}, { __mode = "k" })
+
+--- Bumped once per `Layout()` pass (see `FlexComponent:Layout()`).
+--- Scopes `resolvedDimensions` entries to the pass that computed them,
+--- so a stale one from an earlier pass is never reused.
+_W.LayoutCache.currentPass = 0
+
+--- `node`'s own `"AUTO"` result per axis, tagged with the pass that
+--- computed it. Weak keys so an unreferenced node can still be garbage
+--- collected.
+_W.LayoutCache.resolvedDimensions = setmetatable({}, { __mode = "k" })
+
+--- Returns `node`'s cached `"AUTO"` result for `axis`, `nil` if it was
+--- never computed or is from a stale pass.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @return integer?
+function _W.LayoutCache:GetResolvedDimension(node, axis)
+  local entry = self.resolvedDimensions[node]
+  if entry and entry.pass == self.currentPass then
+    return entry[axis]
   end
+  return nil
 end
 
---- Resolves `node.frame` in place, creating it via `frameFactory`/
---- `defaultFrameFactory` if neither was already given. `parent` is `nil`
---- for the root, nothing sits above it to hand a factory.
+--- Records `node`'s `"AUTO"` result for `axis` for the rest of the
+--- current pass. Reuses `node`'s own existing entry rather than
+--- allocating a new one, resetting it first if it's from a stale pass.
 --- @param node WaffleFlexNode
---- @param parent WaffleFrame?
---- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
---- @return WaffleFrame
-function _W.Utils:ResolveFrame(node, parent, defaultFrameFactory)
-  assert(not (node.frame and node.frameFactory),
-    "Waffle: node cannot have both `frame` and `frameFactory`")
-
-  if not node.frame then
-    local factory = node.frameFactory or defaultFrameFactory
-    assert(factory, "Waffle: node has no `frame` and no `frameFactory`/`defaultFrameFactory` was provided")
-    node.frame = factory(parent)
-    node.frameFactory = nil
+--- @param axis "width" | "height"
+--- @param value integer
+function _W.LayoutCache:SetResolvedDimension(node, axis, value)
+  local entry = self.resolvedDimensions[node]
+  if not entry then
+    entry = { pass = self.currentPass }
+    self.resolvedDimensions[node] = entry
+  elseif entry.pass ~= self.currentPass then
+    entry.pass = self.currentPass
+    entry.width = nil
+    entry.height = nil
   end
-
-  return node.frame
+  entry[axis] = value
 end
 
---- Parses `node`'s own `direction`, defaulting to `"ROW"`.
+--- Returns and clears `node`'s cached wrap lines, even if the caller
+--- ends up not using them.
 --- @param node WaffleFlexNode
---- @return boolean isRow `true` for `"ROW"`/`"ROW_REVERSE"`, `false` for `"COLUMN"`/`"COLUMN_REVERSE"`.
---- @return boolean isReverse `true` for either `_REVERSE` variant.
-function _W.Utils:ParseFlexDirection(node)
-  local direction = (node.direction or "ROW"):upper()
-  return
-      (direction == "ROW" or direction == "ROW_REVERSE"),
-      (direction == "ROW_REVERSE" or direction == "COLUMN_REVERSE")
+--- @return WaffleFlexNode[][]?
+function _W.LayoutCache:GetWrapLines(node)
+  local lines = self.wrapLines[node]
+  self.wrapLines[node] = nil
+  return lines
+end
+
+--- Records `node`'s wrap lines for `_W.FlexLayout:Layout` to take right after.
+--- @param node WaffleFlexNode
+--- @param lines WaffleFlexNode[][]
+function _W.LayoutCache:SetWrapLines(node, lines)
+  self.wrapLines[node] = lines
 end
 
 -- =============================================================================
@@ -502,7 +502,7 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight)
       -- Cached for `node`'s own upcoming `_W.FlexLayout:Layout` call,
       -- which would otherwise redo this same sort and split; released
       -- there instead of here.
-      _W.Cache:SetWrapLines(node, lines)
+      _W.LayoutCache:SetWrapLines(node, lines)
     end
   end
 
@@ -564,7 +564,7 @@ function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight)
   end
 
   if value == "AUTO" then
-    local cached = _W.Cache:GetResolvedDimension(node, axis)
+    local cached = _W.LayoutCache:GetResolvedDimension(node, axis)
     if cached == nil then
       local isMainAxis = _W.Utils:ParseFlexDirection(node) == (axis == "width")
       cached = (
@@ -572,7 +572,7 @@ function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight)
         self:ComputeAutoSize(node, axis) or
         self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight)
       )
-      _W.Cache:SetResolvedDimension(node, axis, cached)
+      _W.LayoutCache:SetResolvedDimension(node, axis, cached)
     end
     return cached
   end
@@ -1071,7 +1071,7 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory)
 
   -- Reuses lines a cross-axis `"AUTO"` computation already split `node`
   -- into, instead of splitting them again.
-  local wrapLines = _W.Cache:GetWrapLines(node)
+  local wrapLines = _W.LayoutCache:GetWrapLines(node)
   local lines = node.wrap and wrapLines or nil
 
   -- Hidden children are hidden and dropped here, once, so neither
@@ -1386,7 +1386,7 @@ end
 function _W.FlexComponent:Layout()
   local root = _W.NodeParent:FindRoot(self.node)
   if _W.DirtyRoots:IsDirty(root) then
-    _W.Cache.CurrentPass = _W.Cache.CurrentPass + 1
+    _W.LayoutCache.currentPass = _W.LayoutCache.currentPass + 1
 
     if root.hidden then
       if root.frame then
