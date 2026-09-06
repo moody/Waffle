@@ -1446,51 +1446,51 @@ end
 -- the same kind `AddRow`/`AddColumn` already make forcing a fresh node's
 -- own `direction`, since adding a child inherently needs somewhere to put it.
 
---- Appends a child as-is, returning its own component. Errors if `child`
---- already belongs to a different component, call `DetachComponent()`
---- on that one first to move it here. No-ops if `child` is already this
---- node's own, still returns a component.
---- @param child WaffleFlexNode
+--- Appends `node` as a child as-is, returning its own component. Errors
+--- if `node` already belongs to a different component, call
+--- `DetachComponent()` on that one first to move it here. No-ops if
+--- `node` is already this node's own, still returns a component.
+--- @param node WaffleFlexNode
 --- @return WaffleFlexComponent
-function _W.FlexComponent:AddChild(child)
-  if _W.Ownership:Claim(child, self.node) then
+function _W.FlexComponent:AddChild(node)
+  if _W.Ownership:Claim(node, self.node) then
     self.node.children = self.node.children or {}
-    table.insert(self.node.children, child)
+    table.insert(self.node.children, node)
     _W.DirtyRoots:Mark(self.node)
   end
-  return _W.FlexComponentFactory:New(child)
+  return _W.FlexComponentFactory:New(node)
 end
 
 --- Appends a new ROW child, returning it for further composition. Errors
---- if `child` already belongs to a different component, call
+--- if `node` already belongs to a different component, call
 --- `DetachComponent()` on that one first to move it here.
---- @param child? WaffleFlexNode
+--- @param node? WaffleFlexNode
 --- @return WaffleFlexComponent
-function _W.FlexComponent:AddRow(child)
-  child = child or {}
-  child.direction = "ROW"
-  if _W.Ownership:Claim(child, self.node) then
+function _W.FlexComponent:AddRow(node)
+  node = node or {}
+  node.direction = "ROW"
+  if _W.Ownership:Claim(node, self.node) then
     self.node.children = self.node.children or {}
-    table.insert(self.node.children, child)
+    table.insert(self.node.children, node)
     _W.DirtyRoots:Mark(self.node)
   end
-  return _W.FlexComponentFactory:New(child)
+  return _W.FlexComponentFactory:New(node)
 end
 
 --- Appends a new COLUMN child, returning it for further composition.
---- Errors if `child` already belongs to a different component, call
+--- Errors if `node` already belongs to a different component, call
 --- `DetachComponent()` on that one first to move it here.
---- @param child? WaffleFlexNode
+--- @param node? WaffleFlexNode
 --- @return WaffleFlexComponent
-function _W.FlexComponent:AddColumn(child)
-  child = child or {}
-  child.direction = "COLUMN"
-  if _W.Ownership:Claim(child, self.node) then
+function _W.FlexComponent:AddColumn(node)
+  node = node or {}
+  node.direction = "COLUMN"
+  if _W.Ownership:Claim(node, self.node) then
     self.node.children = self.node.children or {}
-    table.insert(self.node.children, child)
+    table.insert(self.node.children, node)
     _W.DirtyRoots:Mark(self.node)
   end
-  return _W.FlexComponentFactory:New(child)
+  return _W.FlexComponentFactory:New(node)
 end
 
 --- Grafts an already-composed `component` into this node's children,
