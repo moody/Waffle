@@ -100,6 +100,7 @@ do
 
   Waffle:Flex({
     frame = root,
+    --- @diagnostic disable-next-line: assign-type-mismatch
     direction = "row_reverse",
     width = 200,
     height = 50,
