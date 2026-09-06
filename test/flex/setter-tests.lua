@@ -740,10 +740,10 @@ do
   assert(container:IsDirty() == false)
 end
 
--- Test: a container-only setter (`SetGap`, `SetPadding` and its per-side
--- overrides, `SetAlign`, `SetJustify`, `SetWrap`) is absent from a leaf,
--- a leaf can never have children so it never gets one; every other
--- setter is shared by both.
+-- Test: every setter, including the ones that only matter once a node has
+-- children (`SetGap`, `SetPadding` and its per-side overrides, `SetAlign`,
+-- `SetJustify`, `SetWrap`), is available on any component, whether or not
+-- it currently has any children of its own.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -751,47 +751,44 @@ do
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a })
 
-  assert(leaf.SetGap == nil)
-  assert(leaf.SetPadding == nil)
-  assert(leaf.SetPaddingTop == nil)
-  assert(leaf.SetPaddingRight == nil)
-  assert(leaf.SetPaddingBottom == nil)
-  assert(leaf.SetPaddingLeft == nil)
-  assert(leaf.SetJustify == nil)
-  assert(leaf.SetAlign == nil)
-  assert(leaf.SetWrap == nil)
+  assert(leaf.SetGap ~= nil)
+  assert(leaf.SetPadding ~= nil)
+  assert(leaf.SetPaddingTop ~= nil)
+  assert(leaf.SetPaddingRight ~= nil)
+  assert(leaf.SetPaddingBottom ~= nil)
+  assert(leaf.SetPaddingLeft ~= nil)
+  assert(leaf.SetJustify ~= nil)
+  assert(leaf.SetAlign ~= nil)
+  assert(leaf.SetWrap ~= nil)
+  assert(leaf.SetLineGap ~= nil)
   assert(leaf.SetWidth ~= nil)
-  assert(container.SetWidth ~= nil)
   assert(leaf.SetHeight ~= nil)
-  assert(container.SetHeight ~= nil)
   assert(leaf.SetGrow ~= nil)
-  assert(container.SetGrow ~= nil)
+  assert(leaf.SetShrink ~= nil)
   assert(leaf.SetMinWidth ~= nil)
-  assert(container.SetMinWidth ~= nil)
   assert(leaf.SetMaxWidth ~= nil)
-  assert(container.SetMaxWidth ~= nil)
   assert(leaf.SetMinHeight ~= nil)
-  assert(container.SetMinHeight ~= nil)
   assert(leaf.SetMaxHeight ~= nil)
-  assert(container.SetMaxHeight ~= nil)
   assert(leaf.SetAlignSelf ~= nil)
-  assert(container.SetAlignSelf ~= nil)
   assert(leaf.SetMargin ~= nil)
-  assert(container.SetMargin ~= nil)
   assert(leaf.SetMarginTop ~= nil)
-  assert(container.SetMarginTop ~= nil)
   assert(leaf.SetMarginRight ~= nil)
-  assert(container.SetMarginRight ~= nil)
   assert(leaf.SetMarginBottom ~= nil)
-  assert(container.SetMarginBottom ~= nil)
   assert(leaf.SetMarginLeft ~= nil)
-  assert(container.SetMarginLeft ~= nil)
-  assert(container.SetJustify ~= nil)
-  assert(container.SetWrap ~= nil)
-  assert(container.SetPaddingTop ~= nil)
-  assert(container.SetPaddingRight ~= nil)
-  assert(container.SetPaddingBottom ~= nil)
-  assert(container.SetPaddingLeft ~= nil)
+  assert(leaf.SetOrder ~= nil)
+end
+
+-- Test: calling a children-oriented setter (`SetGap`) on a component with
+-- no children yet is a harmless no-op, it doesn't vivify `children`.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a })
+
+  leaf:SetGap(8)
+  assert(#leaf:GetChildren() == 0)
 end
 
 print("All assertions passed.")

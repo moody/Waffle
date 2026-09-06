@@ -35,7 +35,7 @@ do
 
   local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 200, height = 50 })
   local leaf = containerA:AddChild({ frame = leafFrame, width = 100 })
-  assert(containerA:RemoveChild(leaf))
+  assert(containerA:DetachComponent(leaf))
 
   local containerB = Waffle:Flex({ frame = rootBFrame, direction = "ROW", width = 300, height = 50 })
   containerB:AttachComponent(leaf)
