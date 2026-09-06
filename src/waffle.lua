@@ -157,44 +157,45 @@ function _W.DeclarationOrder:Unassign(child)
 end
 
 -- =============================================================================
--- NodeParent
+-- Ownership
 -- =============================================================================
 
---- Tracks each node's current parent, found by walking up live on every
---- call rather than caching one, so a moved node's wrapper is never
---- stale. Weak keys so an unreferenced node can still be garbage collected.
-_W.NodeParent = {
+--- Tracks each node's current owner. Weak keys so an unreferenced node
+--- can still be garbage collected.
+_W.Ownership = {
   byNode = setmetatable({}, { __mode = "k" })
 }
 
---- Claims `node` as a child of `parent`. Errors if it already belongs to
+--- Claims `node` as a child of `owner`. Errors if it already belongs to
 --- a different one, call `RemoveChild()` on that one first to move it.
---- No-ops if `parent` already owns it.
+--- No-ops if `owner` already owns it.
 --- @param node WaffleFlexNode
---- @param parent WaffleFlexNode
---- @return boolean claimed `true` if `node` wasn't already `parent`'s, `false` if this was a no-op.
-function _W.NodeParent:Claim(node, parent)
-  local currentParent = self.byNode[node]
-  assert(not currentParent or currentParent == parent,
+--- @param owner WaffleFlexNode
+--- @return boolean claimed `true` if `node` wasn't already `owner`'s, `false` if this was a no-op.
+function _W.Ownership:Claim(node, owner)
+  local currentOwner = self.byNode[node]
+  assert(not currentOwner or currentOwner == owner,
     "Waffle: child already belongs to another container, call RemoveChild() on it first to move it")
-  self.byNode[node] = parent
-  return currentParent == nil
+  self.byNode[node] = owner
+  return currentOwner == nil
 end
 
---- Releases `node`, so it can be claimed by another parent.
+--- Releases `node`, so it can be claimed by another owner.
 --- @param node WaffleFlexNode
-function _W.NodeParent:Release(node)
+function _W.Ownership:Release(node)
   self.byNode[node] = nil
 end
 
---- Walks up to the tree's actual root, the node with no parent of its own.
+--- Walks up to the tree's actual root, the node with no owner of its
+--- own. Found fresh on every call rather than cached, so a moved node's
+--- wrapper is never stale.
 --- @param node WaffleFlexNode
 --- @return WaffleFlexNode
-function _W.NodeParent:FindRoot(node)
-  local parent = self.byNode[node]
-  while parent do
-    node = parent
-    parent = self.byNode[node]
+function _W.Ownership:FindRoot(node)
+  local owner = self.byNode[node]
+  while owner do
+    node = owner
+    owner = self.byNode[node]
   end
   return node
 end
@@ -210,7 +211,7 @@ _W.DirtyRoots = { roots = setmetatable({}, { __mode = "k" }) }
 --- Marks the tree containing `node` dirty, wherever its current root is.
 --- @param node WaffleFlexNode
 function _W.DirtyRoots:Mark(node)
-  self.roots[_W.NodeParent:FindRoot(node)] = true
+  self.roots[_W.Ownership:FindRoot(node)] = true
 end
 
 --- Whether `root` (already resolved by the caller) has changed since its
@@ -1063,7 +1064,7 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory)
   local children = _W.Scratch:Get()
   for i, child in ipairs(node.children) do
     _W.DeclarationOrder:Assign(child)
-    _W.NodeParent:Claim(child, node)
+    _W.Ownership:Claim(child, node)
     children[i] = child
   end
 
@@ -1158,7 +1159,7 @@ end
 
 --- Recursively searches `node` and its descendants, depth-first, for one
 --- whose `key` matches, returning the first found. Records itself as the
---- current parent of every node it visits along the way.
+--- current owner of every node it visits along the way.
 --- @param node WaffleFlexNode
 --- @param key string
 --- @return WaffleFlexNode?
@@ -1168,7 +1169,7 @@ function _W.FlexComponentFactory:FindNodeByKey(node, key)
   end
   if node.children then
     for _, child in ipairs(node.children) do
-      _W.NodeParent:Claim(child, node)
+      _W.Ownership:Claim(child, node)
       local found = self:FindNodeByKey(child, key)
       if found then
         return found
@@ -1182,7 +1183,7 @@ end
 --- @param key string
 --- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 function _W.FlexComponent:GetChild(key)
-  local root = _W.NodeParent:FindRoot(self.node)
+  local root = _W.Ownership:FindRoot(self.node)
   local found = _W.FlexComponentFactory:FindNodeByKey(root, key)
   assert(found, "Waffle: no child registered under key '" .. key .. "'")
   if found.children then
@@ -1208,7 +1209,7 @@ end
 --- Returns `true` if this node's tree has changed since its last `Layout()` call.
 --- @return boolean
 function _W.FlexComponent:IsDirty()
-  return _W.DirtyRoots:IsDirty(_W.NodeParent:FindRoot(self.node))
+  return _W.DirtyRoots:IsDirty(_W.Ownership:FindRoot(self.node))
 end
 
 --- Removes this node from the layout flow entirely, its siblings reflow
@@ -1384,7 +1385,7 @@ end
 --- actual current root. No-ops unless something changed since the last
 --- call, cheap to call from e.g. an `OnUpdate` handler every frame.
 function _W.FlexComponent:Layout()
-  local root = _W.NodeParent:FindRoot(self.node)
+  local root = _W.Ownership:FindRoot(self.node)
   if _W.DirtyRoots:IsDirty(root) then
     _W.LayoutCache.currentPass = _W.LayoutCache.currentPass + 1
 
@@ -1463,7 +1464,7 @@ end
 --- @param child WaffleFlexNode
 --- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 function _W.FlexComponentContainer:AddChild(child)
-  if _W.NodeParent:Claim(child, self.node) then
+  if _W.Ownership:Claim(child, self.node) then
     table.insert(self.node.children, child)
     _W.DirtyRoots:Mark(self.node)
   end
@@ -1482,7 +1483,7 @@ end
 function _W.FlexComponentContainer:AddRow(child)
   child = child or {}
   child.direction = "ROW"
-  if _W.NodeParent:Claim(child, self.node) then
+  if _W.Ownership:Claim(child, self.node) then
     table.insert(self.node.children, child)
     _W.DirtyRoots:Mark(self.node)
   end
@@ -1497,7 +1498,7 @@ end
 function _W.FlexComponentContainer:AddColumn(child)
   child = child or {}
   child.direction = "COLUMN"
-  if _W.NodeParent:Claim(child, self.node) then
+  if _W.Ownership:Claim(child, self.node) then
     table.insert(self.node.children, child)
     _W.DirtyRoots:Mark(self.node)
   end
@@ -1510,7 +1511,7 @@ end
 function _W.FlexComponentContainer:GetChildren()
   local children = {}
   for i, node in ipairs(self.node.children) do
-    _W.NodeParent:Claim(node, self.node)
+    _W.Ownership:Claim(node, self.node)
     if node.children then
       children[i] = _W.FlexComponentFactory:NewContainer(node)
     else
@@ -1529,7 +1530,7 @@ function _W.FlexComponentContainer:RemoveChild(child)
     if node == child.node then
       table.remove(self.node.children, i)
       _W.DeclarationOrder:Unassign(node)
-      _W.NodeParent:Release(node)
+      _W.Ownership:Release(node)
       _W.DirtyRoots:Mark(self.node)
       return true
     end
@@ -1543,7 +1544,7 @@ function _W.FlexComponentContainer:Clear()
   if #self.node.children == 0 then return end
   for _, node in ipairs(self.node.children) do
     _W.DeclarationOrder:Unassign(node)
-    _W.NodeParent:Release(node)
+    _W.Ownership:Release(node)
   end
   self.node.children = {}
   _W.DirtyRoots:Mark(self.node)
