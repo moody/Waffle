@@ -19,9 +19,9 @@ do
       { frame = Mocks:CreateFrame(), height = 50 }, -- e.g. a title bar, unused here
       {
         frame = middle,
-        onLayout = function(frame, width, height)
+        onLayout = function(component, width, height)
           Waffle:Flex({
-            frame = frame,
+            frame = component:GetFrame(),
             direction = "ROW",
             width = width,
             height = height,
