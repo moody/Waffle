@@ -1,4 +1,4 @@
-# Waffle 🧇
+# Waffle 🧇 (0.6.0)
 
 **W**oW **A**ddon **F**lexible **F**rame **L**ayout **E**ngine
 
