@@ -4,22 +4,21 @@
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `AddChild` returns a container wrapper, not a leaf, when the given
--- node already has its own `children`, usable for further composition.
+-- Test: `AddChild`'s returned component is fully usable for further
+-- composition, even when the given node already had its own `children`.
 do
   local root = Mocks:CreateFrame()
   local middle = Mocks:CreateFrame()
   local nested = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local wrapper = container:AddChild({
+  local component = container:AddChild({
     frame = middle,
     children = { { frame = nested } },
   })
 
-  assert(wrapper:IsContainer())
-  wrapper:AddChild({ frame = Mocks:CreateFrame() }) -- further composition works
-  assert(#wrapper:GetChildren() == 2)
+  component:AddChild({ frame = Mocks:CreateFrame() }) -- further composition works
+  assert(#component:GetChildren() == 2)
 end
 
 -- Test: adding the same node to a second container without removing it
@@ -95,7 +94,7 @@ do
   containerA:Layout()
   assert(childFrame._test.point.parent == rootA)
 
-  assert(containerA:RemoveChild(leafA))
+  assert(containerA:DetachComponent(leafA))
   local leafB = containerB:AddChild({ frame = childFrame, width = 100 })
   containerB:Layout()
 
@@ -105,7 +104,7 @@ end
 
 -- Test: a node that's the actual root of its own (never laid out) tree was
 -- never claimed by any container, so it can be grafted straight into a
--- different tree as a child, no `RemoveChild()` dance required.
+-- different tree as a child, no `DetachComponent()` dance required.
 do
   local rootAFrame = Mocks:CreateFrame()
   local rootBFrame = Mocks:CreateFrame()
@@ -119,9 +118,7 @@ do
   Waffle:Flex(rootBOptions) -- rootBOptions is the root of its own tree, never laid out
 
   local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 200, height = 50 })
-  local wrapper = containerA:AddChild(rootBOptions) -- grafted in as a child, no error
-
-  assert(wrapper:IsContainer())
+  containerA:AddChild(rootBOptions) -- grafted in as a child, no error
   containerA:Layout()
 
   assert(rootBFrame._test.point.parent == rootAFrame)
@@ -183,16 +180,16 @@ do
   assert(nested._test.width == 200) -- rowFrame's own sole child, flexes to fill it
 end
 
--- Test: once grafted into a different tree, the *original* root wrapper is
--- no longer stale, mutating or calling `Layout()` through it reaches the
--- new tree correctly instead of a conflicting, independent one.
+-- Test: once grafted into a different tree, the *original* root component
+-- is no longer stale, mutating or calling `Layout()` through it reaches
+-- the new tree correctly instead of a conflicting, independent one.
 do
   local rootAFrame = Mocks:CreateFrame()
   local rootBFrame = Mocks:CreateFrame()
   local siblingFrame = Mocks:CreateFrame()
 
   local rootBOptions = { frame = rootBFrame, direction = "ROW" }
-  local staleRootB = Waffle:Flex(rootBOptions) -- tree B's own root wrapper
+  local staleRootB = Waffle:Flex(rootBOptions) -- tree B's own root component
 
   local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 300, height = 50 })
   containerA:AddChild({ frame = siblingFrame, width = 100 })
@@ -203,7 +200,7 @@ do
   assert(rootBFrame._test.width == 200) -- 300 - 100, flexes to fill the rest
   assert(containerA:IsDirty() == false)
 
-  staleRootB:SetWidth(50) -- mutating through the stale wrapper still reaches tree A
+  staleRootB:SetWidth(50) -- mutating through the stale component still reaches tree A
   assert(containerA:IsDirty() == true)
 
   containerA:Layout()

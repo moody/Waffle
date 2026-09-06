@@ -4,8 +4,8 @@
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `RemoveChild` detaches a leaf entirely, siblings reflow into the
--- freed space.
+-- Test: `DetachComponent` detaches a leaf entirely, siblings reflow into
+-- the freed space.
 do
   local root = Mocks:CreateFrame()
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
@@ -18,15 +18,15 @@ do
 
   assert(a._test.point.offsetX == 0 and b._test.point.offsetX == 100 and c._test.point.offsetX == 200)
 
-  container:RemoveChild(leafA)
+  container:DetachComponent(leafA)
   container:Layout()
 
   assert(b._test.point.offsetX == 0)
   assert(c._test.point.offsetX == 100)
 end
 
--- Test: `RemoveChild` doesn't touch the removed child's own frame, only
--- Waffle's tracking of it, the caller owns what happens to it afterward.
+-- Test: `DetachComponent` doesn't touch the removed child's own frame,
+-- only Waffle's tracking of it, the caller owns what happens to it afterward.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -36,13 +36,13 @@ do
   container:Layout()
 
   local hideCallsBefore = a._test.hideCalls
-  container:RemoveChild(leaf)
+  container:DetachComponent(leaf)
   container:Layout()
 
   assert(a._test.hideCalls == hideCallsBefore)
 end
 
--- Test: removing a container detaches its whole subtree, nested children
+-- Test: detaching a container detaches its whole subtree, nested children
 -- stop being laid out too.
 do
   local root = Mocks:CreateFrame()
@@ -54,14 +54,14 @@ do
   container:Layout()
   assert(nested._test.width ~= nil)
 
-  container:RemoveChild(row)
+  container:DetachComponent(row)
   nested._test.width = nil
   container:Layout()
 
   assert(nested._test.width == nil)
 end
 
--- Test: a removed child's `key` no longer resolves via `GetChild`.
+-- Test: a detached child's `key` no longer resolves via `GetChild`.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -72,15 +72,15 @@ do
 
   assert(container:GetChild("sidebar").node.frame == a)
 
-  container:RemoveChild(leaf)
+  container:DetachComponent(leaf)
 
   local ok = pcall(function() container:GetChild("sidebar") end)
   assert(not ok)
 end
 
--- Test: `RemoveChild` returns `false` if `child` isn't actually a child of
--- this container, including calling it again on an already-removed child.
--- Returns `true` when it actually removed something.
+-- Test: `DetachComponent` returns `false` if `component` isn't actually a
+-- child of this container, including calling it again on an
+-- already-detached component. Returns `true` when it actually detached something.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -89,12 +89,12 @@ do
   local containerB = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = containerA:AddChild({ frame = a })
 
-  assert(containerB:RemoveChild(leaf) == false)
-  assert(containerA:RemoveChild(leaf) == true)
-  assert(containerA:RemoveChild(leaf) == false)
+  assert(containerB:DetachComponent(leaf) == false)
+  assert(containerA:DetachComponent(leaf) == true)
+  assert(containerA:DetachComponent(leaf) == false)
 end
 
--- Test: `RemoveChild` marks the tree dirty.
+-- Test: `DetachComponent` marks the tree dirty.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -104,15 +104,15 @@ do
   container:Layout()
   assert(container:IsDirty() == false)
 
-  container:RemoveChild(leaf)
+  container:DetachComponent(leaf)
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
 end
 
--- Test: a removed child added again later gets a fresh declaration order,
--- not its original one, so it tie-breaks after whatever's currently there,
--- not back in its old position.
+-- Test: a detached child added again later gets a fresh declaration
+-- order, not its original one, so it tie-breaks after whatever's
+-- currently there, not back in its old position.
 do
   local root = Mocks:CreateFrame()
   local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
@@ -123,16 +123,73 @@ do
   container:AddChild({ frame = c, width = 100 })
   container:Layout()
 
-  assert(b._test.point.offsetX == 100) -- b's old position, before removal
+  assert(b._test.point.offsetX == 100) -- b's old position, before detaching
 
   local bNode = leafB.node
-  container:RemoveChild(leafB)
+  container:DetachComponent(leafB)
   container:AddChild(bNode)
   container:Layout()
 
   assert(a._test.point.offsetX == 0)
   assert(c._test.point.offsetX == 100)
   assert(b._test.point.offsetX == 200)
+end
+
+-- Test: `Detach` removes a leaf from its current owner, siblings reflow
+-- into the freed space, same as `DetachComponent` called on that owner.
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a, width = 100 })
+  container:AddChild({ frame = b, width = 100 })
+  container:Layout()
+
+  assert(b._test.point.offsetX == 100)
+  assert(#container:GetChildren() == 2)
+
+  leaf:Detach()
+  container:Layout()
+
+  assert(b._test.point.offsetX == 0)
+  assert(#container:GetChildren() == 1)
+end
+
+-- Test: `Detach` returns the same component, usable immediately, whether
+-- or not it actually had an owner to release.
+do
+  local leafFrame = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = Mocks:CreateFrame(), direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = leafFrame })
+  local root = Waffle:Flex({ frame = Mocks:CreateFrame(), direction = "ROW", width = 200, height = 50 })
+
+  assert(leaf:Detach() == leaf)
+  assert(leaf:Detach() == leaf) -- already detached, still returns itself
+  assert(root:Detach() == root) -- never had an owner at all, same result
+end
+
+-- Test: `Detach` moves a component straight into a different tree in one
+-- step, no need to already hold its current owner.
+do
+  local rootAFrame, rootBFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
+  local sidebarFrame = Mocks:CreateFrame()
+
+  local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 200, height = 50 })
+  containerA:AddChild({ frame = sidebarFrame, key = "sidebar", width = 100 })
+  containerA:Layout()
+
+  assert(#containerA:GetChildren() == 1)
+  assert(sidebarFrame._test.point.parent == rootAFrame)
+
+  local containerB = Waffle:Flex({ frame = rootBFrame, direction = "ROW", width = 300, height = 50 })
+  containerB:AttachComponent(containerA:GetChild("sidebar"):Detach())
+  containerB:Layout()
+
+  assert(#containerA:GetChildren() == 0)
+  assert(#containerB:GetChildren() == 1)
+  assert(sidebarFrame._test.point.parent == rootBFrame)
 end
 
 -- Test: `Clear` removes every child at once, `Layout()` treats the

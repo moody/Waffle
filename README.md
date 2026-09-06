@@ -1,4 +1,4 @@
-# Waffle 🧇
+# Waffle 🧇 (0.6.0)
 
 **W**oW **A**ddon **F**lexible **F**rame **L**ayout **E**ngine
 
@@ -257,6 +257,45 @@ body:AddChild({ frame = content })
 root:Layout()
 ```
 
+**Attaching an existing component.** `AttachComponent` grafts an already-composed component, built independently with its own `Waffle:Flex()` call, into another container's children as-is. Its own direction, size, and structure carry over unchanged, unlike `AddRow`/`AddColumn`, which force a fresh node's direction. Useful for composing a widget's own tree separately, then joining it into a caller's tree once it's ready:
+
+```lua
+local sidebar = Waffle:Flex({ frame = sidebarFrame, direction = "COLUMN", width = 100, height = 300 })
+sidebar:AddChild({ frame = sidebarHeader, height = 40 })
+sidebar:AddChild({ frame = sidebarBody })
+
+local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
+root:AttachComponent(sidebar)
+root:AddChild({ frame = content })
+
+root:Layout()
+```
+
+**Detaching a specific child.** `DetachComponent` removes a specific child from this container, validating that it's actually attached here first: it only succeeds if `component` really is one of this container's own children, returning `false` instead of detaching it from wherever it actually is otherwise. Useful when an operation depends on that assumption being true, not just on getting the component out of the tree:
+
+```lua
+local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
+local sidebar = root:AddChild({ frame = sidebarFrame, width = 100 })
+root:AddChild({ frame = content })
+root:Layout()
+
+root:DetachComponent(sidebar) -- true, sidebar really is root's own child
+```
+
+**Detaching a component.** `Detach()` removes a component from its current owner, wherever that owner actually is, without needing to already hold it. Always returns the same component, whether or not it actually had an owner to release, so it composes directly into a single call that moves it straight into a different tree:
+
+```lua
+local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
+root:AddChild({ frame = sidebarFrame, key = "sidebar", width = 100 })
+root:AddChild({ frame = content })
+root:Layout()
+
+-- Later, move the sidebar into a different tree entirely:
+local otherRoot = Waffle:Flex({ frame = otherFrame, width = 400, height = 300, direction = "ROW" })
+otherRoot:AttachComponent(root:GetChild("sidebar"):Detach())
+otherRoot:Layout()
+```
+
 **Frame factory.** Give a node a `defaultFrameFactory` and any descendant below it that omits both `frame` and its own `frameFactory` gets one automatically, reaching every level of nesting below that point. Handy when most of a layout is just plain positioning boxes, so you don't have to `CreateFrame` each one by hand:
 
 ```lua
@@ -290,15 +329,19 @@ body:AddChild({
 })
 ```
 
-**Reacting to resolved size.** `onLayout` fires with a child's own frame and its resolved width/height, after its `children` (if any) are laid out. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync: WoW doesn't resize it to fit the visible area on its own, so its width needs to be set explicitly or wrapped content overflows it:
+**Reacting to resolved size.** `onLayout` fires with this node's own component, already wrapped, and its resolved width/height, after its `children` (if any) are laid out. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own) or reacting to what was just resolved by adjusting a sibling, since the component works the same as any other and reaches anywhere else in the tree with `GetChild`:
 
 ```lua
 root:AddChild({
   frame = scrollFrame,
-  onLayout = function(frame, width, height)
+  onLayout = function(component, width, height)
+    local frame = component:GetFrame()
     frame.scrollChild:SetWidth(width)
+    local slider = component:GetChild("slider")
+    if frame.scrollChild:GetHeight() > height then slider:Show() else slider:Hide() end
   end
 })
+root:AddChild({ frame = sliderFrame, key = "slider", width = 20 })
 ```
 
 `onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once.
@@ -337,40 +380,43 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`marginTop`** / **`marginRight`** / **`marginBottom`** / **`marginLeft`** — Overrides `margin` for that one side. Falls back to `margin` for any side not given. Can also be toggled after the fact with `SetMarginTop()`/`SetMarginRight()`/`SetMarginBottom()`/`SetMarginLeft()`.
 - **`width`** — This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it from this node's own children instead: a sum of their own `width` (plus `gap`/`padding`) along this node's own main axis (`direction` is `ROW`), or a max of them (plus `padding`) along its cross axis; every visible child needs its own number or `"AUTO"`, a flexible child errors. A percentage string (`"50%"`) sizes it relative to the parent's own width instead, erroring without one already resolved (the root, or a parent whose own width is itself still being computed from `"AUTO"`). Can also be toggled after the fact with `SetWidth()`.
 - **`height`** — This node's own physical height, always vertical. Same as `width` in every other respect, `"AUTO"` sums along the main axis when `direction` is `COLUMN`, maxes along the cross axis otherwise, a percentage sizes it relative to the parent's own height. Can also be toggled after the fact with `SetHeight()`.
-- **`onLayout`** — Called with this node's frame and resolved width/height, after its `children` (if any) are laid out. Re-fires on every `Layout()` call, keep it idempotent.
+- **`onLayout`** — Called with this node's own component and resolved width/height, after its `children` (if any) are laid out. Re-fires on every `Layout()` call, keep it idempotent.
 - **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node; even the tree's actual root needs its own `frame`/`frameFactory`, nothing above it to inherit a fallback from.
 
-### Container
+### Component
 
-- **`Container:AddChild(child)`** — Appends a child as-is, returning its wrapper: a container if `child` already has its own `children`, a leaf otherwise. Errors if `child` already belongs to a different container, call `RemoveChild()` on that one first to move it here. No-ops if `child` is already this container's own.
-- **`Container:AddRow(child?)`** / **`Container:AddColumn(child?)`** — Appends a new ROW/COLUMN container as a child, returning a new container scoped to it. Errors if `child` already belongs to a different container, call `RemoveChild()` on that one first to move it here. No-ops if `child` is already this container's own.
-- **`Container:GetChildren()`** — Returns every one of this container's children, wrapped, in declaration order. Container-only. Doesn't recurse into grandchildren.
-- **`Container:RemoveChild(child)`** — Removes `child` from this container's children entirely, detaching it (and its own children, if it's itself a container) from the tree rather than excluding it from layout the way `Hide()` does. Doesn't touch `child`'s own frame. Container-only. Returns `true` if `child` was actually found and removed.
-- **`Container:Clear()`** — Removes every child from this container, same as calling `RemoveChild` on each one. Container-only. No-ops if already empty.
-- **`Container:Layout()`** — Runs the layout for the tree containing this node, starting from its actual current root. Works from any container or leaf, not just the root container. No-ops unless something changed since the last call.
-- **`Container:IsDirty()`** — Returns `true` if this node's tree has changed since its last `Layout()` call. Works from a container or a leaf.
-- **`Container:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Works from the root or any nested container/leaf. Errors if no child was registered under `key`.
-- **`Container:GetFrame()`** — Returns this node's frame. Works from a container or a leaf. `nil` if not resolved yet, e.g. a `frameFactory` not yet laid out.
-- **`Container:IsContainer()`** — Returns `true` if this node is a container. Works from a container or a leaf.
-- **`Container:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space, and hides its own frame. Its position in the tree is preserved, `Show()` brings it back, no re-inserting needed. Works from a container or a leaf. No-ops if already hidden.
-- **`Container:Show()`** — Reverses `Hide()`. Works from a container or a leaf. No-ops if not currently hidden.
-- **`Container:SetWidth(width?)`** — Sets this node's own physical width. Works from a container or a leaf. Pass `nil` to let it flex/stretch instead (whichever applies), `"AUTO"` to compute it from this node's own children (a sum along its main axis, a max along its cross axis), or a percentage string (`"50%"`) to size it relative to the parent. No-ops if already that value.
-- **`Container:SetHeight(height?)`** — Sets this node's own physical height. Same as `SetWidth()` in every other respect, the vertical axis instead.
-- **`Container:SetGap(gap?)`** — Sets the space between this container's children. Container-only. No-ops if already that gap.
-- **`Container:SetPadding(padding?)`** — Sets the space between this container's edge and its children, on all four sides. Container-only. No-ops if already that padding.
-- **`Container:SetPaddingTop(paddingTop?)`** / **`Container:SetPaddingRight(paddingRight?)`** / **`Container:SetPaddingBottom(paddingBottom?)`** / **`Container:SetPaddingLeft(paddingLeft?)`** — Overrides `SetPadding()` for one side. Container-only. Pass `nil` to revert to it. No-ops if already that value.
-- **`Container:SetAlign(align?)`** — Sets how this container aligns its own children along the cross axis by default. Container-only. Pass `nil` to reset to the default (`"STRETCH"`). No-ops if already that alignment.
-- **`Container:SetAlignSelf(alignSelf?)`** — Sets how this node aligns itself within its parent along the cross axis, overriding the parent's own `align`. Works on any container or leaf. Pass `nil` to go back to inheriting it. No-ops if already that alignment.
-- **`Container:SetGrow(grow?)`** — Sets this node's own share of its parent's leftover main-axis space. Works on any container or leaf. Pass `nil` to reset to the default (`1`). No-ops if already that value.
-- **`Container:SetShrink(shrink?)`** — Sets this node's own share of its parent's main-axis deficit. Works on any container or leaf. Pass `nil` to reset to the default (`1`). No-ops if already that value.
-- **`Container:SetMinWidth(minWidth?)`** / **`Container:SetMaxWidth(maxWidth?)`** — Sets a floor/ceiling on this node's own `width`. Works on any container or leaf. Pass `nil` to remove it. No-ops if already that value.
-- **`Container:SetMinHeight(minHeight?)`** / **`Container:SetMaxHeight(maxHeight?)`** — Same as `SetMinWidth()`/`SetMaxWidth()`, for `height`.
-- **`Container:SetJustify(justify?)`** — Sets how this container distributes leftover main-axis space among its own children. Container-only. Pass `nil` to reset to the default (`"START"`). No-ops if already that value.
-- **`Container:SetWrap(wrap?)`** — Sets whether this container's overflowing children wrap onto a new line. Container-only. Pass `nil` to reset to the default (`false`). No-ops if already that value.
-- **`Container:SetLineGap(lineGap?)`** — Sets the space between this container's own wrapped lines, instead of `SetGap()`. Container-only. Pass `nil` to fall back to `SetGap()`'s own value. No-ops if already that value.
-- **`Container:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that order.
-- **`Container:SetMargin(margin?)`** — Sets the space around this node itself, on all four sides. Works on any container or leaf. Pass `nil` to reset to the default (`0`). No-ops if already that value.
-- **`Container:SetMarginTop(marginTop?)`** / **`Container:SetMarginRight(marginRight?)`** / **`Container:SetMarginBottom(marginBottom?)`** / **`Container:SetMarginLeft(marginLeft?)`** — Overrides `SetMargin()` for one side. Works on any container or leaf. Pass `nil` to revert to it. No-ops if already that value.
+Every component, whether returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `AddColumn`, `AttachComponent`, `Detach`, `GetChild`, or `GetChildren`, shares the same shape, `WaffleFlexComponent`. Whether a node has children is a fact about it, not a fixed type, so every method below works the same regardless of whether the node it's called on currently has any.
+
+- **`Component:AddChild(node)`** — Appends `node` as a child as-is, returning its own component. Errors if `node` already belongs to a different component, call `DetachComponent()` on that one first to move it here. No-ops if `node` is already this node's own.
+- **`Component:AddRow(node?)`** / **`Component:AddColumn(node?)`** — Appends a new ROW/COLUMN child, returning a new component scoped to it. Errors if `node` already belongs to a different component, call `DetachComponent()` on that one first to move it here. No-ops if `node` is already this node's own.
+- **`Component:AttachComponent(component)`** — Grafts an already-composed component into this node's children, as-is: its own direction, size, and structure are unchanged, unlike `AddRow`/`AddColumn`. Errors if `component` already belongs to a different one, call `DetachComponent()` on that one first to move it here. No-ops if `component` is already this node's own.
+- **`Component:DetachComponent(component)`** — Removes `component` from this node's own children entirely, detaching it (and its own children, if it has any) from the tree rather than excluding it from layout the way `Hide()` does. Doesn't touch `component`'s own frame. Returns `true` if `component` was actually found and detached.
+- **`Component:Detach()`** — Detaches this component from its current owner, if it has one, the same as calling `DetachComponent()` on that owner. Always returns itself, whether or not it actually had an owner to release.
+- **`Component:GetChildren()`** — Returns every one of this node's own children, wrapped, in declaration order. Doesn't recurse into grandchildren. Empty if it has none.
+- **`Component:Clear()`** — Removes every child from this node, same as calling `DetachComponent` on each one. No-ops if already empty.
+- **`Component:Layout()`** — Runs the layout for the tree containing this node, starting from its actual current root. Works from any node in the tree, not just the root. No-ops unless something changed since the last call.
+- **`Component:IsDirty()`** — Returns `true` if this node's tree has changed since its last `Layout()` call.
+- **`Component:GetChild(key)`** — Looks up a child anywhere in the tree by the `key` it was given. Errors if no child was registered under `key`.
+- **`Component:GetFrame()`** — Returns this node's frame. `nil` if not resolved yet, e.g. a `frameFactory` not yet laid out.
+- **`Component:Hide()`** — Takes this node out of the layout flow entirely, its siblings reflow to fill the space, and hides its own frame. Its position in the tree is preserved, `Show()` brings it back, no re-inserting needed. No-ops if already hidden.
+- **`Component:Show()`** — Reverses `Hide()`. No-ops if not currently hidden.
+- **`Component:SetWidth(width?)`** — Sets this node's own physical width. Pass `nil` to let it flex/stretch instead (whichever applies), `"AUTO"` to compute it from this node's own children (a sum along its main axis, a max along its cross axis), or a percentage string (`"50%"`) to size it relative to the parent. No-ops if already that value.
+- **`Component:SetHeight(height?)`** — Sets this node's own physical height. Same as `SetWidth()` in every other respect, the vertical axis instead.
+- **`Component:SetGap(gap?)`** — Sets the space between this node's own children. No-ops if already that gap.
+- **`Component:SetPadding(padding?)`** — Sets the space between this node's edge and its own children, on all four sides. No-ops if already that padding.
+- **`Component:SetPaddingTop(paddingTop?)`** / **`Component:SetPaddingRight(paddingRight?)`** / **`Component:SetPaddingBottom(paddingBottom?)`** / **`Component:SetPaddingLeft(paddingLeft?)`** — Overrides `SetPadding()` for one side. Pass `nil` to revert to it. No-ops if already that value.
+- **`Component:SetAlign(align?)`** — Sets how this node aligns its own children along the cross axis by default. Pass `nil` to reset to the default (`"STRETCH"`). No-ops if already that alignment.
+- **`Component:SetAlignSelf(alignSelf?)`** — Sets how this node aligns itself within its parent along the cross axis, overriding the parent's own `align`. Pass `nil` to go back to inheriting it. No-ops if already that alignment.
+- **`Component:SetGrow(grow?)`** — Sets this node's own share of its parent's leftover main-axis space. Pass `nil` to reset to the default (`1`). No-ops if already that value.
+- **`Component:SetShrink(shrink?)`** — Sets this node's own share of its parent's main-axis deficit. Pass `nil` to reset to the default (`1`). No-ops if already that value.
+- **`Component:SetMinWidth(minWidth?)`** / **`Component:SetMaxWidth(maxWidth?)`** — Sets a floor/ceiling on this node's own `width`. Pass `nil` to remove it. No-ops if already that value.
+- **`Component:SetMinHeight(minHeight?)`** / **`Component:SetMaxHeight(maxHeight?)`** — Same as `SetMinWidth()`/`SetMaxWidth()`, for `height`.
+- **`Component:SetJustify(justify?)`** — Sets how this node distributes leftover main-axis space among its own children. Pass `nil` to reset to the default (`"START"`). No-ops if already that value.
+- **`Component:SetWrap(wrap?)`** — Sets whether this node's overflowing children wrap onto a new line. Pass `nil` to reset to the default (`false`). No-ops if already that value.
+- **`Component:SetLineGap(lineGap?)`** — Sets the space between this node's own wrapped lines, instead of `SetGap()`. Pass `nil` to fall back to `SetGap()`'s own value. No-ops if already that value.
+- **`Component:SetOrder(order?)`** — Sets this node's visual position among its siblings, independent of declaration order. Pass `nil` to reset to the default (`0`). No-ops if already that order.
+- **`Component:SetMargin(margin?)`** — Sets the space around this node itself, on all four sides. Pass `nil` to reset to the default (`0`). No-ops if already that value.
+- **`Component:SetMarginTop(marginTop?)`** / **`Component:SetMarginRight(marginRight?)`** / **`Component:SetMarginBottom(marginBottom?)`** / **`Component:SetMarginLeft(marginLeft?)`** — Overrides `SetMargin()` for one side. Pass `nil` to revert to it. No-ops if already that value.
 
 ## Testing
 

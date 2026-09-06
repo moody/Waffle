@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible, undefined-field
+--- @diagnostic disable: invisible
 
 --- @type Waffle
 local Waffle = require("test/waffle")
@@ -18,8 +18,8 @@ do
   assert(b._test.width == 150 and b._test.point.offsetX == 50) -- 200 - 50
 end
 
--- Test: `AddChild` returns the leaf just added, not the same container, a
--- leaf cannot add children of its own.
+-- Test: `AddChild` returns a component for the child just added, not the
+-- same container it was called on.
 do
   local parent = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -29,7 +29,6 @@ do
 
   assert(leaf ~= container)
   assert(leaf.node.frame == a)
-  assert(leaf.AddChild == nil)
 end
 
 -- Test: children from `options.children` and children added via `AddChild`

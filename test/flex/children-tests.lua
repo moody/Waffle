@@ -71,27 +71,30 @@ do
   container:AddChild({ frame = b })
   assert(#container:GetChildren() == 2)
 
-  container:RemoveChild(leafA)
+  container:DetachComponent(leafA)
   assert(#container:GetChildren() == 1)
   assert(container:GetChildren()[1].node.frame == b)
 end
 
--- Test: `IsContainer` returns `false` for a leaf and `true` for a
--- container, whether the wrapper came from `AddChild`/`AddRow` directly
--- or from `GetChildren()`.
+-- Test: `DetachComponent` and `Clear` on a component that never had any
+-- children at all don't error, same as on one that's merely empty.
 do
   local root = Mocks:CreateFrame()
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
 
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
-  local leaf = container:AddChild({ frame = Mocks:CreateFrame() })
-  local row = container:AddRow({ frame = Mocks:CreateFrame() })
+  assert(container:DetachComponent(container) == false)
+  container:Clear() -- no-ops, doesn't error
+end
 
-  assert(leaf:IsContainer() == false)
-  assert(row:IsContainer() == true)
+-- Test: `Layout()` on a root that never had any children at all resolves
+-- its own frame without erroring.
+do
+  local root = Mocks:CreateFrame()
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
 
-  local children = container:GetChildren()
-  assert(children[1]:IsContainer() == false)
-  assert(children[2]:IsContainer() == true)
+  container:Layout()
+
+  assert(root._test.width == 200 and root._test.height == 50)
 end
 
 print("All assertions passed.")

@@ -2,8 +2,9 @@
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `onLayout` receives its own frame plus the resolved width/height
--- for a fixed ROW child, after sizing/positioning has already run.
+-- Test: `onLayout` receives this node's own component plus the resolved
+-- width/height for a fixed ROW child, after sizing/positioning has
+-- already run. The component's own frame matches the node's real frame.
 do
   local parent = Mocks:CreateFrame()
   local child = Mocks:CreateFrame()
@@ -18,9 +19,9 @@ do
       {
         frame = child,
         width = 120,
-        onLayout = function(frame, width, height)
+        onLayout = function(component, width, height)
           received = {
-            frame = frame,
+            frame = component:GetFrame(),
             width = width,
             height = height
           }
@@ -50,7 +51,7 @@ do
       { frame = fixed, width = 100 },
       {
         frame = flex,
-        onLayout = function(frame, width, height)
+        onLayout = function(component, width, height)
           received = { width = width, height = height }
         end
       },
@@ -76,7 +77,7 @@ do
       {
         frame = child,
         height = 40,
-        onLayout = function(frame, width, height)
+        onLayout = function(component, width, height)
           received = { width = width, height = height }
         end
       },
@@ -140,6 +141,52 @@ do
   }):Layout()
 
   assert(nestedChildWidthDuringOnLayout == 200)
+end
+
+-- Test: the component `onLayout` receives is fully usable, not just for
+-- reading its own frame: it can reach a keyed sibling via `GetChild`,
+-- without the caller having captured a wrapper up front.
+do
+  local parent = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+  local siblingFrameSeen
+
+  Waffle:Flex({
+    frame = parent,
+    direction = "ROW",
+    width = 300,
+    height = 50,
+    children = {
+      {
+        frame = a,
+        width = 100,
+        onLayout = function(component)
+          siblingFrameSeen = component:GetChild("b"):GetFrame() == b
+        end
+      },
+      { frame = b, key = "b", width = 200 },
+    }
+  }):Layout()
+
+  assert(siblingFrameSeen)
+end
+
+-- Test: the root's own `onLayout` receives a component too, usable the
+-- same way as any other node's.
+do
+  local root = Mocks:CreateFrame()
+  local receivedFrame
+
+  local container = Waffle:Flex({
+    frame = root,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    onLayout = function(component) receivedFrame = component:GetFrame() end
+  })
+  container:Layout()
+
+  assert(receivedFrame == root)
 end
 
 print("All assertions passed.")

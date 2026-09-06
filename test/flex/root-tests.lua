@@ -80,9 +80,9 @@ do
     frame = root,
     width = 200,
     height = 50,
-    onLayout = function(frame, width, height)
+    onLayout = function(component, width, height)
       rootLayoutCalls = rootLayoutCalls + 1
-      assert(frame == root and width == 200 and height == 50)
+      assert(component:GetFrame() == root and width == 200 and height == 50)
       childWidthDuringOnLayout = child._test.width
     end,
     children = {
