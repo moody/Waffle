@@ -155,12 +155,26 @@ end
 
 --- Which root nodes have changed since their last `Layout()` call. Weak
 --- keys, an unreferenced root can still be garbage collected.
-_W.DirtyRoots = setmetatable({}, { __mode = "k" })
+_W.DirtyRoots = { roots = setmetatable({}, { __mode = "k" }) }
 
 --- Marks the tree containing `node` dirty, wherever its current root is.
 --- @param node WaffleFlexNode
-function _W.markDirty(node)
-  _W.DirtyRoots[_W.NodeParent:FindRoot(node)] = true
+function _W.DirtyRoots:Mark(node)
+  self.roots[_W.NodeParent:FindRoot(node)] = true
+end
+
+--- Whether `root` (already resolved by the caller) has changed since its
+--- last `Layout()` call.
+--- @param root WaffleFlexNode
+--- @return boolean
+function _W.DirtyRoots:IsDirty(root)
+  return self.roots[root] == true
+end
+
+--- Clears `root`'s own dirty flag, once its `Layout()` call is done.
+--- @param root WaffleFlexNode
+function _W.DirtyRoots:Clear(root)
+  self.roots[root] = nil
 end
 
 -- =============================================================================
@@ -171,9 +185,9 @@ end
 _W.Cache = {}
 
 --- A wrap node's own children, already split into lines by
---- `computeAutoCrossSize`, for `flexLayout` to reuse instead of
---- splitting them again right after. Weak keys so an unreferenced node
---- can still be garbage collected.
+--- `_W.Sizing:ComputeAutoCrossSize`, for `_W.FlexLayout:Layout` to reuse
+--- instead of splitting them again right after. Weak keys so an
+--- unreferenced node can still be garbage collected.
 _W.Cache.WrapLines = setmetatable({}, { __mode = "k" })
 
 --- Bumped once per `Layout()` pass (see `FlexComponent:Layout()`).
@@ -228,7 +242,7 @@ function _W.Cache:GetWrapLines(node)
   return lines
 end
 
---- Records `node`'s wrap lines for `flexLayout` to take right after.
+--- Records `node`'s wrap lines for `_W.FlexLayout:Layout` to take right after.
 --- @param node WaffleFlexNode
 --- @param lines WaffleFlexNode[][]
 function _W.Cache:SetWrapLines(node, lines)
@@ -266,14 +280,18 @@ function _W.Scratch:Release(t)
 end
 
 -- =============================================================================
--- Sort Functions
+-- Sorting
 -- =============================================================================
+
+--- Functions for ordering siblings by `order`, ties broken by
+--- declaration order.
+_W.Sorting = {}
 
 --- Whether `childA` sorts before `childB`, by `order` then declaration order.
 --- @param childA WaffleFlexNode
 --- @param childB WaffleFlexNode
 --- @return boolean
-function _W.isFlexChildBefore(childA, childB)
+function _W.Sorting:IsFlexChildBefore(childA, childB)
   local orderA, orderB = childA.order or 0, childB.order or 0
   if orderA ~= orderB then
     return orderA < orderB
@@ -286,11 +304,11 @@ end
 --- order. Custom insertion sort, not `table.sort`: Lua's built-in sort
 --- isn't guaranteed stable, which would risk reshuffling those ties.
 --- @param children WaffleFlexNode[]
-function _W.sortFlexChildren(children)
+function _W.Sorting:SortFlexChildren(children)
   for i = 2, #children do
     local child = children[i]
     local j = i - 1
-    while j >= 1 and _W.isFlexChildBefore(child, children[j]) do
+    while j >= 1 and self:IsFlexChildBefore(child, children[j]) do
       children[j + 1] = children[j]
       j = j - 1
     end
@@ -299,21 +317,22 @@ function _W.sortFlexChildren(children)
 end
 
 -- =============================================================================
--- Array Helpers
+-- Utils
 -- =============================================================================
+
+--- Small, otherwise-homeless utilities: each is single-purpose and
+--- doesn't share enough with anything else in the file to earn its own
+--- category.
+_W.Utils = {}
 
 --- Reverses `t` in place.
 --- @param t table
-function _W.reverseArray(t)
+function _W.Utils:ReverseArray(t)
   local n = #t
   for i = 1, math.floor(n / 2) do
     t[i], t[n - i + 1] = t[n - i + 1], t[i]
   end
 end
-
--- =============================================================================
--- Frame Resolution
--- =============================================================================
 
 --- Resolves `node.frame` in place, creating it via `frameFactory`/
 --- `defaultFrameFactory` if neither was already given. `parent` is `nil`
@@ -322,7 +341,7 @@ end
 --- @param parent WaffleFrame?
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
 --- @return WaffleFrame
-function _W.resolveFrame(node, parent, defaultFrameFactory)
+function _W.Utils:ResolveFrame(node, parent, defaultFrameFactory)
   assert(not (node.frame and node.frameFactory),
     "Waffle: node cannot have both `frame` and `frameFactory`")
 
@@ -336,9 +355,25 @@ function _W.resolveFrame(node, parent, defaultFrameFactory)
   return node.frame
 end
 
+--- Parses `node`'s own `direction`, defaulting to `"ROW"`.
+--- @param node WaffleFlexNode
+--- @return boolean isRow `true` for `"ROW"`/`"ROW_REVERSE"`, `false` for `"COLUMN"`/`"COLUMN_REVERSE"`.
+--- @return boolean isReverse `true` for either `_REVERSE` variant.
+function _W.Utils:ParseFlexDirection(node)
+  local direction = (node.direction or "ROW"):upper()
+  return
+      (direction == "ROW" or direction == "ROW_REVERSE"),
+      (direction == "ROW_REVERSE" or direction == "COLUMN_REVERSE")
+end
+
 -- =============================================================================
--- Auto Sizing
+-- Sizing
 -- =============================================================================
+
+--- Functions for resolving a node's own size along an axis (fixed,
+--- percentage, or `"AUTO"`), and clamping a computed size to a node's
+--- own `min`/`max`.
+_W.Sizing = {}
 
 --- Resolves a shorthand-plus-per-side box value (`padding`, `margin`)
 --- for one physical axis: `<prefix>Left`/`<prefix>Right` for `"width"`,
@@ -349,7 +384,7 @@ end
 --- @param prefix "padding" | "margin"
 --- @return number leading
 --- @return number trailing
-function _W.resolveBoxAxis(node, axis, prefix)
+function _W.Sizing:ResolveBoxAxis(node, axis, prefix)
   local shorthand = node[prefix] or 0
   if axis == "width" then
     return node[prefix .. "Left"] or shorthand, node[prefix .. "Right"] or shorthand
@@ -363,12 +398,12 @@ end
 --- @param child WaffleFlexNode
 --- @param axis "width" | "height"
 --- @return integer?
-function _W.resolveOuterDimension(child, axis)
-  local size = _W.resolveDimension(child, axis)
+function _W.Sizing:ResolveOuterDimension(child, axis)
+  local size = self:ResolveDimension(child, axis)
   if not size then
     return nil
   end
-  local leading, trailing = _W.resolveBoxAxis(child, axis, "margin")
+  local leading, trailing = self:ResolveBoxAxis(child, axis, "margin")
   return size + leading + trailing
 end
 
@@ -379,7 +414,7 @@ end
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @return integer
-function _W.computeAutoSize(node, axis)
+function _W.Sizing:ComputeAutoSize(node, axis)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a size from")
 
   local gap = node.gap or 0
@@ -389,7 +424,7 @@ function _W.computeAutoSize(node, axis)
   for _, child in ipairs(node.children) do
     if not child.hidden then
       visibleCount = visibleCount + 1
-      local size = _W.resolveOuterDimension(child, axis)
+      local size = self:ResolveOuterDimension(child, axis)
       if not size then
         error("Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
           axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split", 0)
@@ -398,21 +433,21 @@ function _W.computeAutoSize(node, axis)
     end
   end
 
-  local leading, trailing = _W.resolveBoxAxis(node, axis, "padding")
+  local leading, trailing = self:ResolveBoxAxis(node, axis, "padding")
   return total + gap * math.max(visibleCount - 1, 0) + leading + trailing
 end
 
 --- The max of every one of `children`'s own outer sizes (own size plus
 --- `margin`) along `axis`. Errors if any is flexible, there's nothing of
---- its own to measure. The strict counterpart to `lineCrossSize`, which
+--- its own to measure. The strict counterpart to `LineCrossSize`, which
 --- falls back instead.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @return integer
-function _W.maxCrossSize(children, axis)
+function _W.Sizing:MaxCrossSize(children, axis)
   local max = 0
   for _, child in ipairs(children) do
-    local size = _W.resolveOuterDimension(child, axis)
+    local size = self:ResolveOuterDimension(child, axis)
     if not size then
       error("Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
         axis .. "`, a flexible child (`nil`) has nothing of its own to measure", 0)
@@ -423,7 +458,7 @@ function _W.maxCrossSize(children, axis)
 end
 
 --- Computes `node`'s size along its own cross axis (`axis`) as the sum
---- of every line's own `maxCrossSize`, plus `lineGap` between lines and
+--- of every line's own `MaxCrossSize`, plus `lineGap` between lines and
 --- padding on each end. One line, a flat max with no gap term, unless
 --- `node.wrap` is set and its own main axis resolves to a number to wrap
 --- against.
@@ -432,7 +467,7 @@ end
 --- @param parentWidth? integer Needed only if `node`'s own main axis is itself a percentage.
 --- @param parentHeight? integer Same as `parentWidth`, for `height`.
 --- @return integer
-function _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
+function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from")
 
   local gap = node.gap or 0
@@ -450,22 +485,23 @@ function _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
   local lines
   if node.wrap then
     local mainAxis = axis == "width" and "height" or "width"
-    local mainSize = _W.resolveDimension(node, mainAxis, parentWidth, parentHeight)
+    local mainSize = self:ResolveDimension(node, mainAxis, parentWidth, parentHeight)
     if mainSize then
-      -- Lines have to match what `flexLayout` will actually produce, which
-      -- sorts before splitting; without this, a child moved earlier by
-      -- `order` could land on a different line here than it really will.
-      _W.sortFlexChildren(visibleChildren)
+      -- Lines have to match what `_W.FlexLayout:Layout` will actually
+      -- produce, which sorts before splitting; without this, a child
+      -- moved earlier by `order` could land on a different line here
+      -- than it really will.
+      _W.Sorting:SortFlexChildren(visibleChildren)
 
       -- `axis` itself (`node`'s own cross axis) is what this whole
       -- function is computing, genuinely unresolvable yet; a child's own
       -- percentage on it errors, same as a child's own `"AUTO"` needing
       -- to sum along it would.
-      lines = _W.splitFlexLines(visibleChildren, mainAxis, mainSize, nil, gap)
+      lines = _W.FlexLayout:SplitFlexLines(visibleChildren, mainAxis, mainSize, nil, gap)
 
-      -- Cached for `node`'s own upcoming `flexLayout` call, which would
-      -- otherwise redo this same sort and split; released there instead
-      -- of here.
+      -- Cached for `node`'s own upcoming `_W.FlexLayout:Layout` call,
+      -- which would otherwise redo this same sort and split; released
+      -- there instead of here.
       _W.Cache:SetWrapLines(node, lines)
     end
   end
@@ -477,16 +513,16 @@ function _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
     total = 0
     lineCount = #lines
     for _, lineChildren in ipairs(lines) do
-      total = total + _W.maxCrossSize(lineChildren, axis)
+      total = total + self:MaxCrossSize(lineChildren, axis)
     end
   else
-    total = _W.maxCrossSize(visibleChildren, axis)
+    total = self:MaxCrossSize(visibleChildren, axis)
     lineCount = 1
   end
 
   _W.Scratch:Release(visibleChildren)
 
-  local leading, trailing = _W.resolveBoxAxis(node, axis, "padding")
+  local leading, trailing = self:ResolveBoxAxis(node, axis, "padding")
   return total + lineGap * math.max(lineCount - 1, 0) + leading + trailing
 end
 
@@ -498,26 +534,15 @@ end
 --- @param axis "width" | "height"
 --- @param fallback integer
 --- @return integer
-function _W.lineCrossSize(children, axis, fallback)
+function _W.Sizing:LineCrossSize(children, axis, fallback)
   local max
   for _, child in ipairs(children) do
-    local size = _W.resolveOuterDimension(child, axis)
+    local size = self:ResolveOuterDimension(child, axis)
     if size then
       max = max and math.max(max, size) or size
     end
   end
   return max or fallback
-end
-
---- Parses `node`'s own `direction`, defaulting to `"ROW"`.
---- @param node WaffleFlexNode
---- @return boolean isRow `true` for `"ROW"`/`"ROW_REVERSE"`, `false` for `"COLUMN"`/`"COLUMN_REVERSE"`.
---- @return boolean isReverse `true` for either `_REVERSE` variant.
-function _W.parseFlexDirection(node)
-  local direction = (node.direction or "ROW"):upper()
-  return
-      (direction == "ROW" or direction == "ROW_REVERSE"),
-      (direction == "ROW_REVERSE" or direction == "COLUMN_REVERSE")
 end
 
 --- Resolves `node`'s size along `axis`: the given number, a percentage of
@@ -531,7 +556,7 @@ end
 --- @param parentWidth? integer Needed only if `node`'s own `width` needs it: directly, if `width` is a percentage, or indirectly, if a cross-axis `"AUTO"` needs `width` resolved as a step first.
 --- @param parentHeight? integer Same as `parentWidth`, for `height`.
 --- @return integer?
-function _W.resolveDimension(node, axis, parentWidth, parentHeight)
+function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight)
   local value = node[axis]
 
   if type(value) ~= "string" then
@@ -541,11 +566,11 @@ function _W.resolveDimension(node, axis, parentWidth, parentHeight)
   if value == "AUTO" then
     local cached = _W.Cache:GetResolvedDimension(node, axis)
     if cached == nil then
-      local isMainAxis = _W.parseFlexDirection(node) == (axis == "width")
+      local isMainAxis = _W.Utils:ParseFlexDirection(node) == (axis == "width")
       cached = (
         isMainAxis and
-        _W.computeAutoSize(node, axis) or
-        _W.computeAutoCrossSize(node, axis, parentWidth, parentHeight)
+        self:ComputeAutoSize(node, axis) or
+        self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight)
       )
       _W.Cache:SetResolvedDimension(node, axis, cached)
     end
@@ -569,17 +594,39 @@ function _W.resolveDimension(node, axis, parentWidth, parentHeight)
   return parentSize * (number / 100)
 end
 
+--- Clamps `value` to `node[minField]`/`node[maxField]`, whichever is
+--- set. Errors if both are set and the min is greater than the max.
+--- @param node WaffleFlexNode
+--- @param value number
+--- @param minField "minWidth" | "minHeight"
+--- @param maxField? "maxWidth" | "maxHeight"
+--- @return number
+function _W.Sizing:ClampSize(node, value, minField, maxField)
+  local min, max = node[minField], node[maxField]
+  if min and max and min > max then
+    error("Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node", 0)
+  end
+
+  if min and value < min then
+    return min
+  elseif max and value > max then
+    return max
+  end
+
+  return value
+end
+
 -- =============================================================================
 -- SpaceDistributor
 -- =============================================================================
 
---- Resolves how much of a line's own leftover main-axis space or deficit
---- each constrained child gets: freezes whichever hits its min/max bound
---- each round and redistributes the rest, for both `Grow` (growing up
---- from `0`) and `Shrink` (shrinking down from a stated size). Wraps
---- `Distribute` with each direction's own strategy and its own extra
---- arguments (none for `Grow`, `statedSizes` for `Shrink`), so a caller
---- never passes `strategy` directly.
+--- Functions that resolve how much of a line's own leftover main-axis
+--- space or deficit each constrained child gets: freezing whichever
+--- hits its min/max bound each round and redistributing the rest, for
+--- both `Grow` (growing up from `0`) and `Shrink` (shrinking down from a
+--- stated size). Each wraps `Distribute` with its own strategy and
+--- extra arguments (none for `Grow`, `statedSizes` for `Shrink`), so a
+--- caller never passes `strategy` directly.
 _W.SpaceDistributor = {}
 
 --- A size, per child.
@@ -639,7 +686,7 @@ function _W.SpaceDistributor:Distribute(constrained, mainAxisSpace, totalWeight,
         local childWeight = strategy.weight(child, ...)
         local share = roundWeight > 0 and (roundMainAxisSpace * childWeight / roundWeight) or 0
         local candidate = strategy.toCandidate(child, share, ...)
-        local clamped = _W.clampToBounds(child, candidate, minField, maxField)
+        local clamped = _W.Sizing:ClampSize(child, candidate, minField, maxField)
 
         if clamped ~= candidate then
           frozen = frozen or _W.Scratch:Get()
@@ -685,8 +732,12 @@ function _W.SpaceDistributor:Shrink(constrained, mainAxisSpace, totalWeight, min
 end
 
 -- =============================================================================
--- Layout Functions
+-- FlexLayout
 -- =============================================================================
+
+--- Functions that position `node.children` in a row or column,
+--- splitting into wrapped lines first when needed.
+_W.FlexLayout = {}
 
 --- Splits `children` (already sorted, already visible-only) into lines
 --- along `axis`: each line is as many children as fit within `mainSize`,
@@ -700,10 +751,10 @@ end
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @param mainSize integer
---- @param crossSize? integer The container's own cross size, if resolved yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `computeAutoCrossSize`, that's the container's own cross axis, what it's still computing.
+--- @param crossSize? integer The container's own cross size, if resolved yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `_W.Sizing:ComputeAutoCrossSize`, that's the container's own cross axis, what it's still computing.
 --- @param gap integer
---- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; released by whichever of `computeAutoCrossSize`/`flexLayout` is done reading them.
-function _W.splitFlexLines(children, axis, mainSize, crossSize, gap)
+--- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; released by whichever of `_W.Sizing:ComputeAutoCrossSize`/`Layout` is done reading them.
+function _W.FlexLayout:SplitFlexLines(children, axis, mainSize, crossSize, gap)
   --- @type WaffleFlexNode[][]
   local lines = _W.Scratch:Get()
   --- @type WaffleFlexNode[]
@@ -714,8 +765,8 @@ function _W.splitFlexLines(children, axis, mainSize, crossSize, gap)
   local parentHeight = axis == "height" and mainSize or crossSize
 
   for _, child in ipairs(children) do
-    local size = _W.resolveDimension(child, axis, parentWidth, parentHeight)
-    local marginLeading, marginTrailing = _W.resolveBoxAxis(child, axis, "margin")
+    local size = _W.Sizing:ResolveDimension(child, axis, parentWidth, parentHeight)
+    local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, axis, "margin")
     local margin = marginLeading + marginTrailing
     local outerSize = size and (size + margin)
 
@@ -736,28 +787,6 @@ function _W.splitFlexLines(children, axis, mainSize, crossSize, gap)
   return lines
 end
 
---- Clamps `value` to `node[minField]`/`node[maxField]`, whichever is
---- set. Errors if both are set and the min is greater than the max.
---- @param node WaffleFlexNode
---- @param value number
---- @param minField "minWidth" | "minHeight"
---- @param maxField? "maxWidth" | "maxHeight"
---- @return number
-function _W.clampToBounds(node, value, minField, maxField)
-  local min, max = node[minField], node[maxField]
-  if min and max and min > max then
-    error("Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node", 0)
-  end
-
-  if min and value < min then
-    return min
-  elseif max and value > max then
-    return max
-  end
-
-  return value
-end
-
 --- Resolves how much of `lineChildren`'s own leftover main-axis space
 --- (positive, `grow` splits it) or deficit (negative, `shrink` gives
 --- some back) goes to each flexible/fixed child, via
@@ -766,20 +795,20 @@ end
 --- fixed/percentage ones (shrinking down from each one's own stated
 --- size, clamped to `min`, weighted by `shrink` times that size, not
 --- `shrink` alone). Both are skipped for a child with neither bound
---- set, `layoutFlexLine` computes its own fallback share directly
+--- set, `LayoutFlexLine` computes its own fallback share directly
 --- instead.
 --- @param lineChildren WaffleFlexNode[]
 --- @param mainAxis "width" | "height"
 --- @param mainSize integer
 --- @param crossSize integer Needed only for a child's own percentage/`"AUTO"` along the cross axis.
 --- @param gap integer
---- @return WaffleFlexNodeSizes? clampedSizes `nil` unless a flexible child on this line actually ends up clamped; pooled, `layoutFlexLine` releases it once done, not this function.
+--- @return WaffleFlexNodeSizes? clampedSizes `nil` unless a flexible child on this line actually ends up clamped; pooled, `LayoutFlexLine` releases it once done, not this function.
 --- @return number remaining Unclaimed space after every child's own share and `margin`, for `justify`. `0` whenever there's a deficit instead.
 --- @return number totalGrow Surviving flexible weight, `0` once nothing has a positive share left.
---- @return WaffleFlexNodeSizes? shrunkSizes `nil` unless a fixed/percentage child on this line actually ends up shrunk; pooled, `layoutFlexLine` releases it once done, not this function.
+--- @return WaffleFlexNodeSizes? shrunkSizes `nil` unless a fixed/percentage child on this line actually ends up shrunk; pooled, `LayoutFlexLine` releases it once done, not this function.
 --- @return number deficit How much `lineChildren`'s own sizes overflow `mainSize` by, `0` unless they actually do.
 --- @return number totalShrink Surviving shrinkable weight, `0` once nothing has a positive share left to give.
-function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
+function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
   local isRow = mainAxis == "width"
   local minField = isRow and "minWidth" or "minHeight"
   local maxField = isRow and "maxWidth" or "maxHeight"
@@ -801,10 +830,10 @@ function _W.resolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
   --- @type WaffleFlexNodeSizes
   local statedSizes
   for _, child in ipairs(lineChildren) do
-    local marginLeading, marginTrailing = _W.resolveBoxAxis(child, mainAxis, "margin")
+    local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
     fixedTotal = fixedTotal + marginLeading + marginTrailing
 
-    local size = _W.resolveDimension(child, mainAxis, parentWidth, parentHeight)
+    local size = _W.Sizing:ResolveDimension(child, mainAxis, parentWidth, parentHeight)
     if size then
       fixedTotal = fixedTotal + size
       totalShrink = totalShrink + (child.shrink or 1) * size
@@ -860,7 +889,7 @@ end
 --- @param isReverse boolean If true, swaps `START`/`END`, since the packing math itself has no other way to know the main-start edge moved. `CENTER`/`SPACE_*` need no such swap, already symmetric.
 --- @return number justifyOffset
 --- @return number justifyGap
-function _W.resolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
+function _W.FlexLayout:ResolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
   if totalGrow ~= 0 then
     return 0, 0
   end
@@ -911,8 +940,8 @@ end
 --- @param mainStart integer
 --- @param crossStart integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
-function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize, mainStart,
-                           crossStart, defaultFrameFactory)
+function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize,
+                                      mainStart, crossStart, defaultFrameFactory)
   local gap = node.gap or 0
   local isRow = mainAxis == "width"
   local visibleCount = #lineChildren
@@ -923,18 +952,18 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isRev
   local parentHeight = isRow and crossSize or mainSize
 
   local clampedSizes, remaining, totalGrow, shrunkSizes, deficit, totalShrink =
-      _W.resolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
-  local justifyOffset, justifyGap = _W.resolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
+      self:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
+  local justifyOffset, justifyGap = self:ResolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
 
   local mainOffset = mainStart + justifyOffset
   for _, child in ipairs(lineChildren) do
-    local childFrame = _W.resolveFrame(child, frame, defaultFrameFactory)
+    local childFrame = _W.Utils:ResolveFrame(child, frame, defaultFrameFactory)
 
     childFrame:Show()
     childFrame:ClearAllPoints()
     childFrame:SetParent(frame)
 
-    local size = _W.resolveDimension(child, mainAxis, parentWidth, parentHeight)
+    local size = _W.Sizing:ResolveDimension(child, mainAxis, parentWidth, parentHeight)
     if size then
       if shrunkSizes and shrunkSizes[child] then
         size = shrunkSizes[child]
@@ -948,16 +977,16 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isRev
       end
     end
 
-    local marginMainLeading, marginMainTrailing = _W.resolveBoxAxis(child, mainAxis, "margin")
-    local marginCrossLeading, marginCrossTrailing = _W.resolveBoxAxis(child, crossAxis, "margin")
+    local marginMainLeading, marginMainTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
+    local marginCrossLeading, marginCrossTrailing = _W.Sizing:ResolveBoxAxis(child, crossAxis, "margin")
 
     local align = (child.alignSelf or node.align or "STRETCH"):upper()
     local childCrossSize
     if align == "STRETCH" then
-      childCrossSize = _W.resolveDimension(child, crossAxis, parentWidth, parentHeight) or
-          _W.clampToBounds(child, crossSize - marginCrossLeading - marginCrossTrailing, crossMinField, crossMaxField)
+      childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight) or
+          _W.Sizing:ClampSize(child, crossSize - marginCrossLeading - marginCrossTrailing, crossMinField, crossMaxField)
     else
-      childCrossSize = _W.resolveDimension(child, crossAxis, parentWidth, parentHeight)
+      childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight)
       if not childCrossSize then
         error("Waffle: a child aligned '" ..
           align ..
@@ -988,7 +1017,7 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isRev
     childFrame:SetHeight(childHeight)
 
     if child.children then
-      _W.flexLayout(child, childFrame, childWidth, childHeight, child.defaultFrameFactory or defaultFrameFactory)
+      self:Layout(child, childFrame, childWidth, childHeight, child.defaultFrameFactory or defaultFrameFactory)
     end
 
     if child.onLayout then
@@ -998,7 +1027,7 @@ function _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isRev
     mainOffset = mainOffset + marginMainLeading + size + marginMainTrailing + gap + justifyGap
   end
 
-  -- Acquired by `resolveLineSizes`, released here instead: still read by
+  -- Acquired by `ResolveLineSizes`, released here instead: still read by
   -- the loop above.
   _W.Scratch:Release(clampedSizes)
   _W.Scratch:Release(shrunkSizes)
@@ -1013,13 +1042,13 @@ end
 --- @param width integer
 --- @param height integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
-function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
-  local isRow, isReverse = _W.parseFlexDirection(node)
+function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory)
+  local isRow, isReverse = _W.Utils:ParseFlexDirection(node)
   local mainAxis = isRow and "width" or "height"
   local crossAxis = isRow and "height" or "width"
 
-  local mainLeading, mainTrailing = _W.resolveBoxAxis(node, mainAxis, "padding")
-  local crossLeading, crossTrailing = _W.resolveBoxAxis(node, crossAxis, "padding")
+  local mainLeading, mainTrailing = _W.Sizing:ResolveBoxAxis(node, mainAxis, "padding")
+  local crossLeading, crossTrailing = _W.Sizing:ResolveBoxAxis(node, crossAxis, "padding")
 
   local mainSize = (isRow and width or height) - mainLeading - mainTrailing
   local crossSize = (isRow and height or width) - crossLeading - crossTrailing
@@ -1038,7 +1067,7 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     children[i] = child
   end
 
-  _W.sortFlexChildren(children)
+  _W.Sorting:SortFlexChildren(children)
 
   -- Reuses lines a cross-axis `"AUTO"` computation already split `node`
   -- into, instead of splitting them again.
@@ -1046,10 +1075,10 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
   local lines = node.wrap and wrapLines or nil
 
   -- Hidden children are hidden and dropped here, once, so neither
-  -- `splitFlexLines` nor `layoutFlexLine` needs to care about them at
+  -- `SplitFlexLines` nor `LayoutFlexLine` needs to care about them at
   -- all. Left `nil`, not built, when `lines` already covers `node`.
-  -- Pooled; released below, safe by then either way: `splitFlexLines`
-  -- is done with it under `wrap`, and `layoutFlexLine` already returned
+  -- Pooled; released below, safe by then either way: `SplitFlexLines`
+  -- is done with it under `wrap`, and `LayoutFlexLine` already returned
   -- without it.
   --- @type WaffleFlexNode[]?
   local visibleChildren = not lines and _W.Scratch:Get() or nil
@@ -1073,19 +1102,19 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     local lineGap = node.lineGap or gap
     local crossOffset = crossLeading
 
-    -- Pooled either way, from `splitFlexLines`, whether `lines` came
-    -- from `computeAutoCrossSize`'s own cached call or gets split fresh
-    -- here. Released below: `lineChildren` once its own line is done,
-    -- `lines` once every line is.
+    -- Pooled either way, from `SplitFlexLines`, whether `lines` came
+    -- from `_W.Sizing:ComputeAutoCrossSize`'s own cached call or gets
+    -- split fresh here. Released below: `lineChildren` once its own
+    -- line is done, `lines` once every line is.
     --- @type WaffleFlexNode[][]
-    lines = lines or _W.splitFlexLines(visibleChildren, mainAxis, mainSize, crossSize, gap)
+    lines = lines or self:SplitFlexLines(visibleChildren, mainAxis, mainSize, crossSize, gap)
     for _, lineChildren in ipairs(lines) do
       if isReverse then
-        _W.reverseArray(lineChildren)
+        _W.Utils:ReverseArray(lineChildren)
       end
 
-      local thisLineCrossSize = _W.lineCrossSize(lineChildren, crossAxis, crossSize)
-      _W.layoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, thisLineCrossSize,
+      local thisLineCrossSize = _W.Sizing:LineCrossSize(lineChildren, crossAxis, crossSize)
+      self:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, thisLineCrossSize,
         mainLeading, crossOffset, defaultFrameFactory)
       crossOffset = crossOffset + thisLineCrossSize + lineGap
 
@@ -1094,10 +1123,10 @@ function _W.flexLayout(node, frame, width, height, defaultFrameFactory)
     _W.Scratch:Release(lines)
   else
     if isReverse then
-      _W.reverseArray(visibleChildren)
+      _W.Utils:ReverseArray(visibleChildren)
     end
 
-    _W.layoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize, mainLeading,
+    self:LayoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize, mainLeading,
       crossLeading, defaultFrameFactory)
   end
 
@@ -1115,9 +1144,15 @@ end
 _W.FlexComponent = {}
 _W.FlexComponent.__index = _W.FlexComponent
 
+--- Never `setmetatable`'d onto anything: a `FlexComponent`/`Leaf`/
+--- `Container` method is reachable from any wrapper a consumer holds (it
+--- is that wrapper's own metatable), so construction stays a separate
+--- table instead, out of reach from `someContainer:___()`.
+_W.FlexComponentFactory = {}
+
 --- Returns a table whose missing methods fall back to `FlexComponent`.
 --- @return WaffleFlexComponent
-function _W.newFlexComponent()
+function _W.FlexComponentFactory:New()
   return setmetatable({}, _W.FlexComponent)
 end
 
@@ -1127,14 +1162,14 @@ end
 --- @param node WaffleFlexNode
 --- @param key string
 --- @return WaffleFlexNode?
-function _W.findFlexNodeByKey(node, key)
+function _W.FlexComponentFactory:FindNodeByKey(node, key)
   if node.key == key then
     return node
   end
   if node.children then
     for _, child in ipairs(node.children) do
       _W.NodeParent:Claim(child, node)
-      local found = _W.findFlexNodeByKey(child, key)
+      local found = self:FindNodeByKey(child, key)
       if found then
         return found
       end
@@ -1148,12 +1183,12 @@ end
 --- @return WaffleFlexComponentContainer | WaffleFlexComponentLeaf
 function _W.FlexComponent:GetChild(key)
   local root = _W.NodeParent:FindRoot(self.node)
-  local found = _W.findFlexNodeByKey(root, key)
+  local found = _W.FlexComponentFactory:FindNodeByKey(root, key)
   assert(found, "Waffle: no child registered under key '" .. key .. "'")
   if found.children then
-    return _W.newFlexComponentContainer(found)
+    return _W.FlexComponentFactory:NewContainer(found)
   else
-    return _W.newFlexComponentLeaf(found)
+    return _W.FlexComponentFactory:NewLeaf(found)
   end
 end
 
@@ -1173,7 +1208,7 @@ end
 --- Returns `true` if this node's tree has changed since its last `Layout()` call.
 --- @return boolean
 function _W.FlexComponent:IsDirty()
-  return _W.DirtyRoots[_W.NodeParent:FindRoot(self.node)] == true
+  return _W.DirtyRoots:IsDirty(_W.NodeParent:FindRoot(self.node))
 end
 
 --- Removes this node from the layout flow entirely, its siblings reflow
@@ -1182,7 +1217,7 @@ end
 function _W.FlexComponent:Hide()
   if not self.node.hidden then
     self.node.hidden = true
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1190,7 +1225,7 @@ end
 function _W.FlexComponent:Show()
   if self.node.hidden then
     self.node.hidden = false
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1205,7 +1240,7 @@ end
 function _W.FlexComponent:SetWidth(width)
   if self.node.width ~= width then
     self.node.width = width
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1214,7 +1249,7 @@ end
 function _W.FlexComponent:SetHeight(height)
   if self.node.height ~= height then
     self.node.height = height
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1225,7 +1260,7 @@ end
 function _W.FlexComponent:SetGrow(grow)
   if self.node.grow ~= grow then
     self.node.grow = grow
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1235,7 +1270,7 @@ end
 function _W.FlexComponent:SetShrink(shrink)
   if self.node.shrink ~= shrink then
     self.node.shrink = shrink
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1244,7 +1279,7 @@ end
 function _W.FlexComponent:SetMinWidth(minWidth)
   if self.node.minWidth ~= minWidth then
     self.node.minWidth = minWidth
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1253,7 +1288,7 @@ end
 function _W.FlexComponent:SetMaxWidth(maxWidth)
   if self.node.maxWidth ~= maxWidth then
     self.node.maxWidth = maxWidth
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1262,7 +1297,7 @@ end
 function _W.FlexComponent:SetMinHeight(minHeight)
   if self.node.minHeight ~= minHeight then
     self.node.minHeight = minHeight
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1271,7 +1306,7 @@ end
 function _W.FlexComponent:SetMaxHeight(maxHeight)
   if self.node.maxHeight ~= maxHeight then
     self.node.maxHeight = maxHeight
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1280,7 +1315,7 @@ end
 function _W.FlexComponent:SetAlignSelf(alignSelf)
   if self.node.alignSelf ~= alignSelf then
     self.node.alignSelf = alignSelf
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1291,7 +1326,7 @@ end
 function _W.FlexComponent:SetMargin(margin)
   if self.node.margin ~= margin then
     self.node.margin = margin
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1301,7 +1336,7 @@ end
 function _W.FlexComponent:SetMarginTop(marginTop)
   if self.node.marginTop ~= marginTop then
     self.node.marginTop = marginTop
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1311,7 +1346,7 @@ end
 function _W.FlexComponent:SetMarginRight(marginRight)
   if self.node.marginRight ~= marginRight then
     self.node.marginRight = marginRight
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1321,7 +1356,7 @@ end
 function _W.FlexComponent:SetMarginBottom(marginBottom)
   if self.node.marginBottom ~= marginBottom then
     self.node.marginBottom = marginBottom
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1331,7 +1366,7 @@ end
 function _W.FlexComponent:SetMarginLeft(marginLeft)
   if self.node.marginLeft ~= marginLeft then
     self.node.marginLeft = marginLeft
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1341,7 +1376,7 @@ end
 function _W.FlexComponent:SetOrder(order)
   if self.node.order ~= order then
     self.node.order = order
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1350,7 +1385,7 @@ end
 --- call, cheap to call from e.g. an `OnUpdate` handler every frame.
 function _W.FlexComponent:Layout()
   local root = _W.NodeParent:FindRoot(self.node)
-  if _W.DirtyRoots[root] then
+  if _W.DirtyRoots:IsDirty(root) then
     _W.Cache.CurrentPass = _W.Cache.CurrentPass + 1
 
     if root.hidden then
@@ -1358,13 +1393,13 @@ function _W.FlexComponent:Layout()
         root.frame:Hide()
       end
     else
-      local frame = _W.resolveFrame(root)
+      local frame = _W.Utils:ResolveFrame(root)
       frame:Show()
 
-      -- Root resolves its own width/height the same way `resolveDimension`
-      -- resolves any child's.
-      local width = _W.resolveDimension(root, "width")
-      local height = _W.resolveDimension(root, "height")
+      -- Root resolves its own width/height the same way
+      -- `_W.Sizing:ResolveDimension` resolves any child's.
+      local width = _W.Sizing:ResolveDimension(root, "width")
+      local height = _W.Sizing:ResolveDimension(root, "height")
       assert(width,
         "Waffle: root needs its own `width`, or `\"AUTO\"` if `direction` is ROW, nothing above it to resolve one automatically")
       assert(height,
@@ -1373,14 +1408,14 @@ function _W.FlexComponent:Layout()
       frame:SetWidth(width)
       frame:SetHeight(height)
 
-      _W.flexLayout(root, frame, width, height, root.defaultFrameFactory)
+      _W.FlexLayout:Layout(root, frame, width, height, root.defaultFrameFactory)
 
       if root.onLayout then
         root.onLayout(frame, width, height)
       end
     end
 
-    _W.DirtyRoots[root] = nil
+    _W.DirtyRoots:Clear(root)
   end
 end
 
@@ -1390,13 +1425,13 @@ end
 
 --- Returned by `AddChild`. A leaf child; cannot have children.
 --- @class WaffleFlexComponentLeaf : WaffleFlexComponent
-_W.FlexComponentLeaf = _W.newFlexComponent()
+_W.FlexComponentLeaf = _W.FlexComponentFactory:New()
 _W.FlexComponentLeaf.__index = _W.FlexComponentLeaf
 
 --- Constructs a leaf wrapping `node` as-is.
 --- @param node WaffleFlexNode
 --- @return WaffleFlexComponentLeaf
-function _W.newFlexComponentLeaf(node)
+function _W.FlexComponentFactory:NewLeaf(node)
   return setmetatable({ node = node }, _W.FlexComponentLeaf)
 end
 
@@ -1407,7 +1442,7 @@ end
 --- Returned by `Waffle:Flex()`. Composes a container's children fluently;
 --- nothing runs until `Layout()` is called.
 --- @class WaffleFlexComponentContainer : WaffleFlexComponent
-_W.FlexComponentContainer = _W.newFlexComponent()
+_W.FlexComponentContainer = _W.FlexComponentFactory:New()
 _W.FlexComponentContainer.__index = _W.FlexComponentContainer
 
 --- Constructs a container wrapping `node` as-is. May mutate `node` in
@@ -1415,7 +1450,7 @@ _W.FlexComponentContainer.__index = _W.FlexComponentContainer
 --- leaf-shaped table into a container-shaped one.
 --- @param node WaffleFlexNode
 --- @return WaffleFlexComponentContainer
-function _W.newFlexComponentContainer(node)
+function _W.FlexComponentFactory:NewContainer(node)
   node.children = node.children or {}
   return setmetatable({ node = node }, _W.FlexComponentContainer)
 end
@@ -1430,12 +1465,12 @@ end
 function _W.FlexComponentContainer:AddChild(child)
   if _W.NodeParent:Claim(child, self.node) then
     table.insert(self.node.children, child)
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
   if child.children then
-    return _W.newFlexComponentContainer(child)
+    return _W.FlexComponentFactory:NewContainer(child)
   else
-    return _W.newFlexComponentLeaf(child)
+    return _W.FlexComponentFactory:NewLeaf(child)
   end
 end
 
@@ -1449,9 +1484,9 @@ function _W.FlexComponentContainer:AddRow(child)
   child.direction = "ROW"
   if _W.NodeParent:Claim(child, self.node) then
     table.insert(self.node.children, child)
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
-  return _W.newFlexComponentContainer(child)
+  return _W.FlexComponentFactory:NewContainer(child)
 end
 
 --- Appends a new COLUMN container as a child, returning it for further
@@ -1464,9 +1499,9 @@ function _W.FlexComponentContainer:AddColumn(child)
   child.direction = "COLUMN"
   if _W.NodeParent:Claim(child, self.node) then
     table.insert(self.node.children, child)
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
-  return _W.newFlexComponentContainer(child)
+  return _W.FlexComponentFactory:NewContainer(child)
 end
 
 --- Returns every one of this container's children, wrapped, in
@@ -1477,9 +1512,9 @@ function _W.FlexComponentContainer:GetChildren()
   for i, node in ipairs(self.node.children) do
     _W.NodeParent:Claim(node, self.node)
     if node.children then
-      children[i] = _W.newFlexComponentContainer(node)
+      children[i] = _W.FlexComponentFactory:NewContainer(node)
     else
-      children[i] = _W.newFlexComponentLeaf(node)
+      children[i] = _W.FlexComponentFactory:NewLeaf(node)
     end
   end
   return children
@@ -1495,7 +1530,7 @@ function _W.FlexComponentContainer:RemoveChild(child)
       table.remove(self.node.children, i)
       _W.DeclarationOrder:Unassign(node)
       _W.NodeParent:Release(node)
-      _W.markDirty(self.node)
+      _W.DirtyRoots:Mark(self.node)
       return true
     end
   end
@@ -1511,7 +1546,7 @@ function _W.FlexComponentContainer:Clear()
     _W.NodeParent:Release(node)
   end
   self.node.children = {}
-  _W.markDirty(self.node)
+  _W.DirtyRoots:Mark(self.node)
 end
 
 -- Every setter below is a no-op unless the value actually changes, same
@@ -1522,7 +1557,7 @@ end
 function _W.FlexComponentContainer:SetGap(gap)
   if self.node.gap ~= gap then
     self.node.gap = gap
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1532,7 +1567,7 @@ end
 function _W.FlexComponentContainer:SetLineGap(lineGap)
   if self.node.lineGap ~= lineGap then
     self.node.lineGap = lineGap
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1543,7 +1578,7 @@ end
 function _W.FlexComponentContainer:SetPadding(padding)
   if self.node.padding ~= padding then
     self.node.padding = padding
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1553,7 +1588,7 @@ end
 function _W.FlexComponentContainer:SetPaddingTop(paddingTop)
   if self.node.paddingTop ~= paddingTop then
     self.node.paddingTop = paddingTop
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1563,7 +1598,7 @@ end
 function _W.FlexComponentContainer:SetPaddingRight(paddingRight)
   if self.node.paddingRight ~= paddingRight then
     self.node.paddingRight = paddingRight
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1573,7 +1608,7 @@ end
 function _W.FlexComponentContainer:SetPaddingBottom(paddingBottom)
   if self.node.paddingBottom ~= paddingBottom then
     self.node.paddingBottom = paddingBottom
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1583,7 +1618,7 @@ end
 function _W.FlexComponentContainer:SetPaddingLeft(paddingLeft)
   if self.node.paddingLeft ~= paddingLeft then
     self.node.paddingLeft = paddingLeft
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1592,7 +1627,7 @@ end
 function _W.FlexComponentContainer:SetAlign(align)
   if self.node.align ~= align then
     self.node.align = align
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1601,7 +1636,7 @@ end
 function _W.FlexComponentContainer:SetJustify(justify)
   if self.node.justify ~= justify then
     self.node.justify = justify
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1610,7 +1645,7 @@ end
 function _W.FlexComponentContainer:SetWrap(wrap)
   if self.node.wrap ~= wrap then
     self.node.wrap = wrap
-    _W.markDirty(self.node)
+    _W.DirtyRoots:Mark(self.node)
   end
 end
 
@@ -1624,6 +1659,6 @@ end
 --- @param node WaffleFlexNode
 --- @return WaffleFlexComponentContainer
 function Waffle:Flex(node)
-  _W.DirtyRoots[node] = true
-  return _W.newFlexComponentContainer(node)
+  _W.DirtyRoots:Mark(node)
+  return _W.FlexComponentFactory:NewContainer(node)
 end
