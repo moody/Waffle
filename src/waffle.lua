@@ -197,7 +197,7 @@ _W.Ownership = {
 }
 
 --- Claims `node` as a child of `owner`. Errors if it already belongs to
---- a different one, call `RemoveChild()` on that one first to move it.
+--- a different one, call `DetachComponent()` on that one first to move it.
 --- No-ops if `owner` already owns it.
 --- @param node WaffleFlexNode
 --- @param owner WaffleFlexNode
@@ -205,7 +205,7 @@ _W.Ownership = {
 function _W.Ownership:Claim(node, owner)
   local currentOwner = self.byNode[node]
   assert(not currentOwner or currentOwner == owner,
-    "Waffle: child already belongs to another container, call RemoveChild() on it first to move it")
+    "Waffle: child already belongs to another component, call DetachComponent() on it first to move it")
   self.byNode[node] = owner
   return currentOwner == nil
 end
@@ -218,7 +218,7 @@ end
 
 --- Walks up to the tree's actual root, the node with no owner of its
 --- own. Found fresh on every call rather than cached, so a moved node's
---- wrapper is never stale.
+--- component is never stale.
 --- @param node WaffleFlexNode
 --- @return WaffleFlexNode
 function _W.Ownership:FindRoot(node)
@@ -1144,8 +1144,8 @@ end
 -- FlexComponent
 -- =============================================================================
 
---- Wraps a single node, leaf or container alike: whether it has children
---- is a fact about that node, not a fixed type, so one wrapper covers
+--- Wraps a single node, regardless of whether it has children: that's a
+--- fact about the node, not a distinct type, so one component covers
 --- both. Returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `AddColumn`,
 --- `AttachComponent`, `GetChild`, and `GetChildren`.
 --- @class WaffleFlexComponent
@@ -1154,9 +1154,9 @@ _W.FlexComponent = {}
 _W.FlexComponent.__index = _W.FlexComponent
 
 --- Never `setmetatable`'d onto anything: a `FlexComponent` method is
---- reachable from any wrapper a consumer holds (it is that wrapper's own
---- metatable), so construction stays a separate table instead, out of
---- reach from `someComponent:___()`.
+--- reachable from any component a consumer holds (it is that component's
+--- own metatable), so construction stays a separate table instead, out
+--- of reach from `someComponent:___()`.
 _W.FlexComponentFactory = {}
 
 --- Constructs a component wrapping `node` as-is.
@@ -1426,10 +1426,10 @@ end
 -- the same kind `AddRow`/`AddColumn` already make forcing a fresh node's
 -- own `direction`, since adding a child inherently needs somewhere to put it.
 
---- Appends a child as-is, returning its own wrapper. Errors if `child`
---- already belongs to a different container, call `RemoveChild()` on
---- that one first to move it here. No-ops if `child` is already this
---- node's own, still returns a wrapper.
+--- Appends a child as-is, returning its own component. Errors if `child`
+--- already belongs to a different component, call `DetachComponent()`
+--- on that one first to move it here. No-ops if `child` is already this
+--- node's own, still returns a component.
 --- @param child WaffleFlexNode
 --- @return WaffleFlexComponent
 function _W.FlexComponent:AddChild(child)
@@ -1442,8 +1442,8 @@ function _W.FlexComponent:AddChild(child)
 end
 
 --- Appends a new ROW child, returning it for further composition. Errors
---- if `child` already belongs to a different container, call
---- `RemoveChild()` on that one first to move it here.
+--- if `child` already belongs to a different component, call
+--- `DetachComponent()` on that one first to move it here.
 --- @param child? WaffleFlexNode
 --- @return WaffleFlexComponent
 function _W.FlexComponent:AddRow(child)
@@ -1458,8 +1458,8 @@ function _W.FlexComponent:AddRow(child)
 end
 
 --- Appends a new COLUMN child, returning it for further composition.
---- Errors if `child` already belongs to a different container, call
---- `RemoveChild()` on that one first to move it here.
+--- Errors if `child` already belongs to a different component, call
+--- `DetachComponent()` on that one first to move it here.
 --- @param child? WaffleFlexNode
 --- @return WaffleFlexComponent
 function _W.FlexComponent:AddColumn(child)
@@ -1476,8 +1476,8 @@ end
 --- Grafts an already-composed `component` into this node's children,
 --- as-is: its own direction, size, and structure are unchanged, unlike
 --- `AddRow`/`AddColumn` which force a fresh node's direction. Errors if
---- `component` already belongs to a different container, call
---- `RemoveChild()` on that one first to move it here. No-ops if
+--- `component` already belongs to a different one, call
+--- `DetachComponent()` on that one first to move it here. No-ops if
 --- `component` is already this node's own, still returns it.
 --- @param component WaffleFlexComponent
 --- @return WaffleFlexComponent
@@ -1489,6 +1489,23 @@ function _W.FlexComponent:AttachComponent(component)
     _W.DirtyRoots:Mark(self.node)
   end
   return component
+end
+
+--- Detaches from the tree entirely, unlike `Hide()`. Doesn't touch
+--- `component`'s own `frame`.
+--- @param component WaffleFlexComponent
+--- @return boolean removed
+function _W.FlexComponent:DetachComponent(component)
+  for i, node in ipairs(self.node.children or EMPTY_CHILDREN) do
+    if node == component.node then
+      table.remove(self.node.children, i)
+      _W.DeclarationOrder:Unassign(node)
+      _W.Ownership:Release(node)
+      _W.DirtyRoots:Mark(self.node)
+      return true
+    end
+  end
+  return false
 end
 
 --- Returns every one of this node's own children, wrapped, in declaration
@@ -1504,25 +1521,8 @@ function _W.FlexComponent:GetChildren()
   return children
 end
 
---- Detaches from the tree entirely, unlike `Hide()`. Doesn't touch
---- `child`'s own `frame`.
---- @param child WaffleFlexComponent
---- @return boolean removed
-function _W.FlexComponent:RemoveChild(child)
-  for i, node in ipairs(self.node.children or EMPTY_CHILDREN) do
-    if node == child.node then
-      table.remove(self.node.children, i)
-      _W.DeclarationOrder:Unassign(node)
-      _W.Ownership:Release(node)
-      _W.DirtyRoots:Mark(self.node)
-      return true
-    end
-  end
-  return false
-end
-
---- Removes every child from this node, same as calling `RemoveChild` on
---- each one.
+--- Removes every child from this node, same as calling `DetachComponent`
+--- on each one.
 function _W.FlexComponent:Clear()
   local children = self.node.children or EMPTY_CHILDREN
   if #children == 0 then return end
