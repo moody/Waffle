@@ -29,212 +29,39 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
 2. **Access it**: Waffle attaches itself to your addon's table, available through the varargs `...` in any file:
 
    ```lua
-   local ADDON_NAME, Addon = ...
+   local _, Addon = ...
    local Waffle = Addon.Waffle
    ```
 
 ## Usage
 
-**Composing declaratively.** `Waffle:Flex(node)` positions `node.children` in a row or column within `node.frame`, and returns a container. `direction` (`"ROW"` or `"COLUMN"`, defaults to `"ROW"`) decides which physical axis is main and which is cross: a ROW's main axis is horizontal (`width`), its cross axis vertical (`height`); a COLUMN flips that. Nothing runs until `Layout()` is called on it.
+**Composing a layout.** `Waffle:Flex(node)` positions `node.children` in a row or column within `node.frame`, and returns a component. `direction` (`"ROW"` or `"COLUMN"`, defaults to `"ROW"`) decides which physical axis is main and which is cross: a ROW's main axis is horizontal (`width`), its cross axis vertical (`height`); a COLUMN flips that. Nothing runs until `Layout()` is called on it.
 
 ```lua
 Waffle:Flex({
   frame = frame,
-  width = 400,
-  height = 300,
-  children = {
-    { frame = sidebar, width = 100 },
-    { frame = content },
-  }
-}):Layout()
-```
-
-A node's own `width`/`height` always mean the same physical thing regardless of `direction`. Whichever one is this node's own main axis within its parent takes exactly that much space along it, splitting whatever's left over evenly with any other flexible siblings that omit theirs; here that's `content` getting the full 300 left after `sidebar`'s 100. The other one is this node's cross-axis size, see alignment below.
-
-**Shrink-to-fit sizing.** `width`/`height` also accept `"AUTO"` instead of a fixed number, computing that dimension from a node's own children instead: a sum along its own main axis (plus `gap`/`padding`), or a max along its cross axis (plus `padding`), since children stack one after another along the main axis but share the same band along the cross axis. Every visible child needs its own number or `"AUTO"` of its own; a flexible child has nothing to measure yet and errors.
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  direction = "ROW",
-  width = "AUTO", -- sums icon and label, plus gap/padding
-  height = "AUTO", -- maxes over the same two instead
-  gap = 8,
-  padding = 4,
-  children = {
-    { frame = icon, width = 24, height = 24 },
-    { frame = label, width = 80, height = 16 },
-  }
-}):Layout()
-```
-
-**Percentage sizing.** `width`/`height` also accept a percentage string like `"50%"` instead of a fixed number, sized relative to the parent's own width/height (after its own padding) instead. Errors without a parent whose own size is already resolved: the root, or a parent whose own main axis is itself still being computed from `"AUTO"`. Has no effect on `minWidth`/`maxWidth`, same as any other fixed size.
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 300,
-  height = 40,
-  children = {
-    { frame = sidebar, width = "30%" }, -- 90, thirty percent of 300
-    { frame = content },                -- takes the rest: 210
-  }
-}):Layout()
-```
-
-**Per-side padding.** `padding` applies to all four sides by default; `paddingTop`/`paddingRight`/`paddingBottom`/`paddingLeft` each override it for one side only, any side left unset still falls back to `padding`. `"AUTO"` sizing on either axis sums in whichever pair of sides applies there:
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 400,
-  height = 100,
-  padding = 10,
-  paddingBottom = 30, -- taller gap below the content than the other three sides
-  children = {
-    { frame = content },
-  }
-}):Layout()
-```
-
-**Per-child margin.** `margin`/`marginTop`/`marginRight`/`marginBottom`/`marginLeft` work the same way as `padding`'s own shorthand and per-side overrides, but on the node itself rather than a container's edge, and independent of the container's own `gap`. On the main axis it adds to the space this node consumes, coming out of a flexible sibling's own share; on the cross axis it insets a `STRETCH`-ed size, or shifts a `CENTER`/`END`-aligned one:
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 300,
-  height = 40,
-  children = {
-    { frame = icon, width = 40, marginRight = 12 }, -- extra gap after just this child
-    { frame = label },
-  }
-}):Layout()
-```
-
-**Weighting flexible children.** `grow` gives a flexible child a bigger or smaller share of the leftover main-axis space than its equally-flexible siblings, instead of the default even split. A child with `grow = 2` gets twice as much of the leftover space as a sibling left at the default (`1`); `grow = 0` claims none of it. Has no effect on a child with its own explicit `width`/`height`, only a flexible child has any leftover space to share in the first place:
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 300,
-  height = 40,
-  children = {
-    { frame = sidebar },            -- grow 1 (default), gets 100
-    { frame = content, grow = 2 },  -- gets 200, twice sidebar's share
-  }
-}):Layout()
-```
-
-**Shrinking overflowing children.** `shrink` is `grow`'s complement: when children's own sizes together overflow the main axis, `shrink` gives an overflowing child a bigger or smaller share of that deficit than its equally-shrinkable siblings, weighted by each one's own size as well as `shrink`, instead of everything just overflowing. `shrink = 0` never gives up any of a child's own stated size; `minWidth`/`minHeight` floors how far any child shrinks, the same way it already floors a flexible child's own share:
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 200,
-  height = 40,
-  children = {
-    { frame = icon, width = 150 },   -- shrinks to 120, the bigger share
-    { frame = label, width = 100 },  -- shrinks to 80
-  }
-}):Layout()
-```
-
-**Constraining flexible children.** `minWidth`/`maxWidth` put a floor or ceiling on a node's own flexible size, a plain number rather than anything relative; `minHeight`/`maxHeight` do the same for the vertical axis. On a node's main axis, that's its flexible share of leftover space, and whatever a clamped child doesn't claim goes to its still-flexible siblings instead. On its cross axis, that's a `STRETCH`-ed size instead, clamped independently of any sibling. Has no effect on a child with its own explicit `width`/`height`, or under non-`STRETCH` alignment, both already have their own explicit cross size with nothing left to clamp:
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 300,
-  height = 40,
-  children = {
-    { frame = sidebar, maxWidth = 80 },  -- would be 150 at an even split, capped to 80
-    { frame = content },                 -- takes the rest: 220
-  }
-}):Layout()
-```
-
-**Distributing leftover main-axis space.** `justify`, set on a container, controls how it spreads out leftover main-axis space among its children, when there is any: `"START"` (the default, unchanged), `"CENTER"`, `"END"`, `"SPACE_BETWEEN"`, `"SPACE_AROUND"`, or `"SPACE_EVENLY"`. Only matters when nothing has a positive `grow` share, something already claims the leftover space, leaving nothing for `justify` to distribute. A `minWidth`/`maxWidth` clamp counts too: if every flexible child on a line ends up clamped, whatever's still unclaimed goes to `justify` the same as if nothing on that line were flexible at all:
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 400,
-  height = 40,
-  justify = "SPACE_BETWEEN", -- three fixed-size buttons, spread across the full row
-  children = {
-    { frame = cancelButton, width = 80 },
-    { frame = helpButton, width = 80 },
-    { frame = okButton, width = 80 },
-  }
-}):Layout()
-```
-
-**Aligning children on the cross axis.** `align`, also set on a container, controls how it aligns its own children along the cross axis: `"STRETCH"` (the default, fills it), `"START"`, `"CENTER"`, or `"END"`. Any child can override it for itself with its own `alignSelf`. Alignment other than `STRETCH` requires that child's own cross-axis dimension (`height`, for a ROW parent), it isn't derived from anything, so give one or expect an error:
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 400,
-  height = 100,
-  align = "CENTER", -- every child centers within the row's height by default
-  children = {
-    { frame = icon, height = 32 },
-    { frame = label, height = 20, alignSelf = "END" }, -- overrides to hug the bottom instead
-  }
-}):Layout()
-```
-
-The root needs both `width` and `height` given, unlike an ordinary child (see [`Waffle:Flex(node)`](#waffleflexnode) for why).
-
-**Wrapping.** `wrap`, set on a container, makes overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size, computed the same way as cross-axis `"AUTO"` (a max over that line's own children), and stacks after the previous one; `align`/`justify` apply per line, independently, not once across the whole container. Combined with cross-axis `"AUTO"` on the container itself, that dimension sums every line's own cross-size instead of maxing across every child directly.
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 100,
-  height = 200,
-  wrap = true,
-  gap = 8,
-  children = {
-    { frame = icon1, width = 32, height = 32 },
-    { frame = icon2, width = 32, height = 32 },
-    { frame = icon3, width = 32, height = 32 }, -- doesn't fit next to icon1/icon2, starts a new line
-    { frame = icon4, width = 32, height = 32 },
-  }
-}):Layout()
-```
-
-**Line gap.** `lineGap`, set on a container, spaces wrapped lines apart independently of `gap` between the children within each one. Falls back to `gap` when unset, same as before this field existed:
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 100,
-  height = 200,
-  wrap = true,
-  gap = 8,      -- between icons on the same line
-  lineGap = 24, -- between the two lines themselves
-  children = {
-    { frame = icon1, width = 32, height = 32 },
-    { frame = icon2, width = 32, height = 32 },
-    { frame = icon3, width = 32, height = 32 }, -- doesn't fit next to icon1/icon2, starts a new line
-    { frame = icon4, width = 32, height = 32 },
-  }
-}):Layout()
-```
-
-**Nesting.** A child with its own `children` becomes a nested container, laid out within its own resolved width/height once the parent knows it.
-
-```lua
-Waffle:Flex({
-  frame = frame,
-  width = 400,
-  height = 300,
   direction = "COLUMN",
+  width = 400,
+  height = 300,
+  gap = 8,
+  padding = 8,
   children = {
-    { frame = header, height = 40 },
+    -- Header: fixed height, title flexes to fill the leftover space, button stays put.
+    {
+      frame = header,
+      direction = "ROW",
+      height = 24,
+      children = {
+        { frame = title },
+        { frame = closeButton, width = 24 },
+      }
+    },
+    -- Body: a nested row, splitting the rest of the column between a fixed sidebar
+    -- and flexible content.
     {
       frame = body,
+      direction = "ROW",
+      gap = 8,
       children = {
         { frame = sidebar, width = 100 },
         { frame = content },
@@ -244,92 +71,33 @@ Waffle:Flex({
 }):Layout()
 ```
 
-**The fluent API.** The same tree, composed fluently instead of as one large nested table. `AddRow`/`AddColumn` append a nested container and return a new container scoped to it; `Layout()` only needs to be called once, and works the same regardless of which node in the tree you call it from.
+Every field used above, and every other one Waffle supports (`"AUTO"`/percentage sizing, `grow`/`shrink`, `align`/`justify`, `wrap`, `minWidth`/`maxWidth`, and more), works the same on any node and is documented with a runnable example in [Node](#node) below.
+
+**The fluent API.** The same tree, composed step by step instead of as one large table. `AddRow`/`AddColumn`/`AddChild` each return a component scoped to what they just added; `Layout()` only needs to be called once, and works the same from any node in the tree:
 
 ```lua
-local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "COLUMN" })
-root:AddChild({ frame = header, height = 40 })
+local root = Waffle:Flex({ frame = frame, direction = "COLUMN", width = 400, height = 300, gap = 8, padding = 8 })
 
-local body = root:AddRow({ frame = CreateFrame("Frame") })
-body:AddChild({ frame = sidebar, width = 100 })
+local header = root:AddRow({ frame = CreateFrame("Frame"), height = 24 })
+header:AddChild({ frame = title })
+header:AddChild({ frame = closeButton, width = 24 })
+
+local body = root:AddRow({ frame = CreateFrame("Frame"), gap = 8 })
+body:AddChild({ frame = sidebar, key = "sidebar", width = 100 })
 body:AddChild({ frame = content })
 
 root:Layout()
 ```
 
-**Attaching an existing component.** `AttachComponent` grafts an already-composed component, built independently with its own `Waffle:Flex()` call, into another container's children as-is. Its own direction, size, and structure carry over unchanged, unlike `AddRow`/`AddColumn`, which force a fresh node's direction. Useful for composing a widget's own tree separately, then joining it into a caller's tree once it's ready:
+`AttachComponent` grafts an already-built component (its own separate `Waffle:Flex()` tree) into another one as-is; `Detach()` pulls a component out of wherever it currently is, so the two compose directly into a single call that moves one into a different tree entirely:
 
 ```lua
-local sidebar = Waffle:Flex({ frame = sidebarFrame, direction = "COLUMN", width = 100, height = 300 })
-sidebar:AddChild({ frame = sidebarHeader, height = 40 })
-sidebar:AddChild({ frame = sidebarBody })
-
-local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
-root:AttachComponent(sidebar)
-root:AddChild({ frame = content })
-
-root:Layout()
-```
-
-**Detaching a specific child.** `DetachComponent` removes a specific child from this container, validating that it's actually attached here first: it only succeeds if `component` really is one of this container's own children, returning `false` instead of detaching it from wherever it actually is otherwise. Useful when an operation depends on that assumption being true, not just on getting the component out of the tree:
-
-```lua
-local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
-local sidebar = root:AddChild({ frame = sidebarFrame, width = 100 })
-root:AddChild({ frame = content })
-root:Layout()
-
-root:DetachComponent(sidebar) -- true, sidebar really is root's own child
-```
-
-**Detaching a component.** `Detach()` removes a component from its current owner, wherever that owner actually is, without needing to already hold it. Always returns the same component, whether or not it actually had an owner to release, so it composes directly into a single call that moves it straight into a different tree:
-
-```lua
-local root = Waffle:Flex({ frame = frame, width = 400, height = 300, direction = "ROW" })
-root:AddChild({ frame = sidebarFrame, key = "sidebar", width = 100 })
-root:AddChild({ frame = content })
-root:Layout()
-
--- Later, move the sidebar into a different tree entirely:
-local otherRoot = Waffle:Flex({ frame = otherFrame, width = 400, height = 300, direction = "ROW" })
 otherRoot:AttachComponent(root:GetChild("sidebar"):Detach())
-otherRoot:Layout()
 ```
 
-**Frame factory.** Give a node a `defaultFrameFactory` and any descendant below it that omits both `frame` and its own `frameFactory` gets one automatically, reaching every level of nesting below that point. Handy when most of a layout is just plain positioning boxes, so you don't have to `CreateFrame` each one by hand:
+Every method used above, and every other one Waffle supports (`GetChild`, `Hide`/`Show`, every setter, and more), works the same on any node and is documented with a runnable example in [Component](#component) below.
 
-```lua
-local root = Waffle:Flex({
-  frame = frame,
-  width = 400,
-  height = 300,
-  direction = "COLUMN",
-  defaultFrameFactory = function(parent) return CreateFrame("Frame", nil, parent) end
-})
-root:AddChild({ frame = header, height = 40 })
-
-local body = root:AddRow() -- no frame given, defaultFrameFactory makes one
-body:AddChild({ frame = sidebar, width = 100 })
-body:AddChild({ frame = content })
-
-root:Layout()
-```
-
-A child that needs to be more than an empty box, say one card in a list with its own text, can provide its own `frameFactory` instead, scoped to that child only; its own nested children still fall back to `defaultFrameFactory`. `parent` matters here for `$parent` name substitution: `CreateFrame` resolves it into the parent's actual name at creation time, so it only works if the real parent is passed in immediately, not reparented later:
-
-```lua
-body:AddChild({
-  frameFactory = function(parent)
-    local card = CreateFrame("Frame", "$parent_Card", parent)
-    card.text = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    card.text:SetPoint("CENTER")
-    card.text:SetText("Hello")
-    return card
-  end
-})
-```
-
-**Reacting to resolved size.** `onLayout` fires with this node's own component, already wrapped, and its resolved width/height, once the whole `Layout()` pass is resolved and clean, not while it's still running. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own) or reacting to what was just resolved by adjusting a sibling, since the component works the same as any other and reaches anywhere else in the tree with `GetChild`. Mutating a different node from here is safe, it schedules a future `Layout()` call the same as calling a setter from anywhere else:
+**Reacting to resolved size.** `onLayout` fires with a node's own component and its resolved width/height, once the whole tree is laid out. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own):
 
 ```lua
 root:AddChild({
@@ -344,8 +112,6 @@ root:AddChild({
 root:AddChild({ frame = sliderFrame, key = "slider", width = 20 })
 ```
 
-`onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once. Every node's own `onLayout` fires bottom-up: children before parents, root last.
-
 **Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Call it again any time state changes, from any node in the tree, not just the root, it always resolves and lays out the whole tree from its actual current root. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. `IsDirty()` tells you whether a call would actually do anything, without triggering one.
 
 ## API
@@ -359,7 +125,7 @@ Starts composing a container and returns it. `node` is the root of the tree, the
 Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a child added via `AddChild`/`AddRow`/`AddColumn`/`children`, shares the same shape, `WaffleFlexNode`:
 
 ```lua
---- @class WaffleFlexNode
+--- @type WaffleFlexNode
 local node = {
   -- An already-built frame, handed over as-is. Cannot be given together with frameFactory.
   frame = CreateFrame("Frame"),
@@ -572,8 +338,8 @@ child:Detach()
 
 -- Removes component from this node's own children entirely, detaching it (and its own
 -- children, if it has any) from the tree rather than excluding it from layout the way
--- Hide() does. Doesn't touch component's own frame. Returns true if component was
--- actually found and detached.
+-- Hide() does. Doesn't touch component's own frame. Only succeeds if component really is
+-- this node's own child; returns false, without detaching it, if it's attached elsewhere.
 local detached = component:DetachComponent(row)
 
 -- Removes every child from this node, same as calling DetachComponent on each one.
