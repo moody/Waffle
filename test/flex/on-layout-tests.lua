@@ -189,4 +189,105 @@ do
   assert(receivedFrame == root)
 end
 
+-- Test: firing order is bottom-up: a child's own `onLayout` fires before
+-- its parent's, and the root's fires last of all.
+do
+  local root = Mocks:CreateFrame()
+  local middle = Mocks:CreateFrame()
+  local leaf = Mocks:CreateFrame()
+  local order = {}
+
+  Waffle:Flex({
+    frame = root,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    onLayout = function() table.insert(order, "root") end,
+    children = {
+      {
+        frame = middle,
+        direction = "ROW",
+        onLayout = function() table.insert(order, "middle") end,
+        children = {
+          { frame = leaf, onLayout = function() table.insert(order, "leaf") end },
+        }
+      },
+    }
+  }):Layout()
+
+  assert(order[1] == "leaf" and order[2] == "middle" and order[3] == "root")
+end
+
+-- Test: `IsDirty()` reports `false` from inside `onLayout`, this pass is
+-- already clean by the time it fires.
+do
+  local parent = Mocks:CreateFrame()
+  local child = Mocks:CreateFrame()
+  local isDirtyDuringOnLayout
+  local container
+
+  container = Waffle:Flex({
+    frame = parent,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    children = {
+      { frame = child, width = 100, onLayout = function() isDirtyDuringOnLayout = container:IsDirty() end },
+    }
+  })
+  container:Layout()
+
+  assert(isDirtyDuringOnLayout == false)
+end
+
+-- Test: mutating a different node from `onLayout` marks it dirty again,
+-- same as any other setter call. The mark survives this call's own
+-- dirty-clear, taking effect on the very next `Layout()` call.
+do
+  local parent = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({
+    frame = parent,
+    direction = "ROW",
+    width = 300,
+    height = 50,
+    children = {
+      { frame = a, width = 100, onLayout = function(component) component:GetChild("b"):SetWidth(50) end },
+      { frame = b, key = "b", width = 200 },
+    }
+  })
+  container:Layout()
+
+  assert(b._test.width == 200) -- this pass already resolved b before a's onLayout mutated it
+  assert(container:IsDirty() == true)
+
+  container:Layout()
+  assert(b._test.width == 50)
+end
+
+-- Test: `SetOnLayout` replaces which callback fires on the next
+-- `Layout()` call; `SetOnLayout(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+  local firstCalls, secondCalls = 0, 0
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a, onLayout = function() firstCalls = firstCalls + 1 end })
+  container:Layout()
+
+  assert(firstCalls == 1 and secondCalls == 0)
+
+  leaf:SetOnLayout(function() secondCalls = secondCalls + 1 end)
+  container:Layout()
+
+  assert(firstCalls == 1 and secondCalls == 1) -- replaced, not both firing
+
+  leaf:SetOnLayout(nil)
+  container:Layout()
+
+  assert(secondCalls == 1) -- removed, doesn't fire again
+end
+
 print("All assertions passed.")

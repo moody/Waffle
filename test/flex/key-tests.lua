@@ -168,4 +168,26 @@ do
   assert(container:GetChild("mixed").node.frame == leaf)
 end
 
+-- Test: `SetKey` registers (or changes) a node's own key for `GetChild`
+-- lookup, without marking the tree dirty.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a })
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetKey("a")
+  assert(container:IsDirty() == false)
+  assert(container:GetChild("a").node.frame == a)
+
+  leaf:SetKey("b")
+  assert(container:GetChild("b").node.frame == a)
+
+  local ok = pcall(function() container:GetChild("a") end)
+  assert(not ok) -- old key no longer registered
+end
+
 print("All assertions passed.")

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `Component:SetDefaultFrameFactory()`: sets or clears a node's own `defaultFrameFactory` after construction. Only affects a descendant still waiting on a factory to resolve its frame.
+- `Component:SetDirection()`: sets a node's own main axis after construction. Previously only settable via `Waffle:Flex()`/`AddChild()`/`AddRow()`/`AddColumn()`.
+- `Component:SetKey()`: sets or clears a node's own `key` after construction. Never marks the tree dirty, unlike every other setter.
+- `Component:SetOnLayout()`: sets or clears a node's own `onLayout` after construction. Previously only settable declaratively.
+- `Component:SetSize(width, height)`: sets `width`/`height` together, equivalent to `SetWidth()`/`SetHeight()`. Omitting either argument passes nil, resetting that dimension instead of leaving it unchanged.
+
+### Changed
+
+- **Breaking:** `onLayout` now fires once an entire `Layout()` pass is resolved and its dirty flag already cleared, not while it's still running. Firing order is unchanged: bottom-up, children before parents, root last. Mutating a different node from inside `onLayout` now reliably marks its own tree dirty again, scheduling a future `Layout()` call, instead of that mark being silently discarded by this same call's own dirty-clear.
+
 ## [0.6.0] - 2026-09-06
 
 ### Added

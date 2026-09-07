@@ -316,4 +316,37 @@ do
   assert(leaf:GetFrame() == created)
 end
 
+-- Test: `SetDefaultFrameFactory` changes which factory an unresolved
+-- descendant uses on the next `Layout()` call; an already-resolved
+-- descendant's own frame is unaffected.
+do
+  local root = Mocks:CreateFrame()
+  local firstCreated, secondCreated
+
+  local container = Waffle:Flex({
+    frame = root,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    defaultFrameFactory = function()
+      firstCreated = Mocks:CreateFrame()
+      return firstCreated
+    end
+  })
+  local row = container:AddRow()
+  container:Layout()
+  assert(row:GetFrame() == firstCreated)
+
+  container:SetDefaultFrameFactory(function()
+    secondCreated = Mocks:CreateFrame()
+    return secondCreated
+  end)
+  container:Layout()
+  assert(row:GetFrame() == firstCreated) -- already resolved, unaffected
+
+  local anotherRow = container:AddRow() -- not yet resolved
+  container:Layout()
+  assert(anotherRow:GetFrame() == secondCreated) -- picks up the new factory
+end
+
 print("All assertions passed.")

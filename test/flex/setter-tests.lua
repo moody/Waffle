@@ -272,6 +272,28 @@ do
   assert(colFrame._test.height == 30)
 end
 
+-- Test: `SetSize` sets width and height together; `SetSize(nil, nil)` reverts
+-- both to flex/stretch.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a })
+
+  leaf:SetSize(50, 20)
+  container:Layout()
+
+  assert(a._test.width == 50)
+  assert(a._test.height == 20)
+
+  leaf:SetSize(nil, nil)
+  container:Layout()
+
+  assert(a._test.width == 200) -- back to flexing, alone on the line so it claims all of it
+  assert(a._test.height == 50) -- back to stretching
+end
+
 -- Test: `SetGrow` changes a flexible child's own share of leftover
 -- space on the next `Layout()` call; `SetGrow(nil)` reverts it to the
 -- default (equal) share.
@@ -738,6 +760,42 @@ do
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
+
+  container:SetDirection("ROW")
+  assert(container:IsDirty() == false)
+  container:SetDirection("COLUMN")
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetOnLayout(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetOnLayout(function() end)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  container:SetDefaultFrameFactory(nil)
+  assert(container:IsDirty() == false)
+  container:SetDefaultFrameFactory(function() return Mocks:CreateFrame() end)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+end
+
+-- Test: unlike every other setter, `SetKey` never marks the tree dirty,
+-- there's nothing for a `Layout()` call to recompute.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a })
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetKey("a")
+  assert(container:IsDirty() == false)
 end
 
 -- Test: every setter, including the ones that only matter once a node has
@@ -763,6 +821,7 @@ do
   assert(leaf.SetLineGap ~= nil)
   assert(leaf.SetWidth ~= nil)
   assert(leaf.SetHeight ~= nil)
+  assert(leaf.SetSize ~= nil)
   assert(leaf.SetGrow ~= nil)
   assert(leaf.SetShrink ~= nil)
   assert(leaf.SetMinWidth ~= nil)
@@ -776,6 +835,10 @@ do
   assert(leaf.SetMarginBottom ~= nil)
   assert(leaf.SetMarginLeft ~= nil)
   assert(leaf.SetOrder ~= nil)
+  assert(leaf.SetDirection ~= nil)
+  assert(leaf.SetOnLayout ~= nil)
+  assert(leaf.SetKey ~= nil)
+  assert(leaf.SetDefaultFrameFactory ~= nil)
 end
 
 -- Test: calling a children-oriented setter (`SetGap`) on a component with
