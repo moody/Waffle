@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Component:SetDefaultFrameFactory()`: sets or clears a node's own `defaultFrameFactory` after construction. Only affects a descendant still waiting on a factory to resolve its frame.
 - `Component:SetDirection()`: sets a node's own main axis after construction. Previously only settable via `Waffle:Flex()`/`AddChild()`/`AddRow()`/`AddColumn()`.
+- `Component:SetKey()`: sets or clears a node's own `key` after construction. Never marks the tree dirty, unlike every other setter.
 - `Component:SetOnLayout()`: sets or clears a node's own `onLayout` after construction. Previously only settable declaratively.
 
 ### Changed
