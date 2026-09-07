@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `onLayout` now fires once an entire `Layout()` pass is resolved and its dirty flag already cleared, not while it's still running. Firing order is unchanged: bottom-up, children before parents, root last. Mutating a different node from inside `onLayout` now reliably marks its own tree dirty again, scheduling a future `Layout()` call, instead of that mark being silently discarded by this same call's own dirty-clear.
+
 ## [0.6.0] - 2026-09-06
 
 ### Added
