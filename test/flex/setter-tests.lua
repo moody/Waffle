@@ -272,6 +272,28 @@ do
   assert(colFrame._test.height == 30)
 end
 
+-- Test: `SetSize` sets width and height together; `SetSize(nil, nil)` reverts
+-- both to flex/stretch.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a })
+
+  leaf:SetSize(50, 20)
+  container:Layout()
+
+  assert(a._test.width == 50)
+  assert(a._test.height == 20)
+
+  leaf:SetSize(nil, nil)
+  container:Layout()
+
+  assert(a._test.width == 200) -- back to flexing, alone on the line so it claims all of it
+  assert(a._test.height == 50) -- back to stretching
+end
+
 -- Test: `SetGrow` changes a flexible child's own share of leftover
 -- space on the next `Layout()` call; `SetGrow(nil)` reverts it to the
 -- default (equal) share.
@@ -799,6 +821,7 @@ do
   assert(leaf.SetLineGap ~= nil)
   assert(leaf.SetWidth ~= nil)
   assert(leaf.SetHeight ~= nil)
+  assert(leaf.SetSize ~= nil)
   assert(leaf.SetGrow ~= nil)
   assert(leaf.SetShrink ~= nil)
   assert(leaf.SetMinWidth ~= nil)
