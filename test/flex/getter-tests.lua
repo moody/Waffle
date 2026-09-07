@@ -122,6 +122,10 @@ do
   leaf:SetMaxHeight(300)
   assert(leaf:GetMaxHeight() == 300)
 
+  assert(leaf:GetHidden() == nil)
+  leaf:SetHidden(true)
+  assert(leaf:GetHidden() == true)
+
   assert(leaf:GetKey() == nil)
   leaf:SetKey("sidebar")
   assert(leaf:GetKey() == "sidebar")
@@ -134,21 +138,6 @@ do
   local onLayout = function() end
   leaf:SetOnLayout(onLayout)
   assert(leaf:GetOnLayout() == onLayout)
-end
-
--- Test: `IsHidden()` reflects `Hide()`/`Show()`.
-do
-  local root = Mocks:CreateFrame()
-  local a = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local leaf = container:AddChild({ frame = a })
-
-  assert(leaf:IsHidden() == false)
-  leaf:Hide()
-  assert(leaf:IsHidden() == true)
-  leaf:Show()
-  assert(leaf:IsHidden() == false)
 end
 
 -- Test: getters don't mark the tree dirty.
@@ -165,7 +154,7 @@ do
   leaf:GetHeight()
   leaf:GetSize()
   container:GetGap()
-  leaf:IsHidden()
+  leaf:GetHidden()
   assert(container:IsDirty() == false)
 end
 
@@ -205,10 +194,10 @@ do
   assert(leaf.GetMaxWidth ~= nil)
   assert(leaf.GetMinHeight ~= nil)
   assert(leaf.GetMaxHeight ~= nil)
+  assert(leaf.GetHidden ~= nil)
   assert(leaf.GetKey ~= nil)
   assert(leaf.GetOrder ~= nil)
   assert(leaf.GetOnLayout ~= nil)
-  assert(leaf.IsHidden ~= nil)
 end
 
 print("All assertions passed.")

@@ -23,9 +23,9 @@ do
   assert(child._test.width == nil)
 end
 
--- Test: calling `Hide()`/`Show()` on the root container itself, after the
--- fact, takes its frame down and back up, same as giving `hidden = true`
--- up front.
+-- Test: calling `SetHidden(true)`/`SetHidden(false)` on the root
+-- container itself, after the fact, takes its frame down and back up,
+-- same as giving `hidden = true` up front.
 do
   local root = Mocks:CreateFrame()
   local child = Mocks:CreateFrame()
@@ -37,13 +37,13 @@ do
   assert(root._test.showCalls == 1)
   assert(child._test.width == 200)
 
-  container:Hide()
+  container:SetHidden(true)
   container:Layout()
 
   assert(root._test.hideCalls == 1)
   assert(root._test.width == 200) -- unchanged, layout skipped entirely while hidden
 
-  container:Show()
+  container:SetHidden(false)
   container:Layout()
 
   assert(root._test.showCalls == 2)
