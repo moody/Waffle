@@ -752,6 +752,28 @@ do
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
+
+  container:SetDefaultFrameFactory(nil)
+  assert(container:IsDirty() == false)
+  container:SetDefaultFrameFactory(function() return Mocks:CreateFrame() end)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+end
+
+-- Test: unlike every other setter, `SetKey` never marks the tree dirty,
+-- there's nothing for a `Layout()` call to recompute.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a })
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetKey("a")
+  assert(container:IsDirty() == false)
 end
 
 -- Test: every setter, including the ones that only matter once a node has
@@ -792,6 +814,8 @@ do
   assert(leaf.SetOrder ~= nil)
   assert(leaf.SetDirection ~= nil)
   assert(leaf.SetOnLayout ~= nil)
+  assert(leaf.SetKey ~= nil)
+  assert(leaf.SetDefaultFrameFactory ~= nil)
 end
 
 -- Test: calling a children-oriented setter (`SetGap`) on a component with
