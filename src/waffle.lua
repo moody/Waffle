@@ -1247,6 +1247,18 @@ end
 -- redundant calls (e.g. from a per-frame OnUpdate) stay cheap. Ordered to
 -- match `WaffleFlexNode`'s own field declaration order above.
 
+--- Sets a frame factory for any descendant that gives neither `frame` nor
+--- its own `frameFactory`. `nil` removes it. An already-resolved
+--- descendant's own `frame` is unaffected either way, only one still
+--- waiting on a factory picks up the change.
+--- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+function _W.FlexComponent:SetDefaultFrameFactory(defaultFrameFactory)
+  if self.node.defaultFrameFactory ~= defaultFrameFactory then
+    self.node.defaultFrameFactory = defaultFrameFactory
+    _W.DirtyRoots:Mark(self.node)
+  end
+end
+
 --- Sets this node's own main axis for its own children. `nil` resets to
 --- the default (`"ROW"`).
 --- @param direction? WaffleFlexDirection
@@ -1490,6 +1502,14 @@ function _W.FlexComponent:SetMaxHeight(maxHeight)
     self.node.maxHeight = maxHeight
     _W.DirtyRoots:Mark(self.node)
   end
+end
+
+--- Sets this node's own `key`, for lookup via `GetChild(key)`. `nil`
+--- removes it. Unlike every other setter, never marks the tree dirty:
+--- `GetChild` always searches live, there's nothing to recompute.
+--- @param key? string
+function _W.FlexComponent:SetKey(key)
+  self.node.key = key
 end
 
 --- Sets this node's visual position among siblings, independent of
