@@ -1,4 +1,4 @@
-# Waffle 🧇 (0.6.0)
+# Waffle 🧇 (0.7.0)
 
 **W**oW **A**ddon **F**lexible **F**rame **L**ayout **E**ngine
 
@@ -329,7 +329,7 @@ body:AddChild({
 })
 ```
 
-**Reacting to resolved size.** `onLayout` fires with this node's own component, already wrapped, and its resolved width/height, after its `children` (if any) are laid out. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own) or reacting to what was just resolved by adjusting a sibling, since the component works the same as any other and reaches anywhere else in the tree with `GetChild`:
+**Reacting to resolved size.** `onLayout` fires with this node's own component, already wrapped, and its resolved width/height, once the whole `Layout()` pass is resolved and clean, not while it's still running. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own) or reacting to what was just resolved by adjusting a sibling, since the component works the same as any other and reaches anywhere else in the tree with `GetChild`. Mutating a different node from here is safe, it schedules a future `Layout()` call the same as calling a setter from anywhere else:
 
 ```lua
 root:AddChild({
@@ -344,7 +344,7 @@ root:AddChild({
 root:AddChild({ frame = sliderFrame, key = "slider", width = 20 })
 ```
 
-`onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once.
+`onLayout` re-fires on every `Layout()` call, so keep it idempotent, safe to run again and again, not just once. Every node's own `onLayout` fires bottom-up: children before parents, root last.
 
 **Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Call it again any time state changes, from any node in the tree, not just the root, it always resolves and lays out the whole tree from its actual current root. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. `IsDirty()` tells you whether a call would actually do anything, without triggering one.
 
@@ -380,7 +380,7 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 - **`marginTop`** / **`marginRight`** / **`marginBottom`** / **`marginLeft`** — Overrides `margin` for that one side. Falls back to `margin` for any side not given. Can also be toggled after the fact with `SetMarginTop()`/`SetMarginRight()`/`SetMarginBottom()`/`SetMarginLeft()`.
 - **`width`** — This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it from this node's own children instead: a sum of their own `width` (plus `gap`/`padding`) along this node's own main axis (`direction` is `ROW`), or a max of them (plus `padding`) along its cross axis; every visible child needs its own number or `"AUTO"`, a flexible child errors. A percentage string (`"50%"`) sizes it relative to the parent's own width instead, erroring without one already resolved (the root, or a parent whose own width is itself still being computed from `"AUTO"`). Can also be toggled after the fact with `SetWidth()`.
 - **`height`** — This node's own physical height, always vertical. Same as `width` in every other respect, `"AUTO"` sums along the main axis when `direction` is `COLUMN`, maxes along the cross axis otherwise, a percentage sizes it relative to the parent's own height. Can also be toggled after the fact with `SetHeight()`.
-- **`onLayout`** — Called with this node's own component and resolved width/height, after its `children` (if any) are laid out. Re-fires on every `Layout()` call, keep it idempotent.
+- **`onLayout`** — Called with this node's own component and resolved width/height, once the whole `Layout()` pass is resolved and clean. Re-fires on every `Layout()` call, keep it idempotent. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter.
 - **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node; even the tree's actual root needs its own `frame`/`frameFactory`, nothing above it to inherit a fallback from.
 
 ### Component
