@@ -1264,10 +1264,11 @@ function _W.FlexComponentFactory:FindNodeByKey(node, key)
 end
 
 -- Every setter below is a no-op unless the value actually changes, so
--- redundant calls (e.g. from a per-frame OnUpdate) stay cheap. Each is
--- immediately followed by its own getter, returning the raw value most
--- recently given, `nil` if never set; the effective default, if any, is
--- documented on the setter, not repeated on the getter. Ordered to match
+-- redundant calls (e.g. from a per-frame OnUpdate) stay cheap (`SetKey`
+-- is the one exception, see below). Each is immediately followed by its
+-- own getter, returning the raw value most recently given, `nil` if
+-- never set; the effective default, if any, is documented on the
+-- setter, not repeated on the getter. Ordered to match
 -- `WaffleFlexNode`'s own field declaration order above.
 
 --- Sets a frame factory for any descendant that gives neither `frame` nor
