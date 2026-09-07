@@ -738,6 +738,20 @@ do
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
+
+  container:SetDirection("ROW")
+  assert(container:IsDirty() == false)
+  container:SetDirection("COLUMN")
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:SetOnLayout(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetOnLayout(function() end)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
 end
 
 -- Test: every setter, including the ones that only matter once a node has
@@ -776,6 +790,8 @@ do
   assert(leaf.SetMarginBottom ~= nil)
   assert(leaf.SetMarginLeft ~= nil)
   assert(leaf.SetOrder ~= nil)
+  assert(leaf.SetDirection ~= nil)
+  assert(leaf.SetOnLayout ~= nil)
 end
 
 -- Test: calling a children-oriented setter (`SetGap`) on a component with
