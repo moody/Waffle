@@ -266,4 +266,28 @@ do
   assert(b._test.width == 50)
 end
 
+-- Test: `SetOnLayout` replaces which callback fires on the next
+-- `Layout()` call; `SetOnLayout(nil)` removes it.
+do
+  local root = Mocks:CreateFrame()
+  local a = Mocks:CreateFrame()
+  local firstCalls, secondCalls = 0, 0
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = a, onLayout = function() firstCalls = firstCalls + 1 end })
+  container:Layout()
+
+  assert(firstCalls == 1 and secondCalls == 0)
+
+  leaf:SetOnLayout(function() secondCalls = secondCalls + 1 end)
+  container:Layout()
+
+  assert(firstCalls == 1 and secondCalls == 1) -- replaced, not both firing
+
+  leaf:SetOnLayout(nil)
+  container:Layout()
+
+  assert(secondCalls == 1) -- removed, doesn't fire again
+end
+
 print("All assertions passed.")
