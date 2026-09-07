@@ -1,5 +1,5 @@
 -- =============================================================================
--- Waffle: 0.6.0 - https://github.com/moody/Waffle
+-- Waffle: 0.7.0 - https://github.com/moody/Waffle
 -- =============================================================================
 
 local _, Addon = ...
@@ -64,7 +64,7 @@ local Waffle = Addon.Waffle
 --- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. Default `false`.
 --- @field key? string For lookup via `GetChild(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
---- @field onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer) Fires after `children` (if any) are already laid out.
+--- @field onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer) Fires once the whole `Layout()` pass is resolved and clean, not while it's still running, bottom-up, root last. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter.
 
 -- =============================================================================
 -- Internal Data Table
@@ -391,6 +391,39 @@ end
 --- @param lines WaffleFlexNode[][]
 function _W.LayoutCache:SetWrapLines(node, lines)
   self.wrapLines[node] = lines
+end
+
+-- =============================================================================
+-- OnLayoutQueue
+-- =============================================================================
+
+--- Defers `onLayout` firing until its `Layout()` pass is fully resolved
+--- and clean, so a mutation made inside one schedules a future
+--- `Layout()` call rather than being lost.
+_W.OnLayoutQueue = {}
+
+--- Records `node`'s pending `onLayout` call in `queue`, a table from
+--- `_W.Scratch`, fired later by `FireAll`.
+--- @param queue table
+--- @param node WaffleFlexNode
+--- @param width integer
+--- @param height integer
+function _W.OnLayoutQueue:Add(queue, node, width, height)
+  local entry = _W.Scratch:Get()
+  entry.node, entry.width, entry.height = node, width, height
+  queue[#queue + 1] = entry
+end
+
+--- Fires every `onLayout` recorded in `queue`, in the order they were
+--- added (bottom-up, children before parents, visual sibling order),
+--- releasing each entry back to `_W.Scratch` right after.
+--- @param queue table
+function _W.OnLayoutQueue:FireAll(queue)
+  for i = 1, #queue do
+    local entry = queue[i]
+    entry.node.onLayout(_W.FlexComponentFactory:New(entry.node), entry.width, entry.height)
+    _W.Scratch:Release(entry)
+  end
 end
 
 -- =============================================================================
@@ -967,8 +1000,9 @@ end
 --- @param mainStart integer
 --- @param crossStart integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+--- @param onLayoutQueue table Passed through to a `children` recursion; a visited child's own `onLayout` (if any) is queued onto it, not fired yet.
 function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize,
-                                      mainStart, crossStart, defaultFrameFactory)
+                                      mainStart, crossStart, defaultFrameFactory, onLayoutQueue)
   local gap = node.gap or 0
   local isRow = mainAxis == "width"
   local visibleCount = #lineChildren
@@ -1044,11 +1078,12 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
     childFrame:SetHeight(childHeight)
 
     if child.children then
-      self:Layout(child, childFrame, childWidth, childHeight, child.defaultFrameFactory or defaultFrameFactory)
+      self:Layout(child, childFrame, childWidth, childHeight, child.defaultFrameFactory or defaultFrameFactory,
+        onLayoutQueue)
     end
 
     if child.onLayout then
-      child.onLayout(_W.FlexComponentFactory:New(child), childWidth, childHeight)
+      _W.OnLayoutQueue:Add(onLayoutQueue, child, childWidth, childHeight)
     end
 
     mainOffset = mainOffset + marginMainLeading + size + marginMainTrailing + gap + justifyGap
@@ -1069,7 +1104,8 @@ end
 --- @param width integer
 --- @param height integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
-function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory)
+--- @param onLayoutQueue table Passed through to `LayoutFlexLine`/nested `children` recursions; every visited node's own `onLayout` (if any) is queued onto it, not fired yet.
+function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, onLayoutQueue)
   local isRow, isReverse = _W.Utils:ParseFlexDirection(node)
   local mainAxis = isRow and "width" or "height"
   local crossAxis = isRow and "height" or "width"
@@ -1142,7 +1178,7 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory)
 
       local thisLineCrossSize = _W.Sizing:LineCrossSize(lineChildren, crossAxis, crossSize)
       self:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, thisLineCrossSize,
-        mainLeading, crossOffset, defaultFrameFactory)
+        mainLeading, crossOffset, defaultFrameFactory, onLayoutQueue)
       crossOffset = crossOffset + thisLineCrossSize + lineGap
 
       _W.Scratch:Release(lineChildren)
@@ -1154,7 +1190,7 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory)
     end
 
     self:LayoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize, mainLeading,
-      crossLeading, defaultFrameFactory)
+      crossLeading, defaultFrameFactory, onLayoutQueue)
   end
 
   _W.Scratch:Release(visibleChildren)
@@ -1407,6 +1443,7 @@ function _W.FlexComponent:Layout()
   local root = _W.Ownership:FindRoot(self.node)
   if _W.DirtyRoots:IsDirty(root) then
     _W.LayoutCache.currentPass = _W.LayoutCache.currentPass + 1
+    local onLayoutQueue = _W.Scratch:Get()
 
     if root.hidden then
       if root.frame then
@@ -1430,15 +1467,19 @@ function _W.FlexComponent:Layout()
 
       -- Same rule as every other node: nothing to lay out without children.
       if root.children then
-        _W.FlexLayout:Layout(root, frame, width, height, root.defaultFrameFactory)
+        _W.FlexLayout:Layout(root, frame, width, height, root.defaultFrameFactory, onLayoutQueue)
       end
 
       if root.onLayout then
-        root.onLayout(_W.FlexComponentFactory:New(root), width, height)
+        _W.OnLayoutQueue:Add(onLayoutQueue, root, width, height)
       end
     end
 
+    -- Cleared before firing, not after: a mutation `onLayout` makes below
+    -- isn't wiped out along with it.
     _W.DirtyRoots:Clear(root)
+    _W.OnLayoutQueue:FireAll(onLayoutQueue)
+    _W.Scratch:Release(onLayoutQueue)
   end
 end
 
