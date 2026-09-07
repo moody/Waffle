@@ -1290,6 +1290,15 @@ function _W.FlexComponent:SetHeight(height)
   end
 end
 
+--- Sets this node's own width and height together, equivalent to `SetWidth()`/`SetHeight()`.
+--- Omitting either argument passes nil, resetting that dimension instead of leaving it unchanged.
+--- @param width? integer | "AUTO" | string
+--- @param height? integer | "AUTO" | string
+function _W.FlexComponent:SetSize(width, height)
+  self:SetWidth(width)
+  self:SetHeight(height)
+end
+
 --- Sets this node's own share of its parent's leftover main-axis space,
 --- relative to its equally-flexible siblings. `nil` resets to the
 --- default (`1`).
