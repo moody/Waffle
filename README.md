@@ -358,30 +358,185 @@ Starts composing a container and returns it. `node` is the root of the tree, the
 
 Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a child added via `AddChild`/`AddRow`/`AddColumn`/`children`, shares the same shape, `WaffleFlexNode`:
 
-- **`frame`** — An already-built frame, handed over as-is. Cannot be given together with `frameFactory`.
-- **`frameFactory`** — Creates this node's own frame, once. Receives the resolved parent as an argument. Cannot be given together with `frame`. If it uses `$parent` name substitution, the parent must be passed in immediately here, not reparented later, substitution happens at creation time.
-- **`direction`** — `"ROW"`, `"COLUMN"`, `"ROW_REVERSE"`, or `"COLUMN_REVERSE"`. Defaults to `"ROW"`. Applies to this node's own children, if it has any. The `_REVERSE` variants keep the same main axis, just flip which edge is main-start; `order` still sorts first. Can also be toggled after the fact with `SetDirection()`.
-- **`gap`** / **`padding`** — Space between/around this node's own children, if it has any. Can also be toggled after the fact with `SetGap()`/`SetPadding()`.
-- **`paddingTop`** / **`paddingRight`** / **`paddingBottom`** / **`paddingLeft`** — Overrides `padding` for that one side. Falls back to `padding` for any side not given. Can also be toggled after the fact with `SetPaddingTop()`/`SetPaddingRight()`/`SetPaddingBottom()`/`SetPaddingLeft()`.
-- **`align`** — How this node aligns its own children along the cross axis, if it has any: `"STRETCH"` (default), `"START"`, `"CENTER"`, or `"END"`. Overridden per-child by that child's own `alignSelf`. Can also be toggled after the fact with `SetAlign()`.
-- **`alignSelf`** — Overrides the parent's `align` for this node specifically. Requires this node's own cross-axis dimension if not `"STRETCH"`. No effect on the root, nothing above it to align it within. Can also be toggled after the fact with `SetAlignSelf()`.
-- **`justify`** — How this node distributes leftover main-axis space among its own children, if it has any: `"START"` (default), `"CENTER"`, `"END"`, `"SPACE_BETWEEN"`, `"SPACE_AROUND"`, or `"SPACE_EVENLY"`. Only matters when none of those children have a positive `grow` share. Can also be toggled after the fact with `SetJustify()`.
-- **`grow`** — This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Defaults to `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root. Can also be toggled after the fact with `SetGrow()`.
-- **`shrink`** — This node's own share of its parent's main-axis deficit, when its siblings' own sizes don't all fit, weighted by this value times this node's own main-axis size, not the value alone. Defaults to `1`. No effect on a flexible node (nothing stated to reduce), or on the root. Can also be toggled after the fact with `SetShrink()`.
-- **`minWidth`** / **`maxWidth`** — A floor/ceiling on this node's own `width`: its flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, `"AUTO"`, or non-`STRETCH` alignment. Errors if `minWidth` is greater than `maxWidth`. Can also be toggled after the fact with `SetMinWidth()`/`SetMaxWidth()`.
-- **`minHeight`** / **`maxHeight`** — Same as `minWidth`/`maxWidth`, for `height`. Can also be toggled after the fact with `SetMinHeight()`/`SetMaxHeight()`.
-- **`wrap`** — Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `lineGap` between lines too. Default `false`. Can also be toggled after the fact with `SetWrap()`.
-- **`lineGap`** — Space between wrapped lines only, instead of `gap`. Falls back to `gap` when unset. No effect unless `wrap` actually produces more than one line. Can also be toggled after the fact with `SetLineGap()`.
-- **`children`** — Can be given directly for a fully declarative style, instead of `AddChild`/`AddRow`/`AddColumn`; a node written directly into this table is still tracked and protected against double-attachment the same way.
-- **`hidden`** — Excludes this node from the layout flow entirely. Can also be toggled after the fact with `Hide()`/`Show()`.
-- **`key`** — Registers this node for lookup via `GetChild(key)` from anywhere in the tree. A duplicate key isn't validated against, the first match found wins. Can also be toggled after the fact with `SetKey()`, which never marks the tree dirty, there's nothing to recompute.
-- **`order`** — Visual position among siblings, independent of declaration order. Defaults to `0`; siblings with equal `order` keep their declaration order. No effect on the root, nothing above it to reorder it among. Can also be toggled after the fact with `SetOrder()`.
-- **`margin`** — Space around this node itself, on all four sides, independent of the container's own `gap`. Defaults to `0`. Can also be toggled after the fact with `SetMargin()`.
-- **`marginTop`** / **`marginRight`** / **`marginBottom`** / **`marginLeft`** — Overrides `margin` for that one side. Falls back to `margin` for any side not given. Can also be toggled after the fact with `SetMarginTop()`/`SetMarginRight()`/`SetMarginBottom()`/`SetMarginLeft()`.
-- **`width`** — This node's own physical width, always horizontal, regardless of `direction`. Used directly as a fixed size, whether that's this node's own main-axis size within its parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved to a non-`STRETCH` alignment there, ignored, falling back to stretching, when `STRETCH`). Omitted, flexes/stretches instead, whichever applies. `"AUTO"` computes it from this node's own children instead: a sum of their own `width` (plus `gap`/`padding`) along this node's own main axis (`direction` is `ROW`), or a max of them (plus `padding`) along its cross axis; every visible child needs its own number or `"AUTO"`, a flexible child errors. A percentage string (`"50%"`) sizes it relative to the parent's own width instead, erroring without one already resolved (the root, or a parent whose own width is itself still being computed from `"AUTO"`). Can also be toggled after the fact with `SetWidth()`.
-- **`height`** — This node's own physical height, always vertical. Same as `width` in every other respect, `"AUTO"` sums along the main axis when `direction` is `COLUMN`, maxes along the cross axis otherwise, a percentage sizes it relative to the parent's own height. Can also be toggled after the fact with `SetHeight()`.
-- **`onLayout`** — Called with this node's own component and resolved width/height, once the whole `Layout()` pass is resolved and clean. Re-fires on every `Layout()` call, keep it idempotent. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter. Can also be toggled after the fact with `SetOnLayout()`.
-- **`defaultFrameFactory`** — Creates a frame for any descendant that gives neither `frame` nor its own `frameFactory`. Does not apply to this node; even the tree's actual root needs its own `frame`/`frameFactory`, nothing above it to inherit a fallback from. Can also be toggled after the fact with `SetDefaultFrameFactory()`; an already-resolved descendant's own frame is unaffected either way.
+```lua
+--- @class WaffleFlexNode
+local node = {
+  -- An already-built frame, handed over as-is. Cannot be given together with frameFactory.
+  frame = CreateFrame("Frame"),
+
+  -- Creates this node's own frame, once. Receives the resolved parent as an argument.
+  -- Cannot be given together with frame. If it uses $parent name substitution, the parent
+  -- must be passed in immediately here, not reparented later, substitution happens at creation time.
+  frameFactory = function(parent)
+    return CreateFrame("Frame", "$parent_ChildFrame", parent)
+  end,
+
+  -- Creates a frame for any descendant that gives neither frame nor its own frameFactory.
+  -- Does not apply to this node; even the root needs its own frame/frameFactory, nothing
+  -- above it to inherit a fallback from. SetDefaultFrameFactory() toggles it after the fact;
+  -- an already-resolved descendant's own frame is unaffected either way.
+  defaultFrameFactory = function(parent)
+    return CreateFrame("Frame", nil, parent)
+  end,
+
+  -- Can be given directly for a fully declarative style, instead of
+  -- AddChild/AddRow/AddColumn; a node written directly into this table is still
+  -- tracked and protected against double-attachment the same way.
+  children = {
+    { frame = CreateFrame("Frame") },
+  },
+
+  -- "ROW", "COLUMN", "ROW_REVERSE", or "COLUMN_REVERSE". Defaults to "ROW".
+  -- Applies to this node's own children, if it has any. The _REVERSE variants keep the
+  -- same main axis, just flip which edge is main-start; order still sorts first.
+  -- Can also be toggled after the fact with SetDirection().
+  direction = "ROW",
+
+  -- This node's own physical width, always horizontal, regardless of direction. Used
+  -- directly as a fixed size, whether that's this node's own main-axis size within its
+  -- parent (a ROW parent) or its cross-axis size (a COLUMN parent; required if resolved
+  -- to a non-STRETCH alignment there, ignored, falling back to stretching, when
+  -- STRETCH). Omitted, flexes/stretches instead, whichever applies. "AUTO" computes
+  -- it from this node's own children instead: a sum of their own width (plus
+  -- gap/padding) along this node's own main axis (direction is ROW), or a max of
+  -- them (plus padding) along its cross axis; every visible child needs its own number
+  -- or "AUTO", a flexible child errors. A percentage string ("50%") sizes it relative
+  -- to the parent's own width instead, erroring without one already resolved (the root,
+  -- or a parent whose own width is itself still being computed from "AUTO").
+  -- Can also be toggled after the fact with SetWidth().
+  width = 200,
+
+  -- This node's own physical height, always vertical. Same as width in every other
+  -- respect, "AUTO" sums along the main axis when direction is COLUMN, maxes along
+  -- the cross axis otherwise, a percentage sizes it relative to the parent's own height.
+  -- Can also be toggled after the fact with SetHeight().
+  height = 100,
+
+  -- This node's own share of its parent's leftover main-axis space, relative to its
+  -- equally-flexible siblings. Defaults to 1. No effect on a node with its own explicit
+  -- main-axis width/height, or on the root. Can also be toggled after the fact with
+  -- SetGrow().
+  grow = 1,
+
+  -- This node's own share of its parent's main-axis deficit, when its siblings' own sizes
+  -- don't all fit, weighted by this value times this node's own main-axis size, not the
+  -- value alone. Defaults to 1. No effect on a flexible node (nothing stated to reduce),
+  -- or on the root. Can also be toggled after the fact with SetShrink().
+  shrink = 1,
+
+  -- How this node aligns its own children along the cross axis, if it has any:
+  -- "STRETCH" (default), "START", "CENTER", or "END". Overridden per-child by
+  -- that child's own alignSelf. Can also be toggled after the fact with SetAlign().
+  align = "STRETCH",
+
+  -- Overrides the parent's align for this node specifically. Requires this node's own
+  -- cross-axis dimension if not "STRETCH". No effect on the root, nothing above it to
+  -- align it within. Can also be toggled after the fact with SetAlignSelf().
+  alignSelf = "STRETCH",
+
+  -- How this node distributes leftover main-axis space among its own children, if it has
+  -- any: "START" (default), "CENTER", "END", "SPACE_BETWEEN", "SPACE_AROUND", or
+  -- "SPACE_EVENLY". Only matters when none of those children have a positive grow
+  -- share. Can also be toggled after the fact with SetJustify().
+  justify = "START",
+
+  -- Overflowing children start a new line instead of continuing past the main axis size.
+  -- Each line gets its own cross-size (a max over its own children) and stacks after the
+  -- previous one, lineGap between lines too. Default false. Can also be toggled after
+  -- the fact with SetWrap().
+  wrap = false,
+
+  -- Space between this node's own children, if it has any. Can also be toggled after the
+  -- fact with SetGap().
+  gap = 8,
+
+  -- Space between wrapped lines only, instead of gap. Falls back to gap when unset.
+  -- No effect unless wrap actually produces more than one line. Can also be toggled
+  -- after the fact with SetLineGap().
+  lineGap = 8,
+
+  -- Space around this node's own children, if it has any. Can also be toggled after the
+  -- fact with SetPadding().
+  padding = 8,
+
+  -- Overrides padding for the top side only. Falls back to padding if not given.
+  -- Can also be toggled after the fact with SetPaddingTop().
+  paddingTop = 8,
+
+  -- Overrides padding for the right side only. Falls back to padding if not given.
+  -- Can also be toggled after the fact with SetPaddingRight().
+  paddingRight = 8,
+
+  -- Overrides padding for the bottom side only. Falls back to padding if not given.
+  -- Can also be toggled after the fact with SetPaddingBottom().
+  paddingBottom = 8,
+
+  -- Overrides padding for the left side only. Falls back to padding if not given.
+  -- Can also be toggled after the fact with SetPaddingLeft().
+  paddingLeft = 8,
+
+  -- Space around this node itself, on all four sides, independent of the container's own
+  -- gap. Defaults to 0. Can also be toggled after the fact with SetMargin().
+  margin = 0,
+
+  -- Overrides margin for the top side only. Falls back to margin if not given.
+  -- Can also be toggled after the fact with SetMarginTop().
+  marginTop = 0,
+
+  -- Overrides margin for the right side only. Falls back to margin if not given.
+  -- Can also be toggled after the fact with SetMarginRight().
+  marginRight = 0,
+
+  -- Overrides margin for the bottom side only. Falls back to margin if not given.
+  -- Can also be toggled after the fact with SetMarginBottom().
+  marginBottom = 0,
+
+  -- Overrides margin for the left side only. Falls back to margin if not given.
+  -- Can also be toggled after the fact with SetMarginLeft().
+  marginLeft = 0,
+
+  -- A floor on this node's own width: its flexible main-axis share, if width is
+  -- main; a STRETCH-ed cross-axis size, if cross. No effect on an explicit width,
+  -- "AUTO", or non-STRETCH alignment. Errors if greater than maxWidth. Can also be
+  -- toggled after the fact with SetMinWidth().
+  minWidth = 50,
+
+  -- A ceiling on this node's own width, the same way minWidth is a floor. Errors if
+  -- less than minWidth. Can also be toggled after the fact with SetMaxWidth().
+  maxWidth = 300,
+
+  -- Same as minWidth, for height. Can also be toggled after the fact with
+  -- SetMinHeight().
+  minHeight = 50,
+
+  -- Same as maxWidth, for height. Can also be toggled after the fact with
+  -- SetMaxHeight().
+  maxHeight = 300,
+
+  -- Excludes this node from the layout flow entirely. Can also be toggled after the
+  -- fact with Hide()/Show().
+  hidden = false,
+
+  -- Registers this node for lookup via GetChild(key) from anywhere in the tree. A
+  -- duplicate key isn't validated against, the first match found wins. Can also be
+  -- toggled after the fact with SetKey(), which never marks the tree dirty, there's
+  -- nothing to recompute.
+  key = "sidebar",
+
+  -- Visual position among siblings, independent of declaration order. Defaults to 0;
+  -- siblings with equal order keep their declaration order. No effect on the root,
+  -- nothing above it to reorder it among. Can also be toggled after the fact with
+  -- SetOrder().
+  order = 0,
+
+  -- Called with this node's own component and resolved width/height, once the whole
+  -- Layout() pass is resolved and clean. Re-fires on every Layout() call, keep it
+  -- idempotent. Mutating a different node from here schedules a future Layout() call,
+  -- the same as any other setter. Can also be toggled after the fact with
+  -- SetOnLayout().
+  onLayout = function(component, width, height) end,
+}
+```
 
 ### Component
 
