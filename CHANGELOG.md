@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A getter for every field that already has a setter (e.g. `GetWidth()`, `GetGrow()`, `GetPadding()`), returning the raw value most recently given, `nil` if unset.
+- `Component:GetSize()`: returns `width`/`height` together, the same values `SetWidth()`/`SetHeight()` (or `SetSize()`) were last given.
+
 ### Changed
 
 - `WaffleFrame` (the type of `frame`/`frameFactory`/`GetFrame()`) no longer requires an exact match against its documented shape; any table is accepted. That shape is still available under its own name, `WaffleFrameShape`.
+- **Breaking:** `Hide()`/`Show()` are replaced by `SetHidden()`, and `IsHidden()` by `GetHidden()`, matching every other field's own setter/getter pair. Replace `component:Hide()` with `component:SetHidden(true)`, `component:Show()` with `component:SetHidden(false)`, and `component:IsHidden()` with `component:GetHidden()`.
+
+### Fixed
+
+- A hidden node now hides every already-resolved frame in its own subtree, not just its own frame. Previously a frame that was already resolved anywhere inside a hidden node's subtree, whether from `AddChild()`/`AttachComponent()` or a declarative `children` table, stayed visible, wherever it was last positioned, until that node was shown.
 
 ## [0.7.0] - 2026-09-07
 
