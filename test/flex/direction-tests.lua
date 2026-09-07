@@ -261,4 +261,28 @@ do
   assert(a._test.point.offsetY == -60)
 end
 
+-- Test: `SetDirection` changes a container's own main axis on the next
+-- `Layout()` call; `SetDirection(nil)` reverts to the default (`ROW`).
+do
+  local root = Mocks:CreateFrame()
+  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 100, height = 100 })
+  container:AddChild({ frame = a, width = 40, height = 40 })
+  container:AddChild({ frame = b, width = 40, height = 40 })
+  container:Layout()
+
+  assert(b._test.point.offsetX == 40 and b._test.point.offsetY == 0)
+
+  container:SetDirection("COLUMN")
+  container:Layout()
+
+  assert(b._test.point.offsetX == 0 and b._test.point.offsetY == -40)
+
+  container:SetDirection(nil)
+  container:Layout()
+
+  assert(b._test.point.offsetX == 40 and b._test.point.offsetY == 0)
+end
+
 print("All assertions passed.")
