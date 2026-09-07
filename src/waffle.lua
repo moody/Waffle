@@ -70,7 +70,7 @@ local Waffle = Addon.Waffle
 --- @field maxWidth? number A ceiling on this node's own `width`: the flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
 --- @field minHeight? number Same as `minWidth`, for `height`.
 --- @field maxHeight? number Same as `maxWidth`, for `height`.
---- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. `Layout()` hides its own frame and every already-resolved frame in its subtree. An ancestor's own `hidden` hides this node's frame the same way; `IsHidden()` still only reports this node's own `hidden`, never an ancestor's. Default `false`.
+--- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. `Layout()` hides its own frame and every already-resolved frame in its subtree. An ancestor's own `hidden` hides this node's frame the same way; `GetHidden()` still only reports this node's own `hidden`, never an ancestor's. Default `false`.
 --- @field key? string For lookup via `GetChild(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
 --- @field onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer) Fires once the whole `Layout()` pass is resolved and clean, not while it's still running, bottom-up, root last. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter.
@@ -1700,6 +1700,27 @@ function _W.FlexComponent:GetMaxHeight()
   return self.node.maxHeight
 end
 
+--- Sets whether this node is excluded from the layout flow entirely; its
+--- siblings reflow to fill the space, and `Layout()` hides its own frame
+--- and every already-resolved frame in its subtree. An ancestor's own
+--- `hidden` hides this node's frame the same way, without changing this
+--- node's own `hidden`. `nil` resets to the default (`false`).
+--- @param hidden? boolean
+function _W.FlexComponent:SetHidden(hidden)
+  if self.node.hidden ~= hidden then
+    self.node.hidden = hidden
+    _W.DirtyRoots:Mark(self.node)
+  end
+end
+
+--- Returns this node's own `hidden`, never an ancestor's: a node whose
+--- ancestor is hidden still returns `nil`/`false` here, even though its
+--- own frame is hidden too.
+--- @return boolean?
+function _W.FlexComponent:GetHidden()
+  return self.node.hidden
+end
+
 --- Sets this node's own `key`, for lookup via `GetChild(key)`. `nil`
 --- removes it. Unlike every other setter, never marks the tree dirty:
 --- `GetChild` always searches live, there's nothing to recompute.
@@ -1782,32 +1803,6 @@ end
 --- @return boolean
 function _W.FlexComponent:IsDirty()
   return _W.DirtyRoots:IsDirty(_W.Ownership:FindRoot(self.node))
-end
-
---- Returns `true` if this node's own `hidden` is set. An ancestor's own
---- `hidden` hides this node's frame too, but doesn't change what this
---- reports.
---- @return boolean
-function _W.FlexComponent:IsHidden()
-  return self.node.hidden == true
-end
-
---- Removes this node from the layout flow entirely, its siblings reflow
---- to fill the space. Position in the tree is preserved, `Show()` brings
---- it back.
-function _W.FlexComponent:Hide()
-  if not self.node.hidden then
-    self.node.hidden = true
-    _W.DirtyRoots:Mark(self.node)
-  end
-end
-
---- Reverses `Hide()`. No-ops if not currently hidden.
-function _W.FlexComponent:Show()
-  if self.node.hidden then
-    self.node.hidden = false
-    _W.DirtyRoots:Mark(self.node)
-  end
 end
 
 --- Runs the layout for the tree containing this node, starting from its
