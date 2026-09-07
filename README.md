@@ -400,6 +400,10 @@ component:SetWidth(200)
 -- vertical axis instead.
 component:SetHeight(100)
 
+-- Sets width and height together, equivalent to SetWidth()/SetHeight(). Omitting either
+-- argument passes nil, resetting that dimension instead of leaving it unchanged.
+component:SetSize(200, 100)
+
 -- Sets this node's own share of its parent's leftover main-axis space. Pass nil to reset
 -- to the default (1). No-ops if already that value.
 child:SetGrow(2)
