@@ -1386,7 +1386,8 @@ function _W.FlexComponent:GetShrink()
   return self.node.shrink
 end
 
---- Sets how this node aligns its own children along the cross axis by default.
+--- Sets how this node aligns its own children along the cross axis by
+--- default. `nil` resets to the default (`"STRETCH"`).
 --- @param align? WaffleFlexAlign
 function _W.FlexComponent:SetAlign(align)
   if self.node.align ~= align then
@@ -1416,7 +1417,8 @@ function _W.FlexComponent:GetAlignSelf()
   return self.node.alignSelf
 end
 
---- Sets how this node distributes leftover main-axis space among its own children.
+--- Sets how this node distributes leftover main-axis space among its own
+--- children. `nil` resets to the default (`"START"`).
 --- @param justify? WaffleFlexJustify
 function _W.FlexComponent:SetJustify(justify)
   if self.node.justify ~= justify then
@@ -1432,6 +1434,7 @@ function _W.FlexComponent:GetJustify()
 end
 
 --- Sets whether this node's overflowing children wrap onto a new line.
+--- `nil` resets to the default (`false`).
 --- @param wrap? boolean
 function _W.FlexComponent:SetWrap(wrap)
   if self.node.wrap ~= wrap then
@@ -1446,7 +1449,8 @@ function _W.FlexComponent:GetWrap()
   return self.node.wrap
 end
 
---- Sets the space between this node's own children.
+--- Sets the space between this node's own children. `nil` resets to the
+--- default (`0`).
 --- @param gap? integer
 function _W.FlexComponent:SetGap(gap)
   if self.node.gap ~= gap then
@@ -1478,8 +1482,8 @@ function _W.FlexComponent:GetLineGap()
 end
 
 --- Sets the space between this node's edge and its own children, on all
---- four sides. Overridden per side by `SetPaddingTop()`/`SetPaddingRight()`/
---- `SetPaddingBottom()`/`SetPaddingLeft()`.
+--- four sides. `nil` resets to the default (`0`). Overridden per side by
+--- `SetPaddingTop()`/`SetPaddingRight()`/`SetPaddingBottom()`/`SetPaddingLeft()`.
 --- @param padding? integer
 function _W.FlexComponent:SetPadding(padding)
   if self.node.padding ~= padding then
@@ -1560,8 +1564,8 @@ function _W.FlexComponent:GetPaddingLeft()
 end
 
 --- Sets the space around this node itself, on all four sides. `nil`
---- removes it. Overridden per side by `SetMarginTop()`/`SetMarginRight()`/
---- `SetMarginBottom()`/`SetMarginLeft()`.
+--- resets to the default (`0`). Overridden per side by `SetMarginTop()`/
+--- `SetMarginRight()`/`SetMarginBottom()`/`SetMarginLeft()`.
 --- @param margin? integer
 function _W.FlexComponent:SetMargin(margin)
   if self.node.margin ~= margin then
@@ -1736,7 +1740,7 @@ function _W.FlexComponent:GetKey()
 end
 
 --- Sets this node's visual position among siblings, independent of
---- declaration order. `nil` resets to the default.
+--- declaration order. `nil` resets to the default (`0`).
 --- @param order? integer
 function _W.FlexComponent:SetOrder(order)
   if self.node.order ~= order then
