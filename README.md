@@ -1,4 +1,4 @@
-# Waffle 🧇 (0.7.1)
+# Waffle 🧇 (0.8.0)
 
 **W**oW **A**ddon **F**lexible **F**rame **L**ayout **E**ngine
 
@@ -95,7 +95,7 @@ root:Layout()
 otherRoot:AttachComponent(root:GetChild("sidebar"):Detach())
 ```
 
-Every method used above, and every other one Waffle supports (`GetChild`, `Hide`/`Show`, every setter, and more), works the same on any node and is documented with a runnable example in [Component](#component) below.
+Every method used above, and every other one Waffle supports (`GetChild`, `SetHidden`, every other setter/getter, and more), works the same on any node and is documented with a runnable example in [Component](#component) below.
 
 **Reacting to resolved size.** `onLayout` fires with a node's own component and its resolved width/height, once the whole tree is laid out. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own):
 
@@ -106,7 +106,7 @@ root:AddChild({
     local frame = component:GetFrame()
     frame.scrollChild:SetWidth(width)
     local slider = component:GetChild("slider")
-    if frame.scrollChild:GetHeight() > height then slider:Show() else slider:Hide() end
+    slider:SetHidden(frame.scrollChild:GetHeight() <= height)
   end
 })
 root:AddChild({ frame = sliderFrame, key = "slider", width = 20 })
@@ -280,7 +280,9 @@ local node = {
   maxHeight = 300,
 
   -- Excludes this node from the layout flow entirely. Can also be toggled after the
-  -- fact with Hide()/Show().
+  -- fact with SetHidden(). Layout() hides its own frame and every already-resolved
+  -- frame in its subtree. An ancestor's own hidden hides this node's frame the same
+  -- way; GetHidden() still only reports this node's own hidden, never an ancestor's.
   hidden = false,
 
   -- Registers this node for lookup via GetChild(key) from anywhere in the tree. A
@@ -338,8 +340,9 @@ child:Detach()
 
 -- Removes component from this node's own children entirely, detaching it (and its own
 -- children, if it has any) from the tree rather than excluding it from layout the way
--- Hide() does. Doesn't touch component's own frame. Only succeeds if component really is
--- this node's own child; returns false, without detaching it, if it's attached elsewhere.
+-- SetHidden(true) does. Doesn't touch component's own frame. Only succeeds if component
+-- really is this node's own child; returns false, without detaching it, if it's attached
+-- elsewhere.
 local detached = component:DetachComponent(row)
 
 -- Removes every child from this node, same as calling DetachComponent on each one.
@@ -368,117 +371,149 @@ local frame = component:GetFrame()
 -- Returns true if this node's tree has changed since its last Layout() call.
 local isDirty = component:IsDirty()
 
--- Visibility
+-- Setters and Getters
 
--- Takes this node out of the layout flow entirely, its siblings reflow to fill the space,
--- and hides its own frame. Its position in the tree is preserved, Show() brings it back,
--- no re-inserting needed. No-ops if already hidden.
-column:Hide()
-
--- Reverses Hide(). No-ops if not currently hidden.
-column:Show()
-
--- Setters
+-- Every setter below is a no-op unless the value actually changes (SetKey is the one
+-- exception, see below), and has a matching getter immediately below it, returning the
+-- raw value it was given, nil if unset.
 
 -- Sets a frame factory for any descendant that gives neither frame nor its own
--- frameFactory. Pass nil to remove it. No-ops if already that value. An already-resolved
--- descendant's own frame is unaffected either way, only one still waiting on a factory
--- picks up the change.
+-- frameFactory. Pass nil to remove it. An already-resolved descendant's own frame is
+-- unaffected either way, only one still waiting on a factory picks up the change.
 component:SetDefaultFrameFactory(function(parent) return CreateFrame("Frame", nil, parent) end)
+local defaultFrameFactory = component:GetDefaultFrameFactory()
 
 -- Sets this node's own main axis for its own children. Pass nil to reset to the default
--- (ROW). No-ops if already that value.
+-- (ROW).
 component:SetDirection("COLUMN")
+local direction = component:GetDirection()
 
 -- Sets this node's own physical width. Pass nil to let it flex/stretch instead (whichever
 -- applies), "AUTO" to compute it from this node's own children (a sum along its main
 -- axis, a max along its cross axis), or a percentage string ("50%") to size it relative
--- to the parent. No-ops if already that value.
+-- to the parent.
 component:SetWidth(200)
+local width = component:GetWidth()
 
 -- Sets this node's own physical height. Same as SetWidth() in every other respect, the
 -- vertical axis instead.
 component:SetHeight(100)
+local height = component:GetHeight()
 
 -- Sets width and height together, equivalent to SetWidth()/SetHeight(). Omitting either
 -- argument passes nil, resetting that dimension instead of leaving it unchanged.
 component:SetSize(200, 100)
 
+-- Returns width and height together, the same values SetWidth()/SetHeight() (or SetSize())
+-- were last given.
+local width, height = component:GetSize()
+
 -- Sets this node's own share of its parent's leftover main-axis space. Pass nil to reset
--- to the default (1). No-ops if already that value.
+-- to the default (1).
 child:SetGrow(2)
+local grow = child:GetGrow()
 
 -- Sets this node's own share of its parent's main-axis deficit. Pass nil to reset to the
--- default (1). No-ops if already that value.
+-- default (1).
 child:SetShrink(0)
+local shrink = child:GetShrink()
 
 -- Sets how this node aligns its own children along the cross axis by default. Pass nil to
--- reset to the default (STRETCH). No-ops if already that alignment.
+-- reset to the default (STRETCH).
 component:SetAlign("CENTER")
+local align = component:GetAlign()
 
 -- Sets how this node aligns itself within its parent along the cross axis, overriding the
--- parent's own align. Pass nil to go back to inheriting it. No-ops if already that
--- alignment.
+-- parent's own align. Pass nil to go back to inheriting it.
 child:SetAlignSelf("END")
+local alignSelf = child:GetAlignSelf()
 
 -- Sets how this node distributes leftover main-axis space among its own children. Pass
--- nil to reset to the default (START). No-ops if already that value.
+-- nil to reset to the default (START).
 component:SetJustify("SPACE_BETWEEN")
+local justify = component:GetJustify()
 
 -- Sets whether this node's overflowing children wrap onto a new line. Pass nil to reset
--- to the default (false). No-ops if already that value.
+-- to the default (false).
 component:SetWrap(true)
+local wrap = component:GetWrap()
 
--- Sets the space between this node's own children. No-ops if already that gap.
+-- Sets the space between this node's own children. Pass nil to reset to the default (0).
 component:SetGap(8)
+local gap = component:GetGap()
 
 -- Sets the space between this node's own wrapped lines, instead of SetGap(). Pass nil to
--- fall back to SetGap()'s own value. No-ops if already that value.
+-- fall back to SetGap()'s own value.
 component:SetLineGap(16)
+local lineGap = component:GetLineGap()
 
--- Sets the space between this node's edge and its own children, on all four sides.
--- No-ops if already that padding.
+-- Sets the space between this node's edge and its own children, on all four sides. Pass
+-- nil to reset to the default (0).
 component:SetPadding(8)
+local padding = component:GetPadding()
 
--- Overrides SetPadding() for one side. Pass nil to revert to it. No-ops if already that
--- value.
+-- Overrides SetPadding() for one side. Pass nil to revert to it.
 component:SetPaddingTop(4)
 component:SetPaddingRight(4)
 component:SetPaddingBottom(4)
 component:SetPaddingLeft(4)
+local paddingTop = component:GetPaddingTop()
+local paddingRight = component:GetPaddingRight()
+local paddingBottom = component:GetPaddingBottom()
+local paddingLeft = component:GetPaddingLeft()
 
 -- Sets the space around this node itself, on all four sides. Pass nil to reset to the
--- default (0). No-ops if already that value.
+-- default (0).
 child:SetMargin(4)
+local margin = child:GetMargin()
 
--- Overrides SetMargin() for one side. Pass nil to revert to it. No-ops if already that
--- value.
+-- Overrides SetMargin() for one side. Pass nil to revert to it.
 child:SetMarginTop(2)
 child:SetMarginRight(2)
 child:SetMarginBottom(2)
 child:SetMarginLeft(2)
+local marginTop = child:GetMarginTop()
+local marginRight = child:GetMarginRight()
+local marginBottom = child:GetMarginBottom()
+local marginLeft = child:GetMarginLeft()
 
--- Sets a floor/ceiling on this node's own width. Pass nil to remove it. No-ops if already
--- that value.
+-- Sets a floor/ceiling on this node's own width. Pass nil to remove it.
 child:SetMinWidth(50)
 child:SetMaxWidth(300)
+local minWidth = child:GetMinWidth()
+local maxWidth = child:GetMaxWidth()
 
 -- Same as SetMinWidth()/SetMaxWidth(), for height.
 child:SetMinHeight(50)
 child:SetMaxHeight(300)
+local minHeight = child:GetMinHeight()
+local maxHeight = child:GetMaxHeight()
+
+-- Sets whether this node is excluded from the layout flow entirely; its siblings reflow
+-- to fill the space, and Layout() hides its own frame and every already-resolved frame
+-- in its subtree. An ancestor's own hidden hides this node's frame the same way, without
+-- changing this node's own hidden. Pass nil to reset to the default (false).
+child:SetHidden(true)
+
+-- Returns this node's own hidden, never an ancestor's: a node whose ancestor is hidden
+-- still returns nil/false here, even though its own frame is hidden too.
+local hidden = child:GetHidden()
 
 -- Sets this node's own key, for lookup via GetChild(key). Pass nil to remove it. Unlike
 -- every other setter, never marks the tree dirty: GetChild always searches live, there's
 -- nothing to recompute.
 child:SetKey("sidebar")
+local key = child:GetKey()
 
 -- Sets this node's visual position among its siblings, independent of declaration order.
--- Pass nil to reset to the default (0). No-ops if already that order.
+-- Pass nil to reset to the default (0).
 child:SetOrder(1)
+local order = child:GetOrder()
 
 -- Sets the callback fired once this node's own Layout() pass is resolved and clean. Pass
--- nil to remove it. No-ops if already that value.
+-- nil to remove it.
 component:SetOnLayout(function(comp, width, height) end)
+local onLayout = component:GetOnLayout()
 ```
 
 ## Testing
