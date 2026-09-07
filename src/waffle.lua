@@ -1288,6 +1288,16 @@ end
 -- Every setter below is a no-op unless the value actually changes, so
 -- redundant calls (e.g. from a per-frame OnUpdate) stay cheap.
 
+--- Sets this node's own main axis for its own children. `nil` resets to
+--- the default (`"ROW"`).
+--- @param direction? WaffleFlexDirection
+function _W.FlexComponent:SetDirection(direction)
+  if self.node.direction ~= direction then
+    self.node.direction = direction
+    _W.DirtyRoots:Mark(self.node)
+  end
+end
+
 --- Sets this node's own width. `nil` flexes/stretches instead; `"AUTO"`
 --- computes it from this node's own children (a sum along its main axis,
 --- a max along its cross axis); a percentage string (`"50%"`) resolves
@@ -1432,6 +1442,16 @@ end
 function _W.FlexComponent:SetOrder(order)
   if self.node.order ~= order then
     self.node.order = order
+    _W.DirtyRoots:Mark(self.node)
+  end
+end
+
+--- Sets the callback fired once this node's own `Layout()` pass is
+--- resolved and clean. `nil` removes it.
+--- @param onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer)
+function _W.FlexComponent:SetOnLayout(onLayout)
+  if self.node.onLayout ~= onLayout then
+    self.node.onLayout = onLayout
     _W.DirtyRoots:Mark(self.node)
   end
 end
