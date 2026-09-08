@@ -128,11 +128,13 @@ Every node in the tree, whether it's the one passed to `Waffle:Flex()` or a chil
 --- @type WaffleFlexNode
 local node = {
   -- An already-built frame, handed over as-is. Cannot be given together with frameFactory.
+  -- Not changeable after construction.
   frame = CreateFrame("Frame"),
 
   -- Creates this node's own frame, once. Receives the resolved parent as an argument.
   -- Cannot be given together with frame. If it uses $parent name substitution, the parent
-  -- must be passed in immediately here, not reparented later, substitution happens at creation time.
+  -- must be passed in immediately here, not reparented later, substitution happens at
+  -- creation time. Not changeable after construction.
   frameFactory = function(parent)
     return CreateFrame("Frame", "$parent_ChildFrame", parent)
   end,
@@ -375,7 +377,9 @@ local isDirty = component:IsDirty()
 
 -- Every setter below is a no-op unless the value actually changes (SetKey is the one
 -- exception, see below), and has a matching getter immediately below it, returning the
--- raw value it was given, nil if unset.
+-- raw value it was given, nil if unset. frame/frameFactory (see Node above) are the only
+-- exceptions: frame has no setter (GetFrame() still works); frameFactory has neither, not
+-- changeable after construction.
 
 -- Sets a frame factory for any descendant that gives neither frame nor its own
 -- frameFactory. Pass nil to remove it. An already-resolved descendant's own frame is
