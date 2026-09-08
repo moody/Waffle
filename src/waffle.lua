@@ -41,8 +41,8 @@ local Waffle = Addon.Waffle
 
 --- Shared by every node in the tree, root included.
 --- @class WaffleFlexNode
---- @field frame? WaffleFrame Cannot be given together with `frameFactory`.
---- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Cannot be given together with `frame`. `parent` is `nil` for the root, nothing sits above it to pass in.
+--- @field frame? WaffleFrame Cannot be given together with `frameFactory`. Not changeable after construction.
+--- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Cannot be given together with `frame`. `parent` is `nil` for the root, nothing sits above it to pass in. Not changeable after construction.
 --- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Applies to descendants only, not this node itself.
 --- @field children? WaffleFlexNode[] Positioned in a row or column, per `direction`.
 --- @field direction? WaffleFlexDirection Default `ROW`. `_REVERSE` keeps the same main axis, only the starting edge (and visual order along it) flips.
@@ -1268,8 +1268,10 @@ end
 -- is the one exception, see below). Each is immediately followed by its
 -- own getter, returning the raw value most recently given, `nil` if
 -- never set; the effective default, if any, is documented on the
--- setter, not repeated on the getter. Ordered to match
--- `WaffleFlexNode`'s own field declaration order above.
+-- setter, not repeated on the getter. `frame` has no setter (`GetFrame()`
+-- still works); `frameFactory` has neither, not changeable after
+-- construction. Ordered to match `WaffleFlexNode`'s own field
+-- declaration order above.
 
 --- Sets a frame factory for any descendant that gives neither `frame` nor
 --- its own `frameFactory`. `nil` removes it. An already-resolved
