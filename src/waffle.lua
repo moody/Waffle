@@ -71,7 +71,7 @@ local Waffle = Addon.Waffle
 --- @field minHeight? number Same as `minWidth`, for `height`.
 --- @field maxHeight? number Same as `maxWidth`, for `height`.
 --- @field hidden? boolean Excludes this node from layout entirely; siblings reflow to fill the space. `Layout()` hides its own frame and every already-resolved frame in its subtree. An ancestor's own `hidden` hides this node's frame the same way; `GetHidden()` still only reports this node's own `hidden`, never an ancestor's. Default `false`.
---- @field key? string For lookup via `GetChild(key)`. Duplicate keys aren't validated against, the first match wins.
+--- @field key? string For lookup via `FindByKey(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
 --- @field onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer) Fires once the whole `Layout()` pass is resolved and clean, not while it's still running, bottom-up, root last. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter.
 
@@ -1223,7 +1223,7 @@ end
 --- Wraps a single node, regardless of whether it has children: that's a
 --- fact about the node, not a distinct type, so one component covers
 --- both. Returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `AddColumn`,
---- `AttachComponent`, `GetChild`, and `GetChildren`.
+--- `AttachComponent`, `FindByKey`, and `GetChildren`.
 --- @class WaffleFlexComponent
 --- @field package node WaffleFlexNode
 _W.FlexComponent = {}
@@ -1728,9 +1728,9 @@ function _W.FlexComponent:GetHidden()
   return self.node.hidden
 end
 
---- Sets this node's own `key`, for lookup via `GetChild(key)`. `nil`
+--- Sets this node's own `key`, for lookup via `FindByKey(key)`. `nil`
 --- removes it. Unlike every other setter, never marks the tree dirty:
---- `GetChild` always searches live, there's nothing to recompute.
+--- `FindByKey` always searches live, there's nothing to recompute.
 --- @param key? string
 function _W.FlexComponent:SetKey(key)
   self.node.key = key
@@ -1775,14 +1775,15 @@ function _W.FlexComponent:GetOnLayout()
   return self.node.onLayout
 end
 
---- Looks up a child anywhere in the tree by its `key`, erroring if none is
---- found. A duplicate key isn't validated against, the first match wins.
+--- Looks up a component anywhere in the tree by its `key`, erroring if
+--- none is found. A duplicate key isn't validated against, the first
+--- match wins.
 --- @param key string
 --- @return WaffleFlexComponent
-function _W.FlexComponent:GetChild(key)
+function _W.FlexComponent:FindByKey(key)
   local root = _W.Ownership:FindRoot(self.node)
   local found = _W.FlexComponentFactory:FindNodeByKey(root, key)
-  assert(found, "Waffle: no child registered under key '" .. key .. "'")
+  assert(found, "Waffle: no component registered under key '" .. key .. "'")
   return _W.FlexComponentFactory:New(found)
 end
 

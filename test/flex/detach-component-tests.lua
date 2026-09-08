@@ -61,7 +61,7 @@ do
   assert(nested._test.width == nil)
 end
 
--- Test: a detached child's `key` no longer resolves via `GetChild`.
+-- Test: a detached child's `key` no longer resolves via `FindByKey`.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -70,11 +70,11 @@ do
   local leaf = container:AddChild({ frame = a, key = "sidebar" })
   container:Layout()
 
-  assert(container:GetChild("sidebar").node.frame == a)
+  assert(container:FindByKey("sidebar").node.frame == a)
 
   container:DetachComponent(leaf)
 
-  local ok = pcall(function() container:GetChild("sidebar") end)
+  local ok = pcall(function() container:FindByKey("sidebar") end)
   assert(not ok)
 end
 
@@ -184,7 +184,7 @@ do
   assert(sidebarFrame._test.point.parent == rootAFrame)
 
   local containerB = Waffle:Flex({ frame = rootBFrame, direction = "ROW", width = 300, height = 50 })
-  containerB:AttachComponent(containerA:GetChild("sidebar"):Detach())
+  containerB:AttachComponent(containerA:FindByKey("sidebar"):Detach())
   containerB:Layout()
 
   assert(#containerA:GetChildren() == 0)
