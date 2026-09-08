@@ -92,10 +92,10 @@ root:Layout()
 `AttachComponent` grafts an already-built component (its own separate `Waffle:Flex()` tree) into another one as-is; `Detach()` pulls a component out of wherever it currently is, so the two compose directly into a single call that moves one into a different tree entirely:
 
 ```lua
-otherRoot:AttachComponent(root:GetChild("sidebar"):Detach())
+otherRoot:AttachComponent(root:FindByKey("sidebar"):Detach())
 ```
 
-Every method used above, and every other one Waffle supports (`GetChild`, `SetHidden`, every other setter/getter, and more), works the same on any node and is documented with a runnable example in [Component](#component) below.
+Every method used above, and every other one Waffle supports (`FindByKey`, `SetHidden`, every other setter/getter, and more), works the same on any node and is documented with a runnable example in [Component](#component) below.
 
 **Reacting to resolved size.** `onLayout` fires with a node's own component and its resolved width/height, once the whole tree is laid out. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own):
 
@@ -105,7 +105,7 @@ root:AddChild({
   onLayout = function(component, width, height)
     local frame = component:GetFrame()
     frame.scrollChild:SetWidth(width)
-    local slider = component:GetChild("slider")
+    local slider = component:FindByKey("slider")
     slider:SetHidden(frame.scrollChild:GetHeight() <= height)
   end
 })
@@ -287,7 +287,7 @@ local node = {
   -- way; GetHidden() still only reports this node's own hidden, never an ancestor's.
   hidden = false,
 
-  -- Registers this node for lookup via GetChild(key) from anywhere in the tree. A
+  -- Registers this node for lookup via FindByKey(key) from anywhere in the tree. A
   -- duplicate key isn't validated against, the first match found wins. Can also be
   -- toggled after the fact with SetKey(), which never marks the tree dirty, there's
   -- nothing to recompute.
@@ -310,7 +310,7 @@ local node = {
 
 ### Component
 
-Every component, whether returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `AddColumn`, `AttachComponent`, `Detach`, `GetChild`, or `GetChildren`, shares the same shape, `WaffleFlexComponent`. Whether a node has children is a fact about it, not a fixed type, so every method below works the same regardless of whether the node it's called on currently has any.
+Every component, whether returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `AddColumn`, `AttachComponent`, `Detach`, `FindByKey`, or `GetChildren`, shares the same shape, `WaffleFlexComponent`. Whether a node has children is a fact about it, not a fixed type, so every method below works the same regardless of whether the node it's called on currently has any.
 
 ```lua
 local component = Waffle:Flex(node)
@@ -359,9 +359,9 @@ component:Layout()
 
 -- Queries
 
--- Looks up a child anywhere in the tree by the key it was given. Errors if no child was
+-- Looks up a component anywhere in the tree by the key it was given. Errors if none was
 -- registered under key.
-local sidebar = component:GetChild("sidebar")
+local sidebar = component:FindByKey("sidebar")
 
 -- Returns every one of this node's own children, wrapped, in declaration order. Doesn't
 -- recurse into grandchildren. Empty if it has none.
@@ -503,8 +503,8 @@ child:SetHidden(true)
 -- still returns nil/false here, even though its own frame is hidden too.
 local hidden = child:GetHidden()
 
--- Sets this node's own key, for lookup via GetChild(key). Pass nil to remove it. Unlike
--- every other setter, never marks the tree dirty: GetChild always searches live, there's
+-- Sets this node's own key, for lookup via FindByKey(key). Pass nil to remove it. Unlike
+-- every other setter, never marks the tree dirty: FindByKey always searches live, there's
 -- nothing to recompute.
 child:SetKey("sidebar")
 local key = child:GetKey()
