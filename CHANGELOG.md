@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `WaffleFrame` (the type of `frame`/`frameFactory`/`GetFrame()`) no longer requires an exact match against its documented shape; any table is accepted. That shape is still available under its own name, `WaffleFrameShape`.
 - **Breaking:** `Hide()`/`Show()` are replaced by `SetHidden()`, and `IsHidden()` by `GetHidden()`, matching every other field's own setter/getter pair. Replace `component:Hide()` with `component:SetHidden(true)`, `component:Show()` with `component:SetHidden(false)`, and `component:IsHidden()` with `component:GetHidden()`.
+- **Breaking:** `GetChild(key)` renamed to `FindByKey(key)`. It always searched the whole tree by `key`, not just this node's own children, unlike `GetChildren()`; the old name read as if it were scoped the same way. Behavior is unchanged, replace `component:GetChild(key)` with `component:FindByKey(key)`.
 
 ### Fixed
 
