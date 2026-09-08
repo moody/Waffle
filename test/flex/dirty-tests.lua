@@ -109,7 +109,7 @@ do
   assert(b._test.clearedPoints == 1)
 end
 
--- Test: `GetChild`, a non-mutating call, doesn't mark the tree dirty.
+-- Test: `FindByKey`, a non-mutating call, doesn't mark the tree dirty.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -119,7 +119,7 @@ do
   container:Layout()
   assert(container:IsDirty() == false)
 
-  container:GetChild("a")
+  container:FindByKey("a")
   assert(container:IsDirty() == false)
 
   container:Layout()

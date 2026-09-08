@@ -747,6 +747,13 @@ do
   container:Layout()
   assert(container:IsDirty() == false)
 
+  leaf:SetHidden(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetHidden(true)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+
   container:SetJustify(nil)
   assert(container:IsDirty() == false)
   container:SetJustify("CENTER")
@@ -828,6 +835,7 @@ do
   assert(leaf.SetMaxWidth ~= nil)
   assert(leaf.SetMinHeight ~= nil)
   assert(leaf.SetMaxHeight ~= nil)
+  assert(leaf.SetHidden ~= nil)
   assert(leaf.SetAlignSelf ~= nil)
   assert(leaf.SetMargin ~= nil)
   assert(leaf.SetMarginTop ~= nil)

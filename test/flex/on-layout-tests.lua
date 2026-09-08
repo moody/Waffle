@@ -144,7 +144,7 @@ do
 end
 
 -- Test: the component `onLayout` receives is fully usable, not just for
--- reading its own frame: it can reach a keyed sibling via `GetChild`,
+-- reading its own frame: it can reach a keyed sibling via `FindByKey`,
 -- without the caller having captured a wrapper up front.
 do
   local parent = Mocks:CreateFrame()
@@ -161,7 +161,7 @@ do
         frame = a,
         width = 100,
         onLayout = function(component)
-          siblingFrameSeen = component:GetChild("b"):GetFrame() == b
+          siblingFrameSeen = component:FindByKey("b"):GetFrame() == b
         end
       },
       { frame = b, key = "b", width = 200 },
@@ -253,7 +253,7 @@ do
     width = 300,
     height = 50,
     children = {
-      { frame = a, width = 100, onLayout = function(component) component:GetChild("b"):SetWidth(50) end },
+      { frame = a, width = 100, onLayout = function(component) component:FindByKey("b"):SetWidth(50) end },
       { frame = b, key = "b", width = 200 },
     }
   })

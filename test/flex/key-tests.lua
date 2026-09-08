@@ -5,7 +5,7 @@ local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
 -- Test: `AddChild` with a `key` registers a leaf, retrievable via
--- `GetChild` on the root. `GetChild` returns a fresh component each call,
+-- `FindByKey` on the root. `FindByKey` returns a fresh component each call,
 -- not the identical object `AddChild` returned, but both wrap the same node.
 do
   local root = Mocks:CreateFrame()
@@ -13,7 +13,7 @@ do
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a, key = "sidebar" })
-  local component = container:GetChild("sidebar")
+  local component = container:FindByKey("sidebar")
 
   assert(component ~= leaf)
   assert(component.node == leaf.node)
@@ -28,11 +28,11 @@ do
   local row = container:AddRow({ frame = Mocks:CreateFrame(), key = "toolbar" })
   local col = container:AddColumn({ frame = Mocks:CreateFrame(), key = "sidebar" })
 
-  assert(container:GetChild("toolbar").node == row.node)
-  assert(container:GetChild("sidebar").node == col.node)
+  assert(container:FindByKey("toolbar").node == row.node)
+  assert(container:FindByKey("sidebar").node == col.node)
 end
 
--- Test: `GetChild` works from anywhere in the tree, not just the root,
+-- Test: `FindByKey` works from anywhere in the tree, not just the root,
 -- both from a nested container and a leaf.
 do
   local root = Mocks:CreateFrame()
@@ -43,8 +43,8 @@ do
 
   local target = container:AddChild({ frame = Mocks:CreateFrame(), key = "target" })
 
-  assert(row:GetChild("target").node == target.node)
-  assert(leaf:GetChild("target").node == target.node)
+  assert(row:FindByKey("target").node == target.node)
+  assert(leaf:FindByKey("target").node == target.node)
 end
 
 -- Test: an unknown key throws an error.
@@ -52,7 +52,7 @@ do
   local root = Mocks:CreateFrame()
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
 
-  local ok, err = pcall(function() container:GetChild("nope") end)
+  local ok, err = pcall(function() container:FindByKey("nope") end)
   assert(not ok)
   assert(tostring(err):find("nope"))
 end
@@ -66,11 +66,11 @@ do
   container:AddChild({ frame = a, key = "dup" })
   container:AddChild({ frame = b, key = "dup" })
 
-  assert(container:GetChild("dup").node.frame == a)
+  assert(container:FindByKey("dup").node.frame == a)
 end
 
 -- Test: a leaf child's `key`, written directly into a declarative
--- `children` table, is found by `GetChild` too, not just container-added ones.
+-- `children` table, is found by `FindByKey` too, not just container-added ones.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
@@ -83,7 +83,7 @@ do
     children = { { frame = a, key = "sidebar" } }
   })
 
-  assert(container:GetChild("sidebar").node.frame == a)
+  assert(container:FindByKey("sidebar").node.frame == a)
 end
 
 -- Test: a declarative container child's `key` resolves to a real container,
@@ -104,7 +104,7 @@ do
     }
   })
 
-  local row = container:GetChild("row")
+  local row = container:FindByKey("row")
   row:AddChild({ frame = newLeaf })
   container:Layout()
 
@@ -130,7 +130,7 @@ do
     }
   })
 
-  assert(container:GetChild("deep").node.frame == leaf)
+  assert(container:FindByKey("deep").node.frame == leaf)
 end
 
 -- Test: a declarative key colliding with a later container-added key
@@ -149,7 +149,7 @@ do
 
   container:AddChild({ frame = b, key = "dup" })
 
-  assert(container:GetChild("dup").node.frame == a)
+  assert(container:FindByKey("dup").node.frame == a)
 end
 
 -- Test: a keyed grandchild inside a declarative subtree handed to `AddRow`
@@ -165,10 +165,10 @@ do
     children = { { frame = leaf, key = "mixed" } }
   })
 
-  assert(container:GetChild("mixed").node.frame == leaf)
+  assert(container:FindByKey("mixed").node.frame == leaf)
 end
 
--- Test: `SetKey` registers (or changes) a node's own key for `GetChild`
+-- Test: `SetKey` registers (or changes) a node's own key for `FindByKey`
 -- lookup, without marking the tree dirty.
 do
   local root = Mocks:CreateFrame()
@@ -181,12 +181,12 @@ do
 
   leaf:SetKey("a")
   assert(container:IsDirty() == false)
-  assert(container:GetChild("a").node.frame == a)
+  assert(container:FindByKey("a").node.frame == a)
 
   leaf:SetKey("b")
-  assert(container:GetChild("b").node.frame == a)
+  assert(container:FindByKey("b").node.frame == a)
 
-  local ok = pcall(function() container:GetChild("a") end)
+  local ok = pcall(function() container:FindByKey("a") end)
   assert(not ok) -- old key no longer registered
 end
 
