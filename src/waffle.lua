@@ -309,19 +309,13 @@ end
 -- DeclarationOrder
 -- =============================================================================
 
---- Used to break `order` ties. Weak keys so an unreferenced child can still
---- be garbage collected.
+--- Used to break `order` ties. `_W.Sorting` reads `byChild` directly, a child
+--- not yet assigned counts as `0`. Weak keys so an unreferenced child can
+--- still be garbage collected.
 _W.DeclarationOrder = {
   next = 0,
   byChild = setmetatable({}, { __mode = "k" })
 }
-
---- Returns `child`'s declaration order, `0` if not yet assigned.
---- @param child WaffleFlexNode
---- @return integer
-function _W.DeclarationOrder:Get(child)
-  return self.byChild[child] or 0
-end
 
 --- Assigns `child` the next declaration order. No-ops if it already has one.
 --- @param child WaffleFlexNode
@@ -391,8 +385,8 @@ function _W.Sorting:IsFlexChildBefore(childA, childB)
   if orderA ~= orderB then
     return orderA < orderB
   end
-  local decOrderA, decOrderB = _W.DeclarationOrder:Get(childA), _W.DeclarationOrder:Get(childB)
-  return decOrderA < decOrderB
+  local byChild = _W.DeclarationOrder.byChild
+  return (byChild[childA] or 0) < (byChild[childB] or 0)
 end
 
 --- Sorts `children` in place by `order`, ties broken by declaration
@@ -564,7 +558,8 @@ function _W.Sizing:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, kn
   local crossSize = self:ResolveKnownDimension(node, crossAxis, parentWidth, parentHeight) or knownOtherAxisSize
   local contentCrossSize = crossSize and (crossSize - crossLeading - crossTrailing)
 
-  for _, child in ipairs(node.children) do
+  for i = 1, #node.children do
+    local child = node.children[i]
     if _W.Utils:ParseVisibility(child.visibility) ~= "GONE" then
       visibleCount = visibleCount + 1
       local childKnownOtherAxisSize = contentCrossSize and child[axis] == "AUTO" and
@@ -591,7 +586,8 @@ end
 --- @return integer
 function _W.Sizing:MaxCrossSize(children, axis)
   local max = 0
-  for _, child in ipairs(children) do
+  for i = 1, #children do
+    local child = children[i]
     local size = self:ResolveOuterDimension(child, axis)
     if not size then
       error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
@@ -621,7 +617,8 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
 
   --- @type WaffleFlexNode[]
   local visibleChildren = _W.Scratch:Get()
-  for _, child in ipairs(node.children) do
+  for i = 1, #node.children do
+    local child = node.children[i]
     if _W.Utils:ParseVisibility(child.visibility) ~= "GONE" then
       table.insert(visibleChildren, child)
     end
@@ -678,7 +675,8 @@ end
 --- @return integer
 function _W.Sizing:LineCrossSize(children, axis, fallback)
   local max
-  for _, child in ipairs(children) do
+  for i = 1, #children do
+    local child = children[i]
     local size = self:ResolveOuterDimension(child, axis)
     if size then
       max = max and math.max(max, size) or size
@@ -946,7 +944,8 @@ function _W.FlexLayout:SplitFlexLines(children, axis, mainSize, crossSize, gap)
   local parentWidth = axis == "width" and mainSize or crossSize
   local parentHeight = axis == "height" and mainSize or crossSize
 
-  for _, child in ipairs(children) do
+  for i = 1, #children do
+    local child = children[i]
     local size = _W.Sizing:ResolveDimension(child, axis, parentWidth, parentHeight)
     local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, axis, "margin")
     local margin = marginLeading + marginTrailing
@@ -1017,7 +1016,8 @@ function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossS
   -- sizes on every round, not just once.
   --- @type WaffleFlexNodeSizes
   local sizes = _W.Scratch:Get()
-  for _, child in ipairs(lineChildren) do
+  for i = 1, #lineChildren do
+    local child = lineChildren[i]
     local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
     fixedTotal = fixedTotal + marginLeading + marginTrailing
 
@@ -1064,7 +1064,8 @@ function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossS
   end
 
   -- Resolve each child's final size after grow/shrink
-  for _, child in ipairs(lineChildren) do
+  for i = 1, #lineChildren do
+    local child = lineChildren[i]
     local size = sizes[child]
     if size then
       if shrunkSizes and shrunkSizes[child] then
@@ -1225,7 +1226,8 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
   local justifyOffset, justifyGap = self:ResolveLineJustify(node, freeSpace, visibleCount, isReverse)
 
   local mainOffset = mainStart + justifyOffset
-  for _, child in ipairs(lineChildren) do
+  for i = 1, #lineChildren do
+    local child = lineChildren[i]
     local childFrame = self:PrepareChildFrame(child, frame, defaultFrameFactory)
 
     local size = sizes[child]
@@ -1311,7 +1313,8 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
   local visibleChildren = _W.Scratch:Get()
 
   local visibleCount = 0
-  for _, child in ipairs(children) do
+  for i = 1, #children do
+    local child = children[i]
     if _W.Utils:ParseVisibility(child.visibility) == "GONE" then
       _W.Utils:HideResolvedFrames(child)
     else
