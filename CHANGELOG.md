@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-09-20
+
+### Added
+
+- `Component:WhenFrameReady(callback)`: calls a function once with a node's frame, immediately if the frame already exists, otherwise right after Waffle creates it and before it is parented, sized, or shown. For setup that needs the frame, such as `HookScript()`. Callbacks run in registration order.
+
 ## [0.8.1] - 2026-09-09
 
 ### Changed

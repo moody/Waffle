@@ -1,4 +1,4 @@
-# Waffle 🧇 (0.8.1)
+# Waffle 🧇 (0.9.0)
 
 **W**oW **A**ddon **F**lexible **F**rame **L**ayout **E**ngine
 
@@ -111,6 +111,16 @@ root:AddChild({
 })
 root:AddChild({ frame = sliderFrame, key = "slider", width = 20 })
 ```
+
+**Setting up a frame once.** `WhenFrameReady()` calls a function once with a node's frame: immediately if the frame already exists, otherwise right after Waffle creates it, before Waffle parents, sizes, or shows it. Useful for setup that needs the real frame, like hooking its scripts, on a node whose frame you did not create:
+
+```lua
+root:FindByKey("sidebar"):WhenFrameReady(function(frame)
+  frame:HookScript("OnHide", onSidebarHidden)
+end)
+```
+
+Waffle does not create a hidden node's frame until it is first shown, so its callbacks wait until then. A script hooked after the frame has already been shown or hidden only sees later events.
 
 **Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Call it again any time state changes, from any node in the tree, not just the root, it always resolves and lays out the whole tree from its actual current root. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. `IsDirty()` tells you whether a call would actually do anything, without triggering one.
 
@@ -518,6 +528,12 @@ local order = child:GetOrder()
 -- nil to remove it.
 component:SetOnLayout(function(comp, width, height) end)
 local onLayout = component:GetOnLayout()
+
+-- Calls callback once with this node's frame: immediately if the frame already exists,
+-- otherwise right after Waffle creates it, before it is parented, sized, or shown.
+-- Callbacks run in registration order. When one runs during a Layout() pass, touch only
+-- the frame; changing the tree is unsupported.
+component:WhenFrameReady(function(frame) end)
 ```
 
 ## Testing
@@ -525,7 +541,7 @@ local onLayout = component:GetOnLayout()
 Waffle includes a test suite under `test/`, run against Lua 5.1:
 
 ```bash
-./run-tests.sh
+python3 .github/scripts/run_tests.py
 ```
 
 Tests run automatically via GitHub Actions on every push and pull request to `main`.
