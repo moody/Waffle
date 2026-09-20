@@ -155,7 +155,7 @@ do
   assert(order[3] == "third")
 end
 
--- Test: a hidden node's frame is not created, so `WhenFrameReady` waits for
+-- Test: a `"GONE"` node's frame is not created, so `WhenFrameReady` waits for
 -- the first `Layout()` that shows it.
 do
   local root = Mocks:CreateFrame()
@@ -163,7 +163,7 @@ do
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({
-    hidden = true,
+    visibility = "GONE",
     frameFactory = function()
       factoryCalls = factoryCalls + 1
       return Mocks:CreateFrame()
@@ -174,7 +174,7 @@ do
 
   assert(factoryCalls == 0 and calls == 0)
 
-  leaf:SetHidden(false)
+  leaf:SetVisibility("VISIBLE")
   container:Layout()
 
   assert(factoryCalls == 1 and calls == 1)

@@ -122,9 +122,9 @@ do
   leaf:SetMaxHeight(300)
   assert(leaf:GetMaxHeight() == 300)
 
-  assert(leaf:GetHidden() == nil)
-  leaf:SetHidden(true)
-  assert(leaf:GetHidden() == true)
+  assert(leaf:GetVisibility() == nil)
+  leaf:SetVisibility("GONE")
+  assert(leaf:GetVisibility() == "GONE")
 
   assert(leaf:GetKey() == nil)
   leaf:SetKey("sidebar")
@@ -154,7 +154,7 @@ do
   leaf:GetHeight()
   leaf:GetSize()
   container:GetGap()
-  leaf:GetHidden()
+  leaf:GetVisibility()
   assert(container:IsDirty() == false)
 end
 
@@ -194,7 +194,7 @@ do
   assert(leaf.GetMaxWidth ~= nil)
   assert(leaf.GetMinHeight ~= nil)
   assert(leaf.GetMaxHeight ~= nil)
-  assert(leaf.GetHidden ~= nil)
+  assert(leaf.GetVisibility ~= nil)
   assert(leaf.GetKey ~= nil)
   assert(leaf.GetOrder ~= nil)
   assert(leaf.GetOnLayout ~= nil)

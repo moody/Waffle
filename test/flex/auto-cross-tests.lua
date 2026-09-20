@@ -76,7 +76,7 @@ do
   assert(tostring(err):find("flexible"))
 end
 
--- Test: a hidden child is excluded from a cross-axis `"AUTO"` max.
+-- Test: a `"GONE"` child is excluded from a cross-axis `"AUTO"` max.
 do
   local parent = Mocks:CreateFrame()
   local autoFrame = Mocks:CreateFrame()
@@ -95,7 +95,7 @@ do
         height = "AUTO",
         children = {
           { frame = a, height = 20 },
-          { frame = b, height = 100, hidden = true },
+          { frame = b, height = 100, visibility = "GONE" },
           { frame = c, height = 30 },
         }
       }
@@ -103,6 +103,35 @@ do
   }):Layout()
 
   assert(autoFrame._test.height == 30) -- b (100) excluded, max(20, 30)
+end
+
+-- Test: an `"INVISIBLE"` child is included in a cross-axis `"AUTO"` max.
+do
+  local parent = Mocks:CreateFrame()
+  local autoFrame = Mocks:CreateFrame()
+  local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  Waffle:Flex({
+    frame = parent,
+    direction = "ROW",
+    width = 400,
+    height = 50,
+    children = {
+      {
+        frame = autoFrame,
+        direction = "ROW",
+        width = 200,
+        height = "AUTO",
+        children = {
+          { frame = a, height = 20 },
+          { frame = b, height = 100, visibility = "INVISIBLE" },
+          { frame = c, height = 30 },
+        }
+      }
+    }
+  }):Layout()
+
+  assert(autoFrame._test.height == 100) -- b (100) still counts, max(20, 100, 30)
 end
 
 -- Test: cross-axis `"AUTO"` recurses through a nested cross-axis `"AUTO"`

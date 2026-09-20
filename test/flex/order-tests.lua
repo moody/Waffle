@@ -167,7 +167,7 @@ do
   assert(a._test.point.offsetX == 110) -- 100 + gap, right after b
 end
 
--- Test: a hidden child's `order` has no effect, it's excluded from the
+-- Test: a `"GONE"` child's `order` has no effect, it's excluded from the
 -- layout flow entirely regardless of where it'd otherwise sort.
 do
   local root = Mocks:CreateFrame()
@@ -179,7 +179,7 @@ do
     width = 300,
     height = 50,
     children = {
-      { frame = a, width = 100, order = 2, hidden = true },
+      { frame = a, width = 100, order = 2, visibility = "GONE" },
       { frame = b, width = 100, order = 0 },
       { frame = c, width = 100, order = 1 },
     }
