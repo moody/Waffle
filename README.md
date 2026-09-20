@@ -164,8 +164,8 @@ local node = {
   -- This node's own physical height, always vertical. Same as width in every other
   -- respect, "AUTO" sums along the main axis when direction is COLUMN, maxes along
   -- the cross axis otherwise, a percentage sizes it relative to the parent's own height.
-  -- "AUTO" on a node with wrap only accounts for the wrapping if that node's own width
-  -- is explicit or a percentage.
+  -- "AUTO" on a node with wrap counts the lines its width produces, including a width
+  -- it is stretched or flexed to.
   -- Can also be toggled after the fact with SetHeight().
   height = 100,
 
