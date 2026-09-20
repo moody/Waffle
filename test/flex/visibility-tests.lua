@@ -744,4 +744,53 @@ do
   assert(root._test.visible == true and root._test.showCalls == 1)
 end
 
+-- Test: `IsVisible()` is `true` for an unset `visibility` and for `"VISIBLE"`
+-- in any case, and `false` for `"INVISIBLE"` and `"GONE"` in any case.
+do
+  local container = Waffle:Flex({ frame = Mocks:CreateFrame(), direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = Mocks:CreateFrame() })
+
+  assert(leaf:IsVisible() == true)
+
+  for _, value in ipairs({ "VISIBLE", "visible" }) do
+    leaf:SetVisibility(value)
+    assert(leaf:IsVisible() == true, value)
+  end
+
+  for _, value in ipairs({ "INVISIBLE", "invisible", "GONE", "gone" }) do
+    leaf:SetVisibility(value)
+    assert(leaf:IsVisible() == false, value)
+  end
+
+  leaf:SetVisibility(nil)
+  assert(leaf:IsVisible() == true)
+end
+
+-- Test: `IsVisible()` reports only the node's own `visibility`, not an
+-- ancestor's.
+do
+  local container = Waffle:Flex({ frame = Mocks:CreateFrame(), direction = "ROW", width = 200, height = 50 })
+  local row = container:AddRow({ frame = Mocks:CreateFrame(), visibility = "GONE" })
+  local leaf = row:AddChild({ frame = Mocks:CreateFrame() })
+
+  assert(row:IsVisible() == false)
+  assert(leaf:IsVisible() == true)
+end
+
+-- Test: `IsVisible()` throws an error for an unrecognized `visibility` in a
+-- node table, and does not mark the tree dirty.
+do
+  local container = Waffle:Flex({ frame = Mocks:CreateFrame(), direction = "ROW", width = 200, height = 50 })
+  local leaf = container:AddChild({ frame = Mocks:CreateFrame() })
+  container:Layout()
+
+  leaf:IsVisible()
+  assert(container:IsDirty() == false)
+
+  local invalid = container:AddChild({ frame = Mocks:CreateFrame(), visibility = "hidden" })
+  local ok, err = pcall(invalid.IsVisible, invalid)
+  assert(not ok)
+  assert(tostring(err):find("hidden", 1, true) and tostring(err):find("GONE", 1, true))
+end
+
 print("All assertions passed.")
