@@ -516,9 +516,9 @@ local maxHeight = child:GetMaxHeight()
 -- does not matter, any other value throws an error.
 child:SetVisibility("GONE")
 
--- Returns this node's own visibility, never an ancestor's: a node whose ancestor is
--- "INVISIBLE" or "GONE" still returns nil or "VISIBLE" here, even though its own frame
--- is hidden too.
+-- Returns this node's own visibility as given, never an ancestor's: a node whose
+-- ancestor is "INVISIBLE" or "GONE" still returns nil or "VISIBLE" here, even though
+-- its own frame is hidden too.
 local visibility = child:GetVisibility()
 
 -- Sets this node's own key, for lookup via FindByKey(key). Pass nil to remove it. Unlike
