@@ -167,7 +167,8 @@ local node = {
   -- "ROW", "COLUMN", "ROW_REVERSE", or "COLUMN_REVERSE". Defaults to "ROW".
   -- Applies to this node's own children, if it has any. The _REVERSE variants keep the
   -- same main axis, just flip which edge is main-start; order still sorts first.
-  -- Can also be toggled after the fact with SetDirection().
+  -- Case insensitive, any other value throws an error. Can also be toggled after
+  -- the fact with SetDirection().
   direction = "ROW",
 
   -- This node's own physical width, always horizontal, regardless of direction. Used
@@ -204,18 +205,21 @@ local node = {
 
   -- How this node aligns its own children along the cross axis, if it has any:
   -- "STRETCH" (default), "START", "CENTER", or "END". Overridden per-child by
-  -- that child's own alignSelf. Can also be toggled after the fact with SetAlign().
+  -- that child's own alignSelf. Case insensitive, any other value throws an error.
+  -- Can also be toggled after the fact with SetAlign().
   align = "STRETCH",
 
   -- Overrides the parent's align for this node specifically. Requires this node's own
   -- cross-axis dimension if not "STRETCH". No effect on the root, nothing above it to
-  -- align it within. Can also be toggled after the fact with SetAlignSelf().
+  -- align it within. Case insensitive, any other value throws an error. Can also
+  -- be toggled after the fact with SetAlignSelf().
   alignSelf = "STRETCH",
 
   -- How this node distributes leftover main-axis space among its own children, if it has
   -- any: "START" (default), "CENTER", "END", "SPACE_BETWEEN", "SPACE_AROUND", or
   -- "SPACE_EVENLY". Only matters when none of those children have a positive grow
-  -- share. Can also be toggled after the fact with SetJustify().
+  -- share. Case insensitive, any other value throws an error. Can also be toggled
+  -- after the fact with SetJustify().
   justify = "START",
 
   -- Overflowing children start a new line instead of continuing past the main axis size.
@@ -298,7 +302,7 @@ local node = {
   -- affects this node's frame the same way; GetVisibility() still only reports this
   -- node's own visibility, never an ancestor's. On the root, "INVISIBLE" still creates its
   -- frame and lays out the tree; use "GONE" to defer that until it is first shown.
-  -- Case does not matter, any other value throws an error. Defaults to "VISIBLE". Can
+  -- Case insensitive, any other value throws an error. Defaults to "VISIBLE". Can
   -- also be changed after the fact with SetVisibility().
   visibility = "VISIBLE",
 
@@ -403,7 +407,7 @@ component:SetDefaultFrameFactory(function(parent) return CreateFrame("Frame", ni
 local defaultFrameFactory = component:GetDefaultFrameFactory()
 
 -- Sets this node's own main axis for its own children. Pass nil to reset to the default
--- (ROW).
+-- (ROW). Case insensitive, any other value throws an error.
 component:SetDirection("COLUMN")
 local direction = component:GetDirection()
 
@@ -438,17 +442,18 @@ child:SetShrink(0)
 local shrink = child:GetShrink()
 
 -- Sets how this node aligns its own children along the cross axis by default. Pass nil to
--- reset to the default (STRETCH).
+-- reset to the default (STRETCH). Case insensitive, any other value throws an error.
 component:SetAlign("CENTER")
 local align = component:GetAlign()
 
 -- Sets how this node aligns itself within its parent along the cross axis, overriding the
--- parent's own align. Pass nil to go back to inheriting it.
+-- parent's own align. Pass nil to go back to inheriting it. Case insensitive, any
+-- other value throws an error.
 child:SetAlignSelf("END")
 local alignSelf = child:GetAlignSelf()
 
 -- Sets how this node distributes leftover main-axis space among its own children. Pass
--- nil to reset to the default (START).
+-- nil to reset to the default (START). Case insensitive, any other value throws an error.
 component:SetJustify("SPACE_BETWEEN")
 local justify = component:GetJustify()
 
@@ -513,7 +518,7 @@ local maxHeight = child:GetMaxHeight()
 -- fill the space, and Layout() hides its own frame and every already-resolved frame in
 -- its subtree. An ancestor's own visibility affects this node's frame the same way,
 -- without changing this node's own. Pass nil to reset to the default ("VISIBLE"). Case
--- does not matter, any other value throws an error.
+-- insensitive, any other value throws an error.
 child:SetVisibility("GONE")
 
 -- Returns this node's own visibility as given, never an ancestor's: a node whose
