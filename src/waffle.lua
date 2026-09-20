@@ -1,5 +1,5 @@
 -- =============================================================================
--- Waffle: 0.10.0 - https://github.com/moody/Waffle
+-- Waffle: 0.11.0 - https://github.com/moody/Waffle
 -- =============================================================================
 
 local _, Addon = ...
@@ -24,9 +24,17 @@ local Waffle = Addon.Waffle
 --- ```
 --- @alias WaffleFrame table
 
---- @alias WaffleFlexDirection "ROW" | "COLUMN" | "ROW_REVERSE" | "COLUMN_REVERSE"
---- @alias WaffleFlexAlign "START" | "CENTER" | "END" | "STRETCH"
---- @alias WaffleFlexJustify "START" | "CENTER" | "END" | "SPACE_BETWEEN" | "SPACE_AROUND" | "SPACE_EVENLY"
+--- The valid `direction` values.
+--- @enum (key) WaffleFlexDirection
+local DIRECTIONS = { ROW = true, COLUMN = true, ROW_REVERSE = true, COLUMN_REVERSE = true }
+
+--- The valid `align` and `alignSelf` values.
+--- @enum (key) WaffleFlexAlign
+local ALIGNS = { START = true, CENTER = true, END = true, STRETCH = true }
+
+--- The valid `justify` values.
+--- @enum (key) WaffleFlexJustify
+local JUSTIFIES = { START = true, CENTER = true, END = true, SPACE_BETWEEN = true, SPACE_AROUND = true, SPACE_EVENLY = true }
 
 --- The valid `visibility` values.
 --- @enum (key) WaffleFlexVisibility
@@ -38,14 +46,14 @@ local VISIBILITIES = { VISIBLE = true, INVISIBLE = true, GONE = true }
 --- @field frameFactory? fun(parent: WaffleFrame): WaffleFrame Cannot be given together with `frame`. `parent` is `nil` for the root, nothing sits above it to pass in. Not changeable after construction.
 --- @field defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame Applies to descendants only, not this node itself.
 --- @field children? WaffleFlexNode[] Positioned in a row or column, per `direction`.
---- @field direction? WaffleFlexDirection Default `ROW`. `_REVERSE` keeps the same main axis, only the starting edge (and visual order along it) flips.
+--- @field direction? WaffleFlexDirection Default `ROW`. `_REVERSE` keeps the same main axis, only the starting edge (and visual order along it) flips. Case insensitive, any other value throws an error.
 --- @field width? integer | "AUTO" | string Always physical/horizontal, regardless of `direction`. `"AUTO"` sums this node's own children's own `width` along its main axis (`direction` is `ROW`), maxes them along its cross axis instead. A percentage string (`"50%"`) resolves against the parent's own `width`, erroring without one available (the root, or a parent whose own `width` is itself still being computed from `"AUTO"`). Has no effect on `minWidth`/`maxWidth`, same as any other fixed `width`.
 --- @field height? integer | "AUTO" | string Same as `width`, vertical instead; sums along its main axis when `direction` is `COLUMN`, maxes along its cross axis otherwise, a percentage resolves against the parent's own `height`.
 --- @field grow? number This node's own share of its parent's leftover main-axis space, relative to its equally-flexible siblings. Default `1`. No effect on a node with its own explicit main-axis `width`/`height`, or on the root.
 --- @field shrink? number This node's own share of its parent's main-axis deficit, when its siblings' own sizes don't all fit. Weighted by this value times this node's own main-axis size, not the value alone. Default `1`; `0` never shrinks below this node's own stated size. No effect on a flexible node (nothing stated to reduce), or on the root.
---- @field align? WaffleFlexAlign Cross-axis alignment for this node's own children. Default `STRETCH`. A child's own `alignSelf` overrides this.
---- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root.
---- @field justify? WaffleFlexJustify Main-axis distribution of leftover space among this node's own children. Default `START`. No effect if any child has a positive `grow` share, it already claims the leftover space.
+--- @field align? WaffleFlexAlign Cross-axis alignment for this node's own children. Default `STRETCH`. A child's own `alignSelf` overrides this. Case insensitive, any other value throws an error.
+--- @field alignSelf? WaffleFlexAlign Overrides the parent's `align`. No effect on the root. Case insensitive, any other value throws an error.
+--- @field justify? WaffleFlexJustify Main-axis distribution of leftover space among this node's own children. Default `START`. No effect if any child has a positive `grow` share, it already claims the leftover space. Case insensitive, any other value throws an error.
 --- @field wrap? boolean Overflowing children start a new line instead of continuing past the main axis size. Each line gets its own cross-size (a max over its own children) and stacks after the previous one, `lineGap` between lines too. Default `false`.
 --- @field gap? integer Between children only, not the edges. Default `0`.
 --- @field lineGap? integer Between wrapped lines only, instead of `gap`. No effect unless `wrap` actually produces more than one. Falls back to `gap` if unset.
@@ -63,7 +71,7 @@ local VISIBILITIES = { VISIBLE = true, INVISIBLE = true, GONE = true }
 --- @field maxWidth? number A ceiling on this node's own `width`: the flexible main-axis share, if `width` is main; a `STRETCH`-ed cross-axis size, if cross. No effect on an explicit `width`, or `"AUTO"`. Errors if less than `minWidth`.
 --- @field minHeight? number Same as `minWidth`, for `height`.
 --- @field maxHeight? number Same as `maxWidth`, for `height`.
---- @field visibility? WaffleFlexVisibility `"VISIBLE"` shows this node's frame. `"INVISIBLE"` hides it but keeps its space in the layout, so siblings do not reflow. `"GONE"` excludes this node from the layout entirely; siblings reflow to fill the space, and `Layout()` hides its own frame and every already-resolved frame in its subtree. An ancestor's own `visibility` affects this node's frame the same way, without changing this node's own. On the root, `"INVISIBLE"` still creates its frame and lays out the tree, use `"GONE"` to defer that until it is first shown. Case does not matter, any other value throws an error. Default `"VISIBLE"`.
+--- @field visibility? WaffleFlexVisibility `"VISIBLE"` shows this node's frame. `"INVISIBLE"` hides it but keeps its space in the layout, so siblings do not reflow. `"GONE"` excludes this node from the layout entirely; siblings reflow to fill the space, and `Layout()` hides its own frame and every already-resolved frame in its subtree. An ancestor's own `visibility` affects this node's frame the same way, without changing this node's own. On the root, `"INVISIBLE"` still creates its frame and lays out the tree, use `"GONE"` to defer that until it is first shown. Case insensitive, any other value throws an error. Default `"VISIBLE"`.
 --- @field key? string For lookup via `FindByKey(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
 --- @field onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer) Fires once the whole `Layout()` pass is resolved and clean, not while it's still running, bottom-up, root last. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter.
@@ -133,31 +141,46 @@ function _W.Utils:HideResolvedFrames(node)
   end
 end
 
+--- Parses an enum-style `value` against `values`, a table whose keys are
+--- the valid uppercase names. Case insensitive. Errors, naming `field`, on
+--- anything unrecognized.
+--- @param field string
+--- @param value string
+--- @param values table<string, boolean>
+--- @return string
+function _W.Utils:ParseEnum(field, value, values)
+  if values[value] then return value end
+
+  local upper = type(value) == "string" and value:upper() or nil
+  if not (upper and values[upper]) then
+    local names = ""
+    for name in pairs(values) do
+      names = names .. " " .. name
+    end
+    error("Waffle: invalid `" .. field .. "` '" .. tostring(value) .. "', expected one of:" .. names, 0)
+  end
+
+  return upper
+end
+
 --- Parses `node`'s own `direction`, defaulting to `"ROW"`.
 --- @param node WaffleFlexNode
 --- @return boolean isRow `true` for `"ROW"`/`"ROW_REVERSE"`, `false` for `"COLUMN"`/`"COLUMN_REVERSE"`.
 --- @return boolean isReverse `true` for either `_REVERSE` variant.
 function _W.Utils:ParseFlexDirection(node)
-  local direction = (node.direction or "ROW"):upper()
+  local direction = self:ParseEnum("direction", node.direction or "ROW", DIRECTIONS)
   return
       (direction == "ROW" or direction == "ROW_REVERSE"),
       (direction == "ROW_REVERSE" or direction == "COLUMN_REVERSE")
 end
 
---- Parses a `visibility` value, defaulting to `"VISIBLE"`. Case does not
---- matter. Errors on anything unrecognized.
+--- Parses a `visibility` value, defaulting to `"VISIBLE"`. Case insensitive.
+--- Errors on anything unrecognized.
 --- @param visibility? WaffleFlexVisibility
 --- @return WaffleFlexVisibility
 function _W.Utils:ParseVisibility(visibility)
   if visibility == nil then return "VISIBLE" end
-  if VISIBILITIES[visibility] then return visibility end
-
-  local upper = type(visibility) == "string" and visibility:upper() or nil
-  if not (upper and VISIBILITIES[upper]) then
-    error("Waffle: invalid `visibility` '" .. tostring(visibility) ..
-      "', expected \"VISIBLE\", \"INVISIBLE\", or \"GONE\"", 0)
-  end
-  return upper
+  return self:ParseEnum("visibility", visibility, VISIBILITIES)
 end
 
 -- =============================================================================
@@ -1017,12 +1040,12 @@ end
 --- @return number justifyOffset
 --- @return number justifyGap
 function _W.FlexLayout:ResolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
+  local justify = _W.Utils:ParseEnum("justify", node.justify or "START", JUSTIFIES)
   if totalGrow ~= 0 then
     return 0, 0
   end
 
   local justifyOffset, justifyGap = 0, 0
-  local justify = (node.justify or "START"):upper()
   if isReverse then
     if justify == "START" then
       justify = "END"
@@ -1112,7 +1135,12 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
     local marginMainLeading, marginMainTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
     local marginCrossLeading, marginCrossTrailing = _W.Sizing:ResolveBoxAxis(child, crossAxis, "margin")
 
-    local align = (child.alignSelf or node.align or "STRETCH"):upper()
+    local align
+    if child.alignSelf ~= nil then
+      align = _W.Utils:ParseEnum("alignSelf", child.alignSelf, ALIGNS)
+    else
+      align = _W.Utils:ParseEnum("align", node.align or "STRETCH", ALIGNS)
+    end
     local childCrossSize
     if align == "STRETCH" then
       childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight) or
@@ -1342,9 +1370,10 @@ function _W.FlexComponent:GetDefaultFrameFactory()
 end
 
 --- Sets this node's own main axis for its own children. `nil` resets to
---- the default (`"ROW"`).
+--- the default (`"ROW"`). Case insensitive, any other value throws an error.
 --- @param direction? WaffleFlexDirection
 function _W.FlexComponent:SetDirection(direction)
+  if direction ~= nil then _W.Utils:ParseEnum("direction", direction, DIRECTIONS) end
   if self.node.direction ~= direction then
     self.node.direction = direction
     _W.DirtyRoots:Mark(self.node)
@@ -1440,9 +1469,11 @@ function _W.FlexComponent:GetShrink()
 end
 
 --- Sets how this node aligns its own children along the cross axis by
---- default. `nil` resets to the default (`"STRETCH"`).
+--- default. `nil` resets to the default (`"STRETCH"`). Case insensitive, any
+--- other value throws an error.
 --- @param align? WaffleFlexAlign
 function _W.FlexComponent:SetAlign(align)
+  if align ~= nil then _W.Utils:ParseEnum("align", align, ALIGNS) end
   if self.node.align ~= align then
     self.node.align = align
     _W.DirtyRoots:Mark(self.node)
@@ -1455,9 +1486,11 @@ function _W.FlexComponent:GetAlign()
   return self.node.align
 end
 
---- Overrides the parent's `align` for this node. `nil` reverts to inheriting it.
+--- Overrides the parent's `align` for this node. `nil` reverts to inheriting
+--- it. Case insensitive, any other value throws an error.
 --- @param alignSelf? WaffleFlexAlign
 function _W.FlexComponent:SetAlignSelf(alignSelf)
+  if alignSelf ~= nil then _W.Utils:ParseEnum("alignSelf", alignSelf, ALIGNS) end
   if self.node.alignSelf ~= alignSelf then
     self.node.alignSelf = alignSelf
     _W.DirtyRoots:Mark(self.node)
@@ -1471,9 +1504,11 @@ function _W.FlexComponent:GetAlignSelf()
 end
 
 --- Sets how this node distributes leftover main-axis space among its own
---- children. `nil` resets to the default (`"START"`).
+--- children. `nil` resets to the default (`"START"`). Case insensitive, any
+--- other value throws an error.
 --- @param justify? WaffleFlexJustify
 function _W.FlexComponent:SetJustify(justify)
+  if justify ~= nil then _W.Utils:ParseEnum("justify", justify, JUSTIFIES) end
   if self.node.justify ~= justify then
     self.node.justify = justify
     _W.DirtyRoots:Mark(self.node)
@@ -1762,8 +1797,8 @@ end
 --- entirely; its siblings reflow to fill the space, and `Layout()` hides its
 --- own frame and every already-resolved frame in its subtree. An ancestor's
 --- own `visibility` affects this node's frame the same way, without changing
---- this node's own. `nil` resets to the default (`"VISIBLE"`). Case does not
---- matter, any other value throws an error.
+--- this node's own. `nil` resets to the default (`"VISIBLE"`). Case
+--- insensitive, any other value throws an error.
 --- @param visibility? WaffleFlexVisibility
 function _W.FlexComponent:SetVisibility(visibility)
   _W.Utils:ParseVisibility(visibility)
