@@ -4,23 +4,17 @@
 
 Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS Flexbox](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_flexible_box_layout/Basic_concepts_of_flexbox).
 
+Instead of anchoring every frame with `SetPoint` and computing sizes and offsets by hand, you describe how the frames are arranged. When a size, a visibility, or the tree changes, one `Layout()` call repositions everything.
+
 ## Features
 
-- Row/column flex layout, plus reversed variants of each, with fixed and flexible sizing, gap, and padding, no manual `SetPoint` math
-- Shrink-to-fit sizing (`width`/`height` accepting `"AUTO"`), so a container can size itself from its own children instead of a fixed number
-- Percentage sizing (`width`/`height` accepting `"50%"`), sized relative to the parent instead of a fixed number
-- Wrapping (`wrap`), so children that would overflow the main axis start a new line instead, each line sized and aligned independently
-- Independent line spacing (`lineGap`), so wrapped lines can be spaced apart differently than the children within each one
-- Weighted growth (`grow`), so a flexible child can claim a bigger or smaller share of leftover space than its equally-flexible siblings
-- Weighted shrinking (`shrink`), so overflowing children give up a bigger or smaller share of the deficit than their equally-shrinkable siblings, instead of overflowing
-- Size floors and ceilings (`minWidth`/`maxWidth`/`minHeight`/`maxHeight`), so a flexible child's share of leftover space never shrinks below or grows past a bound you set
-- Per-side padding (`paddingTop`/`paddingRight`/`paddingBottom`/`paddingLeft`), overriding the uniform `padding` on whichever sides you need to differ
-- Per-child margin (`margin`/`marginTop`/`marginRight`/`marginBottom`/`marginLeft`), so one child can get extra space around it beyond the container's own `gap`
-- A fluent API (`AddRow`, `AddColumn`, `AddChild`) for composing nested layouts, or a fully declarative table if you'd rather write it that way
-- `Layout()` is a pure recompute of the current tree, not a one-time construction step, call it again any time state changes and the layout needs to catch up
-- An optional frame factory so you don't have to `CreateFrame` every wrapper container yourself
-- Annotated with [LuaCATS](https://luals.github.io/wiki/annotations/) for autocomplete and inline documentation in editors
-- No dependencies
+- Row and column layout, plus reversed variants, with fixed, flexible (`grow`), shrinking (`shrink`), percentage, and shrink-to-fit (`"AUTO"`) sizing
+- `gap`, `padding`, `margin`, `justify`, `align`, and `wrap`, with `minWidth`/`maxWidth`/`minHeight`/`maxHeight` bounds
+- `visibility`, to hide a node while keeping its space or remove it and let its siblings reflow
+- Frame factories that create each frame the first time it is laid out, already parented, so a node that is never shown never builds a frame
+- A fluent API (`AddRow`, `AddColumn`, `AddChild`) or a fully declarative table, lookup by `key`, visual `order`, and moving components between trees
+- `onLayout` and `WhenFrameReady` callbacks
+- Annotated with [LuaCATS](https://luals.github.io/wiki/annotations/), and no dependencies
 
 ## Installation
 
@@ -33,96 +27,78 @@ Waffle is a flex layout library for World of Warcraft addons, inspired by [CSS F
    local Waffle = Addon.Waffle
    ```
 
-## Usage
+## Quick Start
 
-**Composing a layout.** `Waffle:Flex(node)` positions `node.children` in a row or column within `node.frame`, and returns a component. `direction` (`"ROW"` or `"COLUMN"`, defaults to `"ROW"`) decides which physical axis is main and which is cross: a ROW's main axis is horizontal (`width`), its cross axis vertical (`height`); a COLUMN flips that. Nothing runs until `Layout()` is called on it.
+A window with a title bar, a sidebar, and content:
 
 ```lua
-Waffle:Flex({
-  frame = frame,
+local window = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+window:SetPoint("CENTER")
+
+local root = Waffle:Flex({
+  frame = window,
   direction = "COLUMN",
-  width = 400,
-  height = 300,
-  gap = 8,
+  width = 500,
+  height = 350,
   padding = 8,
+  gap = 8,
+  defaultFrameFactory = function(parent) return CreateFrame("Frame", nil, parent) end,
   children = {
-    -- Header: fixed height, title flexes to fill the leftover space, button stays put.
+    -- Title bar: fixed height, the title fills the row, the close button keeps its size.
     {
-      frame = header,
       direction = "ROW",
       height = 24,
       children = {
-        { frame = title },
-        { frame = closeButton, width = 24 },
-      }
+        {
+          frameFactory = function(parent)
+            local title = parent:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+            title:SetText("My Addon")
+            title:SetJustifyH("LEFT")
+            return title
+          end,
+        },
+        {
+          width = 24,
+          frameFactory = function(parent)
+            return CreateFrame("Button", nil, parent, "UIPanelCloseButton")
+          end,
+        },
+      },
     },
-    -- Body: a nested row, splitting the rest of the column between a fixed sidebar
-    -- and flexible content.
+    -- Body: a fixed-width sidebar, and content that takes the rest of the row.
     {
-      frame = body,
       direction = "ROW",
       gap = 8,
       children = {
-        { frame = sidebar, width = 100 },
-        { frame = content },
-      }
+        -- Nodes without a `frame` or `frameFactory` get their frame from the
+        -- nearest ancestor's `defaultFrameFactory`. In this case, the root's.
+        { key = "sidebar", width = 120 },
+        {},
+      },
     },
-  }
-}):Layout()
-```
-
-Every field used above, and every other one Waffle supports (`"AUTO"`/percentage sizing, `grow`/`shrink`, `align`/`justify`, `wrap`, `minWidth`/`maxWidth`, and more), works the same on any node and is documented with a runnable example in [Node](#node) below.
-
-**The fluent API.** The same tree, composed step by step instead of as one large table. `AddRow`/`AddColumn`/`AddChild` each return a component scoped to what they just added; `Layout()` only needs to be called once, and works the same from any node in the tree:
-
-```lua
-local root = Waffle:Flex({ frame = frame, direction = "COLUMN", width = 400, height = 300, gap = 8, padding = 8 })
-
-local header = root:AddRow({ frame = CreateFrame("Frame"), height = 24 })
-header:AddChild({ frame = title })
-header:AddChild({ frame = closeButton, width = 24 })
-
-local body = root:AddRow({ frame = CreateFrame("Frame"), gap = 8 })
-body:AddChild({ frame = sidebar, key = "sidebar", width = 100 })
-body:AddChild({ frame = content })
+  },
+})
 
 root:Layout()
-```
 
-`AttachComponent` grafts an already-built component (its own separate `Waffle:Flex()` tree) into another one as-is; `Detach()` pulls a component out of wherever it currently is, so the two compose directly into a single call that moves one into a different tree entirely:
+-- Collapse the sidebar; the content reflows into its space.
+root:FindByKey("sidebar"):SetVisibility("GONE")
+root:Layout()
 
-```lua
-otherRoot:AttachComponent(root:FindByKey("sidebar"):Detach())
-```
-
-Every method used above, and every other one Waffle supports (`FindByKey`, `SetVisibility`, every other setter/getter, and more), works the same on any node and is documented with a runnable example in [Component](#component) below.
-
-**Reacting to resolved size.** `onLayout` fires with a node's own component and its resolved width/height, once the whole tree is laid out. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own):
-
-```lua
-root:AddChild({
-  frame = scrollFrame,
-  onLayout = function(component, width, height)
-    local frame = component:GetFrame()
-    frame.scrollChild:SetWidth(width)
-    local slider = component:FindByKey("slider")
-    slider:SetVisibility(frame.scrollChild:GetHeight() <= height and "GONE" or "VISIBLE")
-  end
-})
-root:AddChild({ frame = sliderFrame, key = "slider", width = 20 })
-```
-
-**Setting up a frame once.** `WhenFrameReady()` calls a function once with a node's frame: immediately if the frame already exists, otherwise right after Waffle creates it, before Waffle parents, sizes, or shows it. Useful for setup that needs the real frame, like hooking its scripts, on a node whose frame you did not create:
-
-```lua
-root:FindByKey("sidebar"):WhenFrameReady(function(frame)
-  frame:HookScript("OnHide", onSidebarHidden)
+-- Keep the layout in step when the window is resized.
+window:SetScript("OnSizeChanged", function(_, width, height)
+  root:SetSize(width, height)
+  root:Layout()
 end)
 ```
 
-Waffle does not create a `"GONE"` node's frame until it is first shown, so its callbacks wait until then. A script hooked after the frame has already been shown or hidden only sees later events.
+What Waffle does here:
 
-**Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Call it again any time state changes, from any node in the tree, not just the root, it always resolves and lays out the whole tree from its actual current root. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. `IsDirty()` tells you whether a call would actually do anything, without triggering one.
+- There are no anchors and no size math. The layout follows from the tree, so adding a child, resizing the window, or collapsing the sidebar is one change and a `Layout()` call, and every sibling adjusts.
+- A `frameFactory` runs once, the first time `Layout()` reaches its node, and receives the parent frame, so each frame is created already in the right place and can be any region, such as the `FontString` title. Nothing is created for a node that stays `"GONE"`.
+- `Layout()` does nothing unless something changed since the last call, so it is cheap to call from an `OnUpdate` handler.
+
+The same tree can be built step by step with `AddRow`, `AddColumn`, and `AddChild`. Every field and method is listed below.
 
 ## API
 
@@ -178,7 +154,7 @@ local node = {
   -- STRETCH). Omitted, flexes/stretches instead, whichever applies. "AUTO" computes
   -- it from this node's own children instead: a sum of their own width (plus
   -- gap/padding) along this node's own main axis (direction is ROW), or a max of
-  -- them (plus padding) along its cross axis; every visible child needs its own number
+  -- them (plus padding) along its cross axis; every child that is not "GONE" needs its own number
   -- or "AUTO", a flexible child errors. A percentage string ("50%") sizes it relative
   -- to the parent's own width instead, erroring without one already resolved (the root,
   -- or a parent whose own width is itself still being computed from "AUTO").
@@ -188,6 +164,8 @@ local node = {
   -- This node's own physical height, always vertical. Same as width in every other
   -- respect, "AUTO" sums along the main axis when direction is COLUMN, maxes along
   -- the cross axis otherwise, a percentage sizes it relative to the parent's own height.
+  -- "AUTO" on a node with wrap only accounts for the wrapping if that node's own width
+  -- is explicit or a percentage.
   -- Can also be toggled after the fact with SetHeight().
   height = 100,
 
