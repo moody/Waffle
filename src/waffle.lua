@@ -74,7 +74,7 @@ local VISIBILITIES = { VISIBLE = true, INVISIBLE = true, GONE = true }
 --- @field visibility? WaffleFlexVisibility `"VISIBLE"` shows this node's frame. `"INVISIBLE"` hides it but keeps its space in the layout, so siblings do not reflow. `"GONE"` excludes this node from the layout entirely; siblings reflow to fill the space, and `Layout()` hides its own frame and every already-resolved frame in its subtree. An ancestor's own `visibility` affects this node's frame the same way, without changing this node's own. On the root, `"INVISIBLE"` still creates its frame and lays out the tree, use `"GONE"` to defer that until it is first shown. Case insensitive, any other value throws an error. Default `"VISIBLE"`.
 --- @field key? string For lookup via `FindByKey(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
---- @field onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer) Fires once the whole `Layout()` pass is resolved and clean, not while it's still running, bottom-up, root last. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter.
+--- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Fires once the whole `Layout()` pass is resolved and clean, not while it's still running, bottom-up, root last. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter.
 
 -- =============================================================================
 -- Internal Data Table
@@ -511,7 +511,7 @@ end
 function _W.OnLayoutQueue:FireAll(queue)
   for i = 1, #queue do
     local entry = queue[i]
-    entry.node.onLayout(_W.FlexComponentFactory:New(entry.node), entry.width, entry.height)
+    entry.node.onLayout(entry.node.frame, entry.width, entry.height)
     _W.Scratch:Release(entry)
   end
 end
@@ -1903,7 +1903,7 @@ end
 
 --- Sets the callback fired once this node's own `Layout()` pass is
 --- resolved and clean. `nil` removes it.
---- @param onLayout? fun(component: WaffleFlexComponent, width: integer, height: integer)
+--- @param onLayout? fun(frame: WaffleFrame, width: integer, height: integer)
 function _W.FlexComponent:SetOnLayout(onLayout)
   if self.node.onLayout ~= onLayout then
     self.node.onLayout = onLayout
@@ -1913,7 +1913,7 @@ end
 
 --- Returns the callback fired once this node's own `Layout()` pass is
 --- resolved and clean.
---- @return fun(component: WaffleFlexComponent, width: integer, height: integer)?
+--- @return fun(frame: WaffleFrame, width: integer, height: integer)?
 function _W.FlexComponent:GetOnLayout()
   return self.node.onLayout
 end
