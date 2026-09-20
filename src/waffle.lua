@@ -505,6 +505,13 @@ end
 --- children, or of each wrapped line) along its cross axis.
 _W.Sizing = {}
 
+--- The per-side field names of each box value, per axis, as
+--- `{ leading, trailing }`.
+local BOX_SIDES = {
+  padding = { width = { "paddingLeft", "paddingRight" }, height = { "paddingTop", "paddingBottom" } },
+  margin = { width = { "marginLeft", "marginRight" }, height = { "marginTop", "marginBottom" } },
+}
+
 --- Resolves a shorthand-plus-per-side box value (`padding`, `margin`)
 --- for one physical axis: `<prefix>Left`/`<prefix>Right` for `"width"`,
 --- `<prefix>Top`/`<prefix>Bottom` for `"height"`. Each side falls back
@@ -516,11 +523,8 @@ _W.Sizing = {}
 --- @return number trailing
 function _W.Sizing:ResolveBoxAxis(node, axis, prefix)
   local shorthand = node[prefix] or 0
-  if axis == "width" then
-    return node[prefix .. "Left"] or shorthand, node[prefix .. "Right"] or shorthand
-  else
-    return node[prefix .. "Top"] or shorthand, node[prefix .. "Bottom"] or shorthand
-  end
+  local sides = BOX_SIDES[prefix][axis]
+  return node[sides[1]] or shorthand, node[sides[2]] or shorthand
 end
 
 --- `child`'s own resolved size along `axis`, plus its own `margin` on
