@@ -1,5 +1,3 @@
---- @diagnostic disable: undefined-field
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -110,7 +108,7 @@ do
   container:Layout()
 
   leafB:SetOrder(5)
-  container:Layout()                            -- b now sorts last
+  container:Layout()                             -- b now sorts last
 
   container:AddChild({ frame = d, width = 100 }) -- added after the reorder
   container:Layout()
@@ -120,29 +118,6 @@ do
   assert(c._test.point.offsetX == 100)
   assert(d._test.point.offsetX == 200)
   assert(b._test.point.offsetX == 300)
-end
-
--- Test: `SetOrder` marks the tree dirty, but only on an actual value
--- change; calling it with the current order (nil included) is a no-op.
-do
-  local root = Mocks:CreateFrame()
-  local a = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local leaf = container:AddChild({ frame = a })
-  container:Layout()
-  assert(container:IsDirty() == false)
-
-  leaf:SetOrder(nil) -- already nil, no-op
-  assert(container:IsDirty() == false)
-
-  leaf:SetOrder(5)
-  assert(container:IsDirty() == true)
-  container:Layout()
-  assert(container:IsDirty() == false)
-
-  leaf:SetOrder(5) -- same value, no-op
-  assert(container:IsDirty() == false)
 end
 
 -- Test: gap applies between visually adjacent siblings after reordering,
@@ -167,7 +142,7 @@ do
   assert(a._test.point.offsetX == 110) -- 100 + gap, right after b
 end
 
--- Test: a hidden child's `order` has no effect, it's excluded from the
+-- Test: a `"GONE"` child's `order` has no effect, it's excluded from the
 -- layout flow entirely regardless of where it'd otherwise sort.
 do
   local root = Mocks:CreateFrame()
@@ -179,7 +154,7 @@ do
     width = 300,
     height = 50,
     children = {
-      { frame = a, width = 100, order = 2, hidden = true },
+      { frame = a, width = 100, order = 2, visibility = "GONE" },
       { frame = b, width = 100, order = 0 },
       { frame = c, width = 100, order = 1 },
     }

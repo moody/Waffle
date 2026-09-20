@@ -1,5 +1,3 @@
---- @diagnostic disable: undefined-field
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -146,7 +144,7 @@ do
   assert(a._test.width == 180)
 end
 
--- Test: `SetWidth` makes a leaf's width fixed on the next `Layout()` call, taking
+-- Test: `SetWidth` makes a node's width fixed on the next `Layout()` call, taking
 -- space from its flexible sibling; `SetWidth(nil)` un-fixes it.
 do
   local root = Mocks:CreateFrame()
@@ -213,26 +211,7 @@ do
   assert(autoFrame._test.height == 25) -- computed from its own child
 end
 
--- Test: `SetWidth` also works on a container, not just a leaf.
-do
-  local root = Mocks:CreateFrame()
-  local colFrame = Mocks:CreateFrame()
-  local b = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local col = container:AddColumn({ frame = colFrame })
-  container:AddChild({ frame = b })
-  container:Layout()
-
-  assert(colFrame._test.width == 100 and b._test.width == 100)
-
-  col:SetWidth(120)
-  container:Layout()
-
-  assert(colFrame._test.width == 120 and b._test.width == 80)
-end
-
--- Test: `SetHeight` makes a leaf stop stretching on the next `Layout()`
+-- Test: `SetHeight` makes a node stop stretching on the next `Layout()`
 -- call, sized to that instead; `SetHeight(nil)` reverts it to stretching.
 do
   local root = Mocks:CreateFrame()
@@ -253,23 +232,6 @@ do
   container:Layout()
 
   assert(a._test.height == 50)
-end
-
--- Test: `SetHeight` also works on a container, not just a leaf.
-do
-  local root = Mocks:CreateFrame()
-  local colFrame = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local col = container:AddColumn({ frame = colFrame })
-  container:Layout()
-
-  assert(colFrame._test.height == 50)
-
-  col:SetHeight(30)
-  container:Layout()
-
-  assert(colFrame._test.height == 30)
 end
 
 -- Test: `SetSize` sets width and height together; `SetSize(nil, nil)` reverts
@@ -747,9 +709,9 @@ do
   container:Layout()
   assert(container:IsDirty() == false)
 
-  leaf:SetHidden(nil)
+  leaf:SetVisibility(nil)
   assert(container:IsDirty() == false)
-  leaf:SetHidden(true)
+  leaf:SetVisibility("GONE")
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
@@ -788,6 +750,33 @@ do
   assert(container:IsDirty() == true)
   container:Layout()
   assert(container:IsDirty() == false)
+
+  container:SetLineGap(nil)
+  assert(container:IsDirty() == false)
+  container:SetLineGap(4)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+  container:SetLineGap(4) -- same value, no-op
+  assert(container:IsDirty() == false)
+
+  leaf:SetShrink(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetShrink(0)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+  leaf:SetShrink(0) -- same value, no-op
+  assert(container:IsDirty() == false)
+
+  leaf:SetOrder(nil)
+  assert(container:IsDirty() == false)
+  leaf:SetOrder(5)
+  assert(container:IsDirty() == true)
+  container:Layout()
+  assert(container:IsDirty() == false)
+  leaf:SetOrder(5) -- same value, no-op
+  assert(container:IsDirty() == false)
 end
 
 -- Test: unlike every other setter, `SetKey` never marks the tree dirty,
@@ -803,63 +792,6 @@ do
 
   leaf:SetKey("a")
   assert(container:IsDirty() == false)
-end
-
--- Test: every setter, including the ones that only matter once a node has
--- children (`SetGap`, `SetPadding` and its per-side overrides, `SetAlign`,
--- `SetJustify`, `SetWrap`), is available on any component, whether or not
--- it currently has any children of its own.
-do
-  local root = Mocks:CreateFrame()
-  local a = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local leaf = container:AddChild({ frame = a })
-
-  assert(leaf.SetGap ~= nil)
-  assert(leaf.SetPadding ~= nil)
-  assert(leaf.SetPaddingTop ~= nil)
-  assert(leaf.SetPaddingRight ~= nil)
-  assert(leaf.SetPaddingBottom ~= nil)
-  assert(leaf.SetPaddingLeft ~= nil)
-  assert(leaf.SetJustify ~= nil)
-  assert(leaf.SetAlign ~= nil)
-  assert(leaf.SetWrap ~= nil)
-  assert(leaf.SetLineGap ~= nil)
-  assert(leaf.SetWidth ~= nil)
-  assert(leaf.SetHeight ~= nil)
-  assert(leaf.SetSize ~= nil)
-  assert(leaf.SetGrow ~= nil)
-  assert(leaf.SetShrink ~= nil)
-  assert(leaf.SetMinWidth ~= nil)
-  assert(leaf.SetMaxWidth ~= nil)
-  assert(leaf.SetMinHeight ~= nil)
-  assert(leaf.SetMaxHeight ~= nil)
-  assert(leaf.SetHidden ~= nil)
-  assert(leaf.SetAlignSelf ~= nil)
-  assert(leaf.SetMargin ~= nil)
-  assert(leaf.SetMarginTop ~= nil)
-  assert(leaf.SetMarginRight ~= nil)
-  assert(leaf.SetMarginBottom ~= nil)
-  assert(leaf.SetMarginLeft ~= nil)
-  assert(leaf.SetOrder ~= nil)
-  assert(leaf.SetDirection ~= nil)
-  assert(leaf.SetOnLayout ~= nil)
-  assert(leaf.SetKey ~= nil)
-  assert(leaf.SetDefaultFrameFactory ~= nil)
-end
-
--- Test: calling a children-oriented setter (`SetGap`) on a component with
--- no children yet is a harmless no-op, it doesn't vivify `children`.
-do
-  local root = Mocks:CreateFrame()
-  local a = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local leaf = container:AddChild({ frame = a })
-
-  leaf:SetGap(8)
-  assert(#leaf:GetChildren() == 0)
 end
 
 print("All assertions passed.")

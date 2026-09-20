@@ -1,50 +1,45 @@
---- @diagnostic disable: invisible
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `AddChild` with a `key` registers a leaf, retrievable via
--- `FindByKey` on the root. `FindByKey` returns a fresh component each call,
--- not the identical object `AddChild` returned, but both wrap the same node.
+-- Test: `AddChild` with a `key` registers the child, retrievable via
+-- `FindByKey` on the root.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local leaf = container:AddChild({ frame = a, key = "sidebar" })
-  local component = container:FindByKey("sidebar")
+  container:AddChild({ frame = a, key = "sidebar" })
 
-  assert(component ~= leaf)
-  assert(component.node == leaf.node)
+  assert(container:FindByKey("sidebar"):GetFrame() == a)
 end
 
--- Test: `AddRow`/`AddColumn` with a `key` register the returned container
+-- Test: `AddRow`/`AddColumn` with a `key` register the returned component
 -- the same way.
 do
   local root = Mocks:CreateFrame()
+  local rowFrame, columnFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local row = container:AddRow({ frame = Mocks:CreateFrame(), key = "toolbar" })
-  local col = container:AddColumn({ frame = Mocks:CreateFrame(), key = "sidebar" })
+  container:AddRow({ frame = rowFrame, key = "toolbar" })
+  container:AddColumn({ frame = columnFrame, key = "sidebar" })
 
-  assert(container:FindByKey("toolbar").node == row.node)
-  assert(container:FindByKey("sidebar").node == col.node)
+  assert(container:FindByKey("toolbar"):GetFrame() == rowFrame)
+  assert(container:FindByKey("sidebar"):GetFrame() == columnFrame)
 end
 
--- Test: `FindByKey` works from anywhere in the tree, not just the root,
--- both from a nested container and a leaf.
+-- Test: `FindByKey` works from anywhere in the tree, not just the root.
 do
   local root = Mocks:CreateFrame()
+  local targetFrame = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local row = container:AddRow({ frame = Mocks:CreateFrame() })
-  local leaf = row:AddChild({ frame = Mocks:CreateFrame() })
+  local child = row:AddChild({ frame = Mocks:CreateFrame() })
+  container:AddChild({ frame = targetFrame, key = "target" })
 
-  local target = container:AddChild({ frame = Mocks:CreateFrame(), key = "target" })
-
-  assert(row:FindByKey("target").node == target.node)
-  assert(leaf:FindByKey("target").node == target.node)
+  assert(row:FindByKey("target"):GetFrame() == targetFrame)
+  assert(child:FindByKey("target"):GetFrame() == targetFrame)
 end
 
 -- Test: an unknown key throws an error.
@@ -57,84 +52,8 @@ do
   assert(tostring(err):find("nope"))
 end
 
--- Test: a duplicate key doesn't error, the first match found wins.
-do
-  local root = Mocks:CreateFrame()
-  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-
-  container:AddChild({ frame = a, key = "dup" })
-  container:AddChild({ frame = b, key = "dup" })
-
-  assert(container:FindByKey("dup").node.frame == a)
-end
-
--- Test: a leaf child's `key`, written directly into a declarative
--- `children` table, is found by `FindByKey` too, not just container-added ones.
-do
-  local root = Mocks:CreateFrame()
-  local a = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({
-    frame = root,
-    direction = "ROW",
-    width = 200,
-    height = 50,
-    children = { { frame = a, key = "sidebar" } }
-  })
-
-  assert(container:FindByKey("sidebar").node.frame == a)
-end
-
--- Test: a declarative container child's `key` resolves to a real container,
--- usable for further composition, not just a leaf.
-do
-  local root = Mocks:CreateFrame()
-  local rowFrame = Mocks:CreateFrame()
-  local leaf = Mocks:CreateFrame()
-  local newLeaf = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({
-    frame = root,
-    direction = "ROW",
-    width = 200,
-    height = 50,
-    children = {
-      { key = "row", frame = rowFrame, direction = "ROW", children = { { frame = leaf } } },
-    }
-  })
-
-  local row = container:FindByKey("row")
-  row:AddChild({ frame = newLeaf })
-  container:Layout()
-
-  assert(leaf._test.width ~= nil)    -- the row's declarative child still laid out
-  assert(newLeaf._test.width ~= nil) -- and the newly added child too
-end
-
--- Test: a `key` nested two levels deep in a declarative tree is still found.
-do
-  local root = Mocks:CreateFrame()
-  local leaf = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({
-    frame = root,
-    direction = "ROW",
-    width = 200,
-    height = 50,
-    children = {
-      {
-        direction = "ROW",
-        children = { { frame = leaf, key = "deep" } }
-      },
-    }
-  })
-
-  assert(container:FindByKey("deep").node.frame == leaf)
-end
-
--- Test: a declarative key colliding with a later container-added key
--- doesn't error, the first match (the declarative one) wins.
+-- Test: a duplicate key doesn't error, the first match found wins, a
+-- declarative child before one added later.
 do
   local root = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
@@ -146,45 +65,76 @@ do
     height = 50,
     children = { { frame = a, key = "dup" } }
   })
-
   container:AddChild({ frame = b, key = "dup" })
 
-  assert(container:FindByKey("dup").node.frame == a)
+  assert(container:FindByKey("dup"):GetFrame() == a)
 end
 
--- Test: a keyed grandchild inside a declarative subtree handed to `AddRow`
--- (not the root) is still found, mixing fluent and declarative composition.
+-- Test: a `key` written into a declarative `children` table is found at any
+-- depth, including inside a declarative subtree handed to `AddRow`.
 do
   local root = Mocks:CreateFrame()
-  local leaf = Mocks:CreateFrame()
+  local shallow, deep, mixed = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
 
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
+  local container = Waffle:Flex({
+    frame = root,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    children = {
+      { frame = shallow, key = "shallow" },
+      { direction = "ROW", children = { { frame = deep, key = "deep" } } },
+    }
+  })
   container:AddRow({
     frame = Mocks:CreateFrame(),
     direction = "ROW",
-    children = { { frame = leaf, key = "mixed" } }
+    children = { { frame = mixed, key = "mixed" } }
   })
 
-  assert(container:FindByKey("mixed").node.frame == leaf)
+  assert(container:FindByKey("shallow"):GetFrame() == shallow)
+  assert(container:FindByKey("deep"):GetFrame() == deep)
+  assert(container:FindByKey("mixed"):GetFrame() == mixed)
+end
+
+-- Test: a declarative child's `key` resolves to a component usable for
+-- further composition.
+do
+  local root = Mocks:CreateFrame()
+  local rowFrame = Mocks:CreateFrame()
+  local declared = Mocks:CreateFrame()
+  local added = Mocks:CreateFrame()
+
+  local container = Waffle:Flex({
+    frame = root,
+    direction = "ROW",
+    width = 200,
+    height = 50,
+    children = {
+      { key = "row", frame = rowFrame, direction = "ROW", children = { { frame = declared } } },
+    }
+  })
+
+  container:FindByKey("row"):AddChild({ frame = added })
+  container:Layout()
+
+  assert(declared._test.width == 100 and added._test.width == 100)
 end
 
 -- Test: `SetKey` registers (or changes) a node's own key for `FindByKey`
--- lookup, without marking the tree dirty.
+-- lookup.
 do
   local root = Mocks:CreateFrame()
   local a = Mocks:CreateFrame()
 
   local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
   local leaf = container:AddChild({ frame = a })
-  container:Layout()
-  assert(container:IsDirty() == false)
 
   leaf:SetKey("a")
-  assert(container:IsDirty() == false)
-  assert(container:FindByKey("a").node.frame == a)
+  assert(container:FindByKey("a"):GetFrame() == a)
 
   leaf:SetKey("b")
-  assert(container:FindByKey("b").node.frame == a)
+  assert(container:FindByKey("b"):GetFrame() == a)
 
   local ok = pcall(function() container:FindByKey("a") end)
   assert(not ok) -- old key no longer registered

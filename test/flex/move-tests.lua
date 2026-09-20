@@ -1,5 +1,3 @@
---- @diagnostic disable: invisible
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -99,7 +97,7 @@ do
   containerB:Layout()
 
   assert(childFrame._test.point.parent == rootB)
-  assert(leafB.node.frame == childFrame)
+  assert(leafB:GetFrame() == childFrame)
 end
 
 -- Test: a node that's the actual root of its own (never laid out) tree was

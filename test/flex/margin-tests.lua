@@ -1,5 +1,3 @@
---- @diagnostic disable: undefined-field
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -24,7 +22,7 @@ do
 
   assert(a._test.width == 50)
   assert(a._test.point.offsetX == 10)
-  assert(b._test.width == 220) -- 300 - 10 - 50 - 20
+  assert(b._test.width == 220)        -- 300 - 10 - 50 - 20
   assert(b._test.point.offsetX == 80) -- right after a's own margin
 end
 
@@ -89,7 +87,7 @@ do
     }
   }):Layout()
 
-  assert(a._test.height == 30) -- explicit, unaffected by its own margin
+  assert(a._test.height == 30)         -- explicit, unaffected by its own margin
   assert(a._test.point.offsetY == -35) -- (100 - (30 + 10 + 10)) / 2 + 10
 end
 
@@ -112,7 +110,7 @@ do
 
   assert(a._test.width == 50)
   assert(a._test.point.offsetX == 15)
-  assert(a._test.height == 40)  -- 50 - 5 (margin, top) - 5 (margin, bottom)
+  assert(a._test.height == 40) -- 50 - 5 (margin, top) - 5 (margin, bottom)
   assert(a._test.point.offsetY == -5)
   assert(b._test.width == 230) -- 300 - 15 (marginLeft) - 50 - 5 (margin, right)
 end
@@ -166,12 +164,12 @@ do
     paddingLeft = 10,
     children = {
       { frame = a, width = 40, height = 20, marginRight = 25 }, -- outer width 65
-      { frame = b, width = 40, height = 30 }, -- doesn't fit alongside a (65 + 40 > 90), starts line 2
+      { frame = b, width = 40, height = 30 },                   -- doesn't fit alongside a (65 + 40 > 90), starts line 2
     }
   }):Layout()
 
   assert(a._test.point.offsetX == 10)
-  assert(b._test.point.offsetX == 10) -- same leading padding, line 2
+  assert(b._test.point.offsetX == 10)  -- same leading padding, line 2
   assert(b._test.point.offsetY == -20) -- line 1's own cross-size, unaffected by a's main-axis margin
 end
 

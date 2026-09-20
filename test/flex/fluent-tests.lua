@@ -1,5 +1,3 @@
---- @diagnostic disable: invisible
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -28,7 +26,7 @@ do
   local leaf = container:AddChild({ frame = a })
 
   assert(leaf ~= container)
-  assert(leaf.node.frame == a)
+  assert(leaf:GetFrame() == a)
 end
 
 -- Test: children from `options.children` and children added via `AddChild`

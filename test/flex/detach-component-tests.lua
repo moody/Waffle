@@ -1,10 +1,8 @@
---- @diagnostic disable: invisible
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: `DetachComponent` detaches a leaf entirely, siblings reflow into
+-- Test: `DetachComponent` detaches a child entirely, siblings reflow into
 -- the freed space.
 do
   local root = Mocks:CreateFrame()
@@ -42,7 +40,7 @@ do
   assert(a._test.hideCalls == hideCallsBefore)
 end
 
--- Test: detaching a container detaches its whole subtree, nested children
+-- Test: detaching a component detaches its whole subtree, nested children
 -- stop being laid out too.
 do
   local root = Mocks:CreateFrame()
@@ -52,7 +50,7 @@ do
   local row = container:AddRow({ frame = Mocks:CreateFrame() })
   row:AddChild({ frame = nested })
   container:Layout()
-  assert(nested._test.width ~= nil)
+  assert(nested._test.width == 300)
 
   container:DetachComponent(row)
   nested._test.width = nil
@@ -70,7 +68,7 @@ do
   local leaf = container:AddChild({ frame = a, key = "sidebar" })
   container:Layout()
 
-  assert(container:FindByKey("sidebar").node.frame == a)
+  assert(container:FindByKey("sidebar"):GetFrame() == a)
 
   container:DetachComponent(leaf)
 
@@ -110,7 +108,7 @@ do
   assert(container:IsDirty() == false)
 end
 
--- Test: a detached child added again later gets a fresh declaration
+-- Test: a detached child attached again later gets a fresh declaration
 -- order, not its original one, so it tie-breaks after whatever's
 -- currently there, not back in its old position.
 do
@@ -125,9 +123,8 @@ do
 
   assert(b._test.point.offsetX == 100) -- b's old position, before detaching
 
-  local bNode = leafB.node
   container:DetachComponent(leafB)
-  container:AddChild(bNode)
+  container:AttachComponent(leafB)
   container:Layout()
 
   assert(a._test.point.offsetX == 0)
@@ -135,7 +132,7 @@ do
   assert(b._test.point.offsetX == 200)
 end
 
--- Test: `Detach` removes a leaf from its current owner, siblings reflow
+-- Test: `Detach` removes a child from its current owner, siblings reflow
 -- into the freed space, same as `DetachComponent` called on that owner.
 do
   local root = Mocks:CreateFrame()
@@ -206,7 +203,7 @@ do
   container:Clear()
   container:Layout()
 
-  assert(#container.node.children == 0)
+  assert(#container:GetChildren() == 0)
 end
 
 -- Test: `Clear` is a no-op, `isDirty` included, if already empty.

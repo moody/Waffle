@@ -127,7 +127,7 @@ do
   assert(outer._test.width == 30) -- inner's own AUTO width, nothing else beside it
 end
 
--- Test: a hidden child is excluded from an `"AUTO"` sum.
+-- Test: a `"GONE"` child is excluded from an `"AUTO"` sum.
 do
   local parent = Mocks:CreateFrame()
   local autoFrame = Mocks:CreateFrame()
@@ -145,7 +145,7 @@ do
         width = "AUTO",
         children = {
           { frame = a, width = 30 },
-          { frame = b, width = 40, hidden = true },
+          { frame = b, width = 40, visibility = "GONE" },
         }
       }
     }

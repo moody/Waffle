@@ -124,10 +124,12 @@ do
   assert(b._test.point.offsetX == 60) -- 10 padding + 50
 end
 
--- Test: an empty children list is a safe no-op, doesn't error.
+-- Test: an empty children list is a safe no-op, the container is still sized.
 do
   local parent = Mocks:CreateFrame()
   Waffle:Flex({ frame = parent, direction = "ROW", width = 100, height = 50, children = {} }):Layout()
+
+  assert(parent._test.width == 100 and parent._test.height == 50)
 end
 
 -- Test: fixed children that overflow the container clamp the flex size to

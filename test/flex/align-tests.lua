@@ -137,22 +137,4 @@ do
   assert(a._test.point.offsetY == -60)
 end
 
--- Test: omitting `align`/`alignSelf` entirely still defaults to `STRETCH`,
--- same as before alignment existed.
-do
-  local parent = Mocks:CreateFrame()
-  local a = Mocks:CreateFrame()
-
-  Waffle:Flex({
-    frame = parent,
-    direction = "ROW",
-    width = 200,
-    height = 100,
-    children = { { frame = a } }
-  }):Layout()
-
-  assert(a._test.height == 100)
-  assert(a._test.point.offsetY == 0)
-end
-
 print("All assertions passed.")

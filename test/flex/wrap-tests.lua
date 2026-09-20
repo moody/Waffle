@@ -123,7 +123,7 @@ do
   assert(a._test.point.offsetX == 0)
 end
 
--- Test: a hidden child is excluded from line assignment entirely, doesn't
+-- Test: a `"GONE"` child is excluded from line assignment entirely, doesn't
 -- consume space or trigger a wrap.
 do
   local parent = Mocks:CreateFrame()
@@ -137,7 +137,7 @@ do
     wrap = true,
     children = {
       { frame = a, width = 60 },
-      { frame = b, width = 60, hidden = true },
+      { frame = b, width = 60, visibility = "GONE" },
       { frame = c, width = 30 },
     }
   }):Layout()

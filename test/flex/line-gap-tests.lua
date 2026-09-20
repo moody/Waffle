@@ -28,8 +28,7 @@ do
   assert(c._test.point.offsetY == -60) -- -(30 + 10 + lineGap 20)
 end
 
--- Test: `lineGap` unset falls back to `gap`, same as before this field
--- existed.
+-- Test: `lineGap` unset falls back to `gap`.
 do
   local parent = Mocks:CreateFrame()
   local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()

@@ -1,5 +1,3 @@
---- @diagnostic disable: invisible
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -22,7 +20,7 @@ do
   assert(children[3]:GetFrame() == c)
 end
 
--- Test: a container-shaped child comes back usable for further composition, not just a leaf.
+-- Test: a child returned by `GetChildren` is usable for further composition.
 do
   local root = Mocks:CreateFrame()
   local nested = Mocks:CreateFrame()
@@ -34,7 +32,7 @@ do
   row:AddChild({ frame = nested })
   container:Layout()
 
-  assert(nested._test.width ~= nil)
+  assert(nested._test.width == 300)
 end
 
 -- Test: `GetChildren` returns only direct children, doesn't recurse into grandchildren.
@@ -73,7 +71,7 @@ do
 
   container:DetachComponent(leafA)
   assert(#container:GetChildren() == 1)
-  assert(container:GetChildren()[1].node.frame == b)
+  assert(container:GetChildren()[1]:GetFrame() == b)
 end
 
 -- Test: `DetachComponent` and `Clear` on a component that never had any

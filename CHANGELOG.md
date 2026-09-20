@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-09-20
+
+### Added
+
+- `visibility` node field, with `Component:SetVisibility()` and `Component:GetVisibility()`. `"INVISIBLE"` hides a node's frame but keeps its space in the layout, so its siblings do not reflow. `"GONE"` excludes it from the layout entirely, and `"VISIBLE"` is the default. Case does not matter, and any other value throws an error.
+
+### Changed
+
+- **Breaking:** `hidden`, `SetHidden()`, and `GetHidden()` are replaced by `visibility`, `SetVisibility()`, and `GetVisibility()`. `visibility = "GONE"` behaves exactly as `hidden = true` did. Replace `hidden = true` with `visibility = "GONE"`, `component:SetHidden(true)` with `component:SetVisibility("GONE")`, `component:SetHidden(false)` with `component:SetVisibility("VISIBLE")`, and `component:GetHidden()` with `component:GetVisibility()`. A leftover `hidden` field in a node table is ignored, so that node is shown.
+
 ## [0.9.0] - 2026-09-20
 
 ### Added
