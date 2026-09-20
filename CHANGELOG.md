@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Component:IsVisible()`: returns `true` if a node's own `visibility` is `"VISIBLE"` or unset, in any case. It ignores an ancestor's `visibility` and whether the frame is actually shown.
+
 ### Changed
 
 - **Breaking:** `direction`, `align`, `alignSelf`, and `justify` now throw an error on an unrecognized value, where before it silently fell back to a default. `SetDirection()`, `SetAlign()`, `SetAlignSelf()`, and `SetJustify()` throw for one too. Still case insensitive.
