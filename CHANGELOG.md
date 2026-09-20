@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `direction`, `align`, `alignSelf`, and `justify` now throw an error on an unrecognized value, where before it silently fell back to a default. `SetDirection()`, `SetAlign()`, `SetAlignSelf()`, and `SetJustify()` throw for one too. Still case insensitive.
+
 ## [0.10.0] - 2026-09-20
 
 ### Added
 
-- `visibility` node field, with `Component:SetVisibility()` and `Component:GetVisibility()`. `"INVISIBLE"` hides a node's frame but keeps its space in the layout, so its siblings do not reflow. `"GONE"` excludes it from the layout entirely, and `"VISIBLE"` is the default. Case does not matter, and any other value throws an error.
+- `visibility` node field, with `Component:SetVisibility()` and `Component:GetVisibility()`. `"INVISIBLE"` hides a node's frame but keeps its space in the layout, so its siblings do not reflow. `"GONE"` excludes it from the layout entirely, and `"VISIBLE"` is the default. Case insensitive, and any other value throws an error.
 
 ### Changed
 
