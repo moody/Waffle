@@ -95,7 +95,7 @@ root:Layout()
 otherRoot:AttachComponent(root:FindByKey("sidebar"):Detach())
 ```
 
-Every method used above, and every other one Waffle supports (`FindByKey`, `SetHidden`, every other setter/getter, and more), works the same on any node and is documented with a runnable example in [Component](#component) below.
+Every method used above, and every other one Waffle supports (`FindByKey`, `SetVisibility`, every other setter/getter, and more), works the same on any node and is documented with a runnable example in [Component](#component) below.
 
 **Reacting to resolved size.** `onLayout` fires with a node's own component and its resolved width/height, once the whole tree is laid out. Useful for anything Waffle doesn't handle automatically, like keeping a `ScrollFrame`'s scroll child in sync (WoW doesn't resize it to fit the visible area on its own):
 
@@ -106,7 +106,7 @@ root:AddChild({
     local frame = component:GetFrame()
     frame.scrollChild:SetWidth(width)
     local slider = component:FindByKey("slider")
-    slider:SetHidden(frame.scrollChild:GetHeight() <= height)
+    slider:SetVisibility(frame.scrollChild:GetHeight() <= height and "GONE" or "VISIBLE")
   end
 })
 root:AddChild({ frame = sliderFrame, key = "slider", width = 20 })
@@ -120,7 +120,7 @@ root:FindByKey("sidebar"):WhenFrameReady(function(frame)
 end)
 ```
 
-Waffle does not create a hidden node's frame until it is first shown, so its callbacks wait until then. A script hooked after the frame has already been shown or hidden only sees later events.
+Waffle does not create a `"GONE"` node's frame until it is first shown, so its callbacks wait until then. A script hooked after the frame has already been shown or hidden only sees later events.
 
 **Calling `Layout()` again.** Nothing about `Layout()` is one-time, it's a pure recompute of whatever's currently composed. Call it again any time state changes, from any node in the tree, not just the root, it always resolves and lays out the whole tree from its actual current root. A call is a no-op unless something changed since the last one, so it's cheap to call from an `OnUpdate` handler every frame. `IsDirty()` tells you whether a call would actually do anything, without triggering one.
 
@@ -291,11 +291,16 @@ local node = {
   -- SetMaxHeight().
   maxHeight = 300,
 
-  -- Excludes this node from the layout flow entirely. Can also be toggled after the
-  -- fact with SetHidden(). Layout() hides its own frame and every already-resolved
-  -- frame in its subtree. An ancestor's own hidden hides this node's frame the same
-  -- way; GetHidden() still only reports this node's own hidden, never an ancestor's.
-  hidden = false,
+  -- "VISIBLE" shows this node's frame. "INVISIBLE" hides it but keeps its space in the
+  -- layout, so siblings do not reflow. "GONE" excludes this node from the layout
+  -- flow entirely; siblings reflow to fill the space, and Layout() hides its own frame
+  -- and every already-resolved frame in its subtree. An ancestor's own visibility
+  -- affects this node's frame the same way; GetVisibility() still only reports this
+  -- node's own visibility, never an ancestor's. On the root, "INVISIBLE" still creates its
+  -- frame and lays out the tree; use "GONE" to defer that until it is first shown.
+  -- Case does not matter, any other value throws an error. Defaults to "VISIBLE". Can
+  -- also be changed after the fact with SetVisibility().
+  visibility = "VISIBLE",
 
   -- Registers this node for lookup via FindByKey(key) from anywhere in the tree. A
   -- duplicate key isn't validated against, the first match found wins. Can also be
@@ -352,7 +357,7 @@ child:Detach()
 
 -- Removes component from this node's own children entirely, detaching it (and its own
 -- children, if it has any) from the tree rather than excluding it from layout the way
--- SetHidden(true) does. Doesn't touch component's own frame. Only succeeds if component
+-- SetVisibility("GONE") does. Doesn't touch component's own frame. Only succeeds if component
 -- really is this node's own child; returns false, without detaching it, if it's attached
 -- elsewhere.
 local detached = component:DetachComponent(row)
@@ -503,15 +508,18 @@ child:SetMaxHeight(300)
 local minHeight = child:GetMinHeight()
 local maxHeight = child:GetMaxHeight()
 
--- Sets whether this node is excluded from the layout flow entirely; its siblings reflow
--- to fill the space, and Layout() hides its own frame and every already-resolved frame
--- in its subtree. An ancestor's own hidden hides this node's frame the same way, without
--- changing this node's own hidden. Pass nil to reset to the default (false).
-child:SetHidden(true)
+-- Sets this node's visibility. "INVISIBLE" hides its frame but keeps its space in the
+-- layout. "GONE" excludes it from the layout flow entirely; its siblings reflow to
+-- fill the space, and Layout() hides its own frame and every already-resolved frame in
+-- its subtree. An ancestor's own visibility affects this node's frame the same way,
+-- without changing this node's own. Pass nil to reset to the default ("VISIBLE"). Case
+-- does not matter, any other value throws an error.
+child:SetVisibility("GONE")
 
--- Returns this node's own hidden, never an ancestor's: a node whose ancestor is hidden
--- still returns nil/false here, even though its own frame is hidden too.
-local hidden = child:GetHidden()
+-- Returns this node's own visibility, never an ancestor's: a node whose ancestor is
+-- "INVISIBLE" or "GONE" still returns nil or "VISIBLE" here, even though its own frame
+-- is hidden too.
+local visibility = child:GetVisibility()
 
 -- Sets this node's own key, for lookup via FindByKey(key). Pass nil to remove it. Unlike
 -- every other setter, never marks the tree dirty: FindByKey always searches live, there's
