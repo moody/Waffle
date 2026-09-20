@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** `onLayout` receives this node's frame again as its first argument (`onLayout(frame, width, height)`), not its component. If you need the component, keep a reference to it, or look it up from the root with `FindByKey()`.
 - **Breaking:** `direction`, `align`, `alignSelf`, and `justify` now throw an error on an unrecognized value, where before it silently fell back to a default. `SetDirection()`, `SetAlign()`, `SetAlignSelf()`, and `SetJustify()` throw for one too. Still case insensitive.
 
 ### Fixed
