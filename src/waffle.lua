@@ -576,7 +576,7 @@ function _W.Sizing:ComputeAutoSize(node, axis)
       visibleCount = visibleCount + 1
       local size = self:ResolveOuterDimension(child, axis)
       if not size then
-        error("Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
+        error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
           axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split", 0)
       end
       total = total + size
@@ -599,7 +599,7 @@ function _W.Sizing:MaxCrossSize(children, axis)
   for _, child in ipairs(children) do
     local size = self:ResolveOuterDimension(child, axis)
     if not size then
-      error("Waffle: every visible child of an `\"AUTO\"` node needs its own `" ..
+      error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
         axis .. "`, a flexible child (`nil`) has nothing of its own to measure", 0)
     end
     max = math.max(max, size)
