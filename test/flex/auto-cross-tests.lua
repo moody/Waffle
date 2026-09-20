@@ -319,4 +319,131 @@ do
   assert(autoFrame._test.height == 40) -- both fit on one line, max(30, 40)
 end
 
+-- Test: cross-axis `"AUTO"` on a wrapping node with a stretched width counts
+-- the lines that width produces. Eight 32-wide icons with `gap` 4 fit five to a
+-- 200-wide line.
+do
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 8 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "COLUMN",
+    width = 200,
+    height = 400,
+    children = {
+      { frame = gridFrame, direction = "ROW", height = "AUTO", wrap = true, gap = 4, lineGap = 4, children = icons }
+    }
+  }):Layout()
+
+  assert(gridFrame._test.width == 200)
+  assert(gridFrame._test.height == 68) -- two lines: 32 + 4 + 32
+  assert(icons[6].frame._test.point.offsetY == -36) -- the sixth icon starts line two
+end
+
+-- Test: the stretched width `"AUTO"` wraps against is what is left after the
+-- parent's `padding` and the node's own `margin`.
+do
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 10 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "COLUMN",
+    width = 200,
+    height = 400,
+    padding = 10,
+    children = {
+      {
+        frame = gridFrame,
+        direction = "ROW",
+        height = "AUTO",
+        wrap = true,
+        gap = 4,
+        lineGap = 4,
+        margin = 10,
+        children = icons
+      }
+    }
+  }):Layout()
+
+  assert(gridFrame._test.width == 160) -- 200 - padding 20 - margin 20
+  assert(gridFrame._test.height == 104) -- four to a line, so three lines: 32 * 3 + 4 * 2
+end
+
+-- Test: a stretched width clamped by `maxWidth` is the width `"AUTO"` wraps
+-- against.
+do
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 8 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "COLUMN",
+    width = 200,
+    height = 400,
+    children = {
+      {
+        frame = gridFrame,
+        direction = "ROW",
+        height = "AUTO",
+        maxWidth = 100,
+        wrap = true,
+        gap = 4,
+        lineGap = 4,
+        children = icons
+      }
+    }
+  }):Layout()
+
+  assert(gridFrame._test.width == 100)
+  assert(gridFrame._test.height == 140) -- two to a line, so four lines: 32 * 4 + 4 * 3
+end
+
+-- Test: cross-axis `"AUTO"` on a wrapping node whose width is flexed by a ROW
+-- parent counts the lines that width produces.
+do
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 8 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "ROW",
+    width = 300,
+    height = 400,
+    children = {
+      { frame = Mocks:CreateFrame(), width = 100 },
+      { frame = gridFrame, direction = "ROW", height = "AUTO", wrap = true, gap = 4, lineGap = 4, children = icons },
+    }
+  }):Layout()
+
+  assert(gridFrame._test.width == 200) -- 300 - 100
+  assert(gridFrame._test.height == 68) -- five to a line, so two lines
+end
+
+-- Test: the same holds along the other axis, a wrapping COLUMN node with
+-- `width = "AUTO"` and a height stretched by a ROW parent counts its columns.
+do
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 8 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "ROW",
+    width = 400,
+    height = 100,
+    children = {
+      { frame = gridFrame, direction = "COLUMN", width = "AUTO", wrap = true, gap = 4, lineGap = 4, children = icons },
+    }
+  }):Layout()
+
+  assert(gridFrame._test.height == 100)
+  assert(gridFrame._test.width == 140) -- two to a column, so four columns: 32 * 4 + 4 * 3
+end
+
 print("All assertions passed.")
