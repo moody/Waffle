@@ -526,6 +526,10 @@ child:SetVisibility("GONE")
 -- its own frame is hidden too.
 local visibility = child:GetVisibility()
 
+-- Returns true if this node's own visibility is "VISIBLE" or unset, in any case. Ignores
+-- an ancestor's visibility and whether the frame is actually shown.
+local isVisible = child:IsVisible()
+
 -- Sets this node's own key, for lookup via FindByKey(key). Pass nil to remove it. Unlike
 -- every other setter, never marks the tree dirty: FindByKey always searches live, there's
 -- nothing to recompute.
