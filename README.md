@@ -296,12 +296,12 @@ local node = {
   -- SetOrder().
   order = 0,
 
-  -- Called with this node's own component and resolved width/height, once the whole
+  -- Called with this node's own frame and resolved width/height, once the whole
   -- Layout() pass is resolved and clean. Re-fires on every Layout() call, keep it
   -- idempotent. Mutating a different node from here schedules a future Layout() call,
   -- the same as any other setter. Can also be toggled after the fact with
   -- SetOnLayout().
-  onLayout = function(component, width, height) end,
+  onLayout = function(frame, width, height) end,
 }
 ```
 
@@ -521,7 +521,7 @@ local order = child:GetOrder()
 
 -- Sets the callback fired once this node's own Layout() pass is resolved and clean. Pass
 -- nil to remove it.
-component:SetOnLayout(function(comp, width, height) end)
+component:SetOnLayout(function(frame, width, height) end)
 local onLayout = component:GetOnLayout()
 
 -- Calls callback once with this node's frame: immediately if the frame already exists,
