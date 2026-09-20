@@ -136,8 +136,9 @@ do
   leaf:SetKey("b")
   assert(container:FindByKey("b"):GetFrame() == a)
 
-  local ok = pcall(function() container:FindByKey("a") end)
+  local ok, err = pcall(function() container:FindByKey("a") end)
   assert(not ok) -- old key no longer registered
+  assert(tostring(err):find("'a'", 1, true))
 end
 
 print("All assertions passed.")

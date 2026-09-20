@@ -526,7 +526,9 @@ do
     visibility = true,
   })
 
-  assert(not pcall(container.Layout, container))
+  local ok, err = pcall(container.Layout, container)
+  assert(not ok)
+  assert(tostring(err):find("visibility", 1, true) and tostring(err):find("true", 1, true))
 end
 
 -- Test: `SetVisibility()` throws an error for an unrecognized value, leaving
@@ -538,7 +540,9 @@ do
   local leaf = container:AddChild({ frame = Mocks:CreateFrame() })
   container:Layout()
 
-  assert(not pcall(leaf.SetVisibility, leaf, "hidden"))
+  local ok, err = pcall(leaf.SetVisibility, leaf, "hidden")
+  assert(not ok)
+  assert(tostring(err):find("hidden", 1, true) and tostring(err):find("GONE", 1, true))
   assert(leaf:GetVisibility() == nil)
   assert(container:IsDirty() == false)
 end
