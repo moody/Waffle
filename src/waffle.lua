@@ -1816,6 +1816,14 @@ function _W.FlexComponent:GetVisibility()
   return self.node.visibility
 end
 
+--- Returns `true` if this node's own `visibility` is `"VISIBLE"` or unset, in
+--- any case. Ignores an ancestor's `visibility` and whether its frame is
+--- actually shown.
+--- @return boolean
+function _W.FlexComponent:IsVisible()
+  return _W.Utils:ParseVisibility(self.node.visibility) == "VISIBLE"
+end
+
 --- Sets this node's own `key`, for lookup via `FindByKey(key)`. `nil`
 --- removes it. Unlike every other setter, never marks the tree dirty:
 --- `FindByKey` always searches live, there's nothing to recompute.
