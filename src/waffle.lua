@@ -985,27 +985,22 @@ function _W.FlexLayout:SplitFlexLines(children, axis, mainSize, crossSize, gap)
   return lines
 end
 
---- Resolves how much of `lineChildren`'s own leftover main-axis space
---- (positive, `grow` splits it) or deficit (negative, `shrink` gives
---- some back) goes to each flexible/fixed child, via
---- `_W.SpaceDistributor:Grow` for flexible children (growing up from
---- `0`, clamped to `min`/`max`) and `_W.SpaceDistributor:Shrink` for
+--- Resolves every one of `lineChildren`'s own main-axis size. A fixed or
+--- percentage child keeps its own stated size unless the line overflows
+--- (a deficit, `shrink` gives some back), and a flexible child takes its
+--- `grow` share of the leftover space. A child with a `min`/`max` goes
+--- through `_W.SpaceDistributor:Grow` for flexible children (growing up
+--- from `0`, clamped to `min`/`max`) or `_W.SpaceDistributor:Shrink` for
 --- fixed/percentage ones (shrinking down from each one's own stated
 --- size, clamped to `min`, weighted by `shrink` times that size, not
---- `shrink` alone). Both are skipped for a child with neither bound
---- set, `LayoutFlexLine` computes its own fallback share directly
---- instead.
+--- `shrink` alone).
 --- @param lineChildren WaffleFlexNode[]
 --- @param mainAxis "width" | "height"
 --- @param mainSize integer
 --- @param crossSize integer Needed only for a child's own percentage/`"AUTO"` along the cross axis.
 --- @param gap integer
---- @return WaffleFlexNodeSizes? clampedSizes `nil` unless a flexible child on this line actually ends up clamped; pooled, `LayoutFlexLine` releases it once done, not this function.
---- @return number remaining Unclaimed space after every child's own share and `margin`, for `justify`. `0` whenever there's a deficit instead.
---- @return number totalGrow Surviving flexible weight, `0` once nothing has a positive share left.
---- @return WaffleFlexNodeSizes? shrunkSizes `nil` unless a fixed/percentage child on this line actually ends up shrunk; pooled, `LayoutFlexLine` releases it once done, not this function.
---- @return number deficit How much `lineChildren`'s own sizes overflow `mainSize` by, `0` unless they actually do.
---- @return number totalShrink Surviving shrinkable weight, `0` once nothing has a positive share left to give.
+--- @return WaffleFlexNodeSizes sizes Every child's size; pooled, `LayoutFlexLine` releases it once done, not this function.
+--- @return number freeSpace Space no child claimed after every size and `margin`, for `justify`. `0` whenever a flexible child takes the leftover space, or there's a deficit.
 function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
   local isRow = mainAxis == "width"
   local crossAxis = isRow and "height" or "width"
@@ -1024,10 +1019,11 @@ function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossS
   local growConstrained
   --- @type WaffleFlexNode[]
   local shrinkConstrained
-  -- Each `shrinkConstrained` child's own stated size, `shrink`'s own
-  -- weight formula needs it on every round, not just once.
+  -- Holds each fixed/percentage child's own stated size first, then every
+  -- child's final size. `shrink`'s own weight formula needs the stated
+  -- sizes on every round, not just once.
   --- @type WaffleFlexNodeSizes
-  local statedSizes
+  local sizes = _W.Scratch:Get()
   for _, child in ipairs(lineChildren) do
     local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
     fixedTotal = fixedTotal + marginLeading + marginTrailing
@@ -1041,11 +1037,10 @@ function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossS
     if size then
       fixedTotal = fixedTotal + size
       totalShrink = totalShrink + (child.shrink or 1) * size
+      sizes[child] = size
       if child[minField] then
         shrinkConstrained = shrinkConstrained or _W.Scratch:Get()
         shrinkConstrained[#shrinkConstrained + 1] = child
-        statedSizes = statedSizes or _W.Scratch:Get()
-        statedSizes[child] = size
       end
     else
       totalGrow = totalGrow + (child.grow or 1)
@@ -1072,32 +1067,44 @@ function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossS
   local shrunkSizes
   if deficit > 0 and shrinkConstrained then
     shrunkSizes, deficit, totalShrink = _W.SpaceDistributor:Shrink(shrinkConstrained, deficit, totalShrink, minField,
-      statedSizes)
+      sizes)
+  end
+
+  -- Resolve each child's final size after grow/shrink
+  for _, child in ipairs(lineChildren) do
+    local size = sizes[child]
+    if size then
+      if shrunkSizes and shrunkSizes[child] then
+        size = shrunkSizes[child]
+      elseif deficit > 0 and totalShrink > 0 then
+        size = size - deficit * (child.shrink or 1) * size / totalShrink
+      end
+    else
+      size = clampedSizes and clampedSizes[child]
+      if not size then
+        size = totalGrow > 0 and (remaining * (child.grow or 1) / totalGrow) or 0
+      end
+    end
+    sizes[child] = size
   end
 
   _W.Scratch:Release(growConstrained)
   _W.Scratch:Release(shrinkConstrained)
-  _W.Scratch:Release(statedSizes)
+  _W.Scratch:Release(clampedSizes)
+  _W.Scratch:Release(shrunkSizes)
 
-  return clampedSizes, remaining, totalGrow, shrunkSizes, deficit, totalShrink
+  return sizes, totalGrow > 0 and 0 or remaining
 end
 
---- Resolves `node.justify`'s main-axis offset/gap for one line. A child
---- with a positive `grow` share already claims some or all of
---- `remaining`, `justify` only has anything left once no child does,
---- `totalGrow == 0`.
+--- Resolves `node.justify`'s main-axis offset/gap for one line.
 --- @param node WaffleFlexNode
---- @param totalGrow number
---- @param remaining number
+--- @param freeSpace number
 --- @param visibleCount integer
 --- @param isReverse boolean If true, swaps `START`/`END`, since the packing math itself has no other way to know the main-start edge moved. `CENTER`/`SPACE_*` need no such swap, already symmetric.
 --- @return number justifyOffset
 --- @return number justifyGap
-function _W.FlexLayout:ResolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
+function _W.FlexLayout:ResolveLineJustify(node, freeSpace, visibleCount, isReverse)
   local justify = _W.Utils:ParseEnum("justify", node.justify or "START", JUSTIFIES)
-  if totalGrow ~= 0 then
-    return 0, 0
-  end
 
   local justifyOffset, justifyGap = 0, 0
   if isReverse then
@@ -1109,16 +1116,16 @@ function _W.FlexLayout:ResolveLineJustify(node, totalGrow, remaining, visibleCou
   end
 
   if justify == "END" then
-    justifyOffset = remaining
+    justifyOffset = freeSpace
   elseif justify == "CENTER" then
-    justifyOffset = remaining / 2
+    justifyOffset = freeSpace / 2
   elseif justify == "SPACE_BETWEEN" and visibleCount > 1 then
-    justifyGap = remaining / (visibleCount - 1)
+    justifyGap = freeSpace / (visibleCount - 1)
   elseif justify == "SPACE_AROUND" and visibleCount > 0 then
-    justifyGap = remaining / visibleCount
+    justifyGap = freeSpace / visibleCount
     justifyOffset = justifyGap / 2
   elseif justify == "SPACE_EVENLY" then
-    justifyGap = remaining / (visibleCount + 1)
+    justifyGap = freeSpace / (visibleCount + 1)
     justifyOffset = justifyGap
   end
 
@@ -1156,9 +1163,8 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
   local parentWidth = isRow and mainSize or crossSize
   local parentHeight = isRow and crossSize or mainSize
 
-  local clampedSizes, remaining, totalGrow, shrunkSizes, deficit, totalShrink =
-      self:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
-  local justifyOffset, justifyGap = self:ResolveLineJustify(node, totalGrow, remaining, visibleCount, isReverse)
+  local sizes, freeSpace = self:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
+  local justifyOffset, justifyGap = self:ResolveLineJustify(node, freeSpace, visibleCount, isReverse)
 
   local mainOffset = mainStart + justifyOffset
   for _, child in ipairs(lineChildren) do
@@ -1172,19 +1178,7 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
     childFrame:ClearAllPoints()
     childFrame:SetParent(frame)
 
-    local size = _W.Sizing:ResolveDimension(child, mainAxis, parentWidth, parentHeight)
-    if size then
-      if shrunkSizes and shrunkSizes[child] then
-        size = shrunkSizes[child]
-      elseif deficit > 0 and totalShrink > 0 then
-        size = size - deficit * (child.shrink or 1) * size / totalShrink
-      end
-    else
-      size = clampedSizes and clampedSizes[child]
-      if not size then
-        size = totalGrow > 0 and (remaining * (child.grow or 1) / totalGrow) or 0
-      end
-    end
+    local size = sizes[child]
 
     local marginMainLeading, marginMainTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
     local marginCrossLeading, marginCrossTrailing = _W.Sizing:ResolveBoxAxis(child, crossAxis, "margin")
@@ -1244,8 +1238,7 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
 
   -- Acquired by `ResolveLineSizes`, released here instead: still read by
   -- the loop above.
-  _W.Scratch:Release(clampedSizes)
-  _W.Scratch:Release(shrunkSizes)
+  _W.Scratch:Release(sizes)
 end
 
 --- Positions `node.children` in a row or column within `frame`, sized to
