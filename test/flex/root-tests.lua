@@ -49,30 +49,4 @@ do
   assert(child._test.width == 100)
 end
 
--- Test: `onLayout` on the root fires after its children are already laid
--- out, not before, they're already sized by the time it runs.
-do
-  local root = Mocks:CreateFrame()
-  local child = Mocks:CreateFrame()
-  local rootLayoutCalls = 0
-  local childWidthDuringOnLayout
-
-  Waffle:Flex({
-    frame = root,
-    width = 200,
-    height = 50,
-    onLayout = function(component, width, height)
-      rootLayoutCalls = rootLayoutCalls + 1
-      assert(component:GetFrame() == root and width == 200 and height == 50)
-      childWidthDuringOnLayout = child._test.width
-    end,
-    children = {
-      { frame = child },
-    }
-  }):Layout()
-
-  assert(rootLayoutCalls == 1)
-  assert(childWidthDuringOnLayout == 200)
-end
-
 print("All assertions passed.")

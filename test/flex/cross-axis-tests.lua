@@ -81,7 +81,7 @@ do
   assert(a._test.point.offsetY == -10)
 end
 
--- Test: a fixed cross-axis dimension works on a container, not just a leaf,
+-- Test: a fixed cross-axis dimension works on a node with children too,
 -- and still applies to that container's own children within its now
 -- cross-sized frame.
 do

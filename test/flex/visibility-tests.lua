@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible, assign-type-mismatch, param-type-mismatch
+--- @diagnostic disable: assign-type-mismatch, param-type-mismatch
 
 --- @type Waffle
 local Waffle = require("test/waffle")
@@ -97,7 +97,7 @@ do
   container:Layout()
 
   assert(factoryCalls == 0)
-  assert(leaf.node.frame == nil)
+  assert(leaf:GetFrame() == nil)
 
   leaf:SetVisibility("VISIBLE")
   container:Layout()

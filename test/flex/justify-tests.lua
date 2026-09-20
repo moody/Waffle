@@ -25,7 +25,7 @@ local function ThreeFixedChildren(justify)
 end
 
 -- Test: `justify = "START"` (also the default) packs children against the
--- start, unchanged from before `justify` existed.
+-- start.
 do
   local a, b, c = ThreeFixedChildren("START")
   assert(a._test.point.offsetX == 0)

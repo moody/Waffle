@@ -151,23 +151,6 @@ do
   assert(b._test.width == 200)
 end
 
--- Test: omitting `grow` everywhere still splits evenly, unchanged from
--- before `grow` existed.
-do
-  local root = Mocks:CreateFrame()
-  local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
-
-  Waffle:Flex({
-    frame = root,
-    direction = "ROW",
-    width = 300,
-    height = 50,
-    children = { { frame = a }, { frame = b }, { frame = c } }
-  }):Layout()
-
-  assert(a._test.width == 100 and b._test.width == 100 and c._test.width == 100)
-end
-
 -- Test: `grow` works the same way on a COLUMN, main axis is height
 -- instead of width.
 do

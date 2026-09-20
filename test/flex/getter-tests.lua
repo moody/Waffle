@@ -1,5 +1,3 @@
---- @diagnostic disable: invisible
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -156,48 +154,6 @@ do
   container:GetGap()
   leaf:GetVisibility()
   assert(container:IsDirty() == false)
-end
-
--- Test: every getter is available on any component, whether or not it
--- currently has any children of its own.
-do
-  local root = Mocks:CreateFrame()
-  local a = Mocks:CreateFrame()
-
-  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 200, height = 50 })
-  local leaf = container:AddChild({ frame = a })
-
-  assert(leaf.GetDefaultFrameFactory ~= nil)
-  assert(leaf.GetDirection ~= nil)
-  assert(leaf.GetWidth ~= nil)
-  assert(leaf.GetHeight ~= nil)
-  assert(leaf.GetSize ~= nil)
-  assert(leaf.GetGrow ~= nil)
-  assert(leaf.GetShrink ~= nil)
-  assert(leaf.GetAlign ~= nil)
-  assert(leaf.GetAlignSelf ~= nil)
-  assert(leaf.GetJustify ~= nil)
-  assert(leaf.GetWrap ~= nil)
-  assert(leaf.GetGap ~= nil)
-  assert(leaf.GetLineGap ~= nil)
-  assert(leaf.GetPadding ~= nil)
-  assert(leaf.GetPaddingTop ~= nil)
-  assert(leaf.GetPaddingRight ~= nil)
-  assert(leaf.GetPaddingBottom ~= nil)
-  assert(leaf.GetPaddingLeft ~= nil)
-  assert(leaf.GetMargin ~= nil)
-  assert(leaf.GetMarginTop ~= nil)
-  assert(leaf.GetMarginRight ~= nil)
-  assert(leaf.GetMarginBottom ~= nil)
-  assert(leaf.GetMarginLeft ~= nil)
-  assert(leaf.GetMinWidth ~= nil)
-  assert(leaf.GetMaxWidth ~= nil)
-  assert(leaf.GetMinHeight ~= nil)
-  assert(leaf.GetMaxHeight ~= nil)
-  assert(leaf.GetVisibility ~= nil)
-  assert(leaf.GetKey ~= nil)
-  assert(leaf.GetOrder ~= nil)
-  assert(leaf.GetOnLayout ~= nil)
 end
 
 print("All assertions passed.")

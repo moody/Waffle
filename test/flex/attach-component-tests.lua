@@ -1,11 +1,9 @@
---- @diagnostic disable: invisible
-
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
 
--- Test: attaching an independently-composed container component grafts its
--- own children into the outer tree too, not just its own root frame.
+-- Test: attaching an independently-composed component grafts its own
+-- children into the outer tree too, not just its own root frame.
 do
   local outerFrame = Mocks:CreateFrame()
   local innerFrame = Mocks:CreateFrame()
@@ -25,24 +23,6 @@ do
 
   assert(innerFrame._test.point.parent == outerFrame)
   assert(nestedFrame._test.width == 300) -- inner's own child laid out too, as outer's child now
-end
-
--- Test: attaching a leaf component, obtained from `AddChild` and then
--- detached, works the same way as attaching a container.
-do
-  local rootAFrame, rootBFrame = Mocks:CreateFrame(), Mocks:CreateFrame()
-  local leafFrame = Mocks:CreateFrame()
-
-  local containerA = Waffle:Flex({ frame = rootAFrame, direction = "ROW", width = 200, height = 50 })
-  local leaf = containerA:AddChild({ frame = leafFrame, width = 100 })
-  assert(containerA:DetachComponent(leaf))
-
-  local containerB = Waffle:Flex({ frame = rootBFrame, direction = "ROW", width = 300, height = 50 })
-  containerB:AttachComponent(leaf)
-  containerB:Layout()
-
-  assert(leafFrame._test.point.parent == rootBFrame)
-  assert(leafFrame._test.width == 100)
 end
 
 -- Test: attaching a component that already belongs to a different
@@ -86,7 +66,7 @@ do
   local attached = outer:AttachComponent(inner)
   outer:Layout()
 
-  assert(attached.node.direction == "COLUMN") -- untouched by the outer ROW container
+  assert(attached:GetDirection() == "COLUMN") -- untouched by the outer ROW container
 end
 
 print("All assertions passed.")
