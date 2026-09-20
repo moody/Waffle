@@ -418,12 +418,6 @@ end
 --- Internal memoization and table reuse for `Layout()`.
 _W.LayoutCache = {}
 
---- A wrap node's own children, already split into lines by
---- `_W.Sizing:ComputeAutoCrossSize`, for `_W.FlexLayout:Layout` to reuse
---- instead of splitting them again right after. Weak keys so an
---- unreferenced node can still be garbage collected.
-_W.LayoutCache.wrapLines = setmetatable({}, { __mode = "k" })
-
 --- Bumped once per `Layout()` pass (see `FlexComponent:Layout()`).
 --- Scopes `resolvedDimensions` entries to the pass that computed them,
 --- so a stale one from an earlier pass is never reused.
@@ -464,23 +458,6 @@ function _W.LayoutCache:SetResolvedDimension(node, axis, value)
     entry.height = nil
   end
   entry[axis] = value
-end
-
---- Returns and clears `node`'s cached wrap lines, even if the caller
---- ends up not using them.
---- @param node WaffleFlexNode
---- @return WaffleFlexNode[][]?
-function _W.LayoutCache:GetWrapLines(node)
-  local lines = self.wrapLines[node]
-  self.wrapLines[node] = nil
-  return lines
-end
-
---- Records `node`'s wrap lines for `_W.FlexLayout:Layout` to take right after.
---- @param node WaffleFlexNode
---- @param lines WaffleFlexNode[][]
-function _W.LayoutCache:SetWrapLines(node, lines)
-  self.wrapLines[node] = lines
 end
 
 -- =============================================================================
@@ -663,11 +640,6 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
       -- percentage on it errors, same as a child's own `"AUTO"` needing
       -- to sum along it would.
       lines = _W.FlexLayout:SplitFlexLines(visibleChildren, mainAxis, mainSize, nil, gap)
-
-      -- Cached for `node`'s own upcoming `_W.FlexLayout:Layout` call,
-      -- which would otherwise redo this same sort and split; released
-      -- there instead of here.
-      _W.LayoutCache:SetWrapLines(node, lines)
     end
   end
 
@@ -680,6 +652,7 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
     for _, lineChildren in ipairs(lines) do
       total = total + self:MaxCrossSize(lineChildren, axis)
     end
+    _W.FlexLayout:ReleaseLines(lines)
   else
     total = self:MaxCrossSize(visibleChildren, axis)
     lineCount = 1
@@ -958,7 +931,7 @@ _W.FlexLayout = {}
 --- @param mainSize integer
 --- @param crossSize? integer The container's own cross size, if resolved yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `_W.Sizing:ComputeAutoCrossSize`, that's the container's own cross axis, what it's still computing.
 --- @param gap integer
---- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; released by whichever of `_W.Sizing:ComputeAutoCrossSize`/`Layout` is done reading them.
+--- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; the caller releases them with `ReleaseLines`.
 function _W.FlexLayout:SplitFlexLines(children, axis, mainSize, crossSize, gap)
   --- @type WaffleFlexNode[][]
   local lines = _W.Scratch:Get()
@@ -990,6 +963,15 @@ function _W.FlexLayout:SplitFlexLines(children, axis, mainSize, crossSize, gap)
   end
 
   return lines
+end
+
+--- Returns `lines`, and every line in it, to the pool.
+--- @param lines WaffleFlexNode[][]
+function _W.FlexLayout:ReleaseLines(lines)
+  for _, lineChildren in ipairs(lines) do
+    _W.Scratch:Release(lineChildren)
+  end
+  _W.Scratch:Release(lines)
 end
 
 --- Resolves every one of `lineChildren`'s own main-axis size. A fixed or
@@ -1315,26 +1297,20 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
 
   _W.Sorting:SortFlexChildren(children)
 
-  -- Reuses lines a cross-axis `"AUTO"` computation already split `node`
-  -- into, instead of splitting them again.
-  local wrapLines = _W.LayoutCache:GetWrapLines(node)
-  local lines = node.wrap and wrapLines or nil
-
   -- `"GONE"` children, own subtree included, are hidden and dropped here,
   -- once, so neither `SplitFlexLines` nor `LayoutFlexLine` needs to care
-  -- about them at all. Left `nil`, not built, when `lines` already covers
-  -- `node`.
+  -- about them at all.
   -- Pooled; released below, safe by then either way: `SplitFlexLines`
   -- is done with it under `wrap`, and `LayoutFlexLine` already returned
   -- without it.
-  --- @type WaffleFlexNode[]?
-  local visibleChildren = not lines and _W.Scratch:Get() or nil
+  --- @type WaffleFlexNode[]
+  local visibleChildren = _W.Scratch:Get()
 
   local visibleCount = 0
   for _, child in ipairs(children) do
     if _W.Utils:ParseVisibility(child.visibility) == "GONE" then
       _W.Utils:HideResolvedFrames(child)
-    elseif visibleChildren then
+    else
       visibleCount = visibleCount + 1
       visibleChildren[visibleCount] = child
     end
@@ -1347,12 +1323,10 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
     local lineGap = node.lineGap or gap
     local crossOffset = crossLeading
 
-    -- Pooled either way, from `SplitFlexLines`, whether `lines` came
-    -- from `_W.Sizing:ComputeAutoCrossSize`'s own cached call or gets
-    -- split fresh here. Released below: `lineChildren` once its own
-    -- line is done, `lines` once every line is.
+    -- Pooled, from `SplitFlexLines`. Released below: `lineChildren` once
+    -- its own line is done, `lines` once every line is.
     --- @type WaffleFlexNode[][]
-    lines = lines or self:SplitFlexLines(visibleChildren, mainAxis, mainSize, crossSize, gap)
+    local lines = self:SplitFlexLines(visibleChildren, mainAxis, mainSize, crossSize, gap)
     for _, lineChildren in ipairs(lines) do
       if isReverse then
         _W.Utils:ReverseArray(lineChildren)
