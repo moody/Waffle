@@ -1132,14 +1132,81 @@ function _W.FlexLayout:ResolveLineJustify(node, freeSpace, visibleCount, isRever
   return justifyOffset, justifyGap
 end
 
+--- Creates `child`'s frame if it does not exist yet, then parents it to
+--- `frame`, clears its points, and shows or hides it per its own
+--- `visibility`.
+--- @param child WaffleFlexNode
+--- @param frame WaffleFrame
+--- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
+--- @return WaffleFrame childFrame
+function _W.FlexLayout:PrepareChildFrame(child, frame, defaultFrameFactory)
+  local childFrame = _W.Utils:ResolveFrame(child, frame, defaultFrameFactory)
+
+  if _W.Utils:ParseVisibility(child.visibility) == "INVISIBLE" then
+    childFrame:Hide()
+  else
+    childFrame:Show()
+  end
+  childFrame:ClearAllPoints()
+  childFrame:SetParent(frame)
+
+  return childFrame
+end
+
+--- Resolves `child`'s own cross-axis size and its offset along the cross
+--- axis, per its `alignSelf` (or `node.align`). Non-`STRETCH` alignment
+--- requires the child's own cross-axis value, it never falls back to
+--- stretching; `STRETCH` itself clamps to the child's own cross-axis
+--- `min`/`max`, if either is set. The child's own `margin` insets it
+--- from `crossStart`.
+--- @param node WaffleFlexNode
+--- @param child WaffleFlexNode
+--- @param crossAxis "width" | "height"
+--- @param crossSize integer
+--- @param crossStart integer
+--- @param parentWidth integer
+--- @param parentHeight integer
+--- @param childMainSize integer `child`'s own already-resolved main-axis size.
+--- @return integer childCrossSize
+--- @return number crossOffset
+function _W.FlexLayout:ResolveChildCross(node, child, crossAxis, crossSize, crossStart, parentWidth, parentHeight,
+                                         childMainSize)
+  local isWidth = crossAxis == "width"
+  local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, crossAxis, "margin")
+
+  local align
+  if child.alignSelf ~= nil then
+    align = _W.Utils:ParseEnum("alignSelf", child.alignSelf, ALIGNS)
+  else
+    align = _W.Utils:ParseEnum("align", node.align or "STRETCH", ALIGNS)
+  end
+
+  local childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight, childMainSize)
+  if not childCrossSize then
+    if align ~= "STRETCH" then
+      error("Waffle: a child aligned '" ..
+        align ..
+        "' (not 'STRETCH') needs its own `" ..
+        crossAxis .. "`, alignment doesn't fall back to the container's cross size", 0)
+    end
+    childCrossSize = _W.Sizing:ClampSize(child, crossSize - marginLeading - marginTrailing,
+      isWidth and "minWidth" or "minHeight", isWidth and "maxWidth" or "maxHeight")
+  end
+
+  local crossOffset = crossStart + marginLeading
+  if align == "CENTER" or align == "END" then
+    local leftover = crossSize - (childCrossSize + marginLeading + marginTrailing)
+    crossOffset = crossStart + (align == "CENTER" and leftover / 2 or leftover) + marginLeading
+  end
+
+  return childCrossSize, crossOffset
+end
+
 --- Positions `lineChildren` along `mainAxis`, starting at `mainStart`, and
 --- aligns each within `crossSize` starting at `crossStart`. One line is
 --- every one of `node.children` when `node.wrap` isn't set, or one
---- wrapped line's worth of them when it is. Non-`STRETCH` alignment
---- requires the child's own cross-axis value, it never falls back to
---- stretching; `STRETCH` itself clamps to the child's own cross-axis
---- `min`/`max`, if either is set. Each child's own `margin` insets it
---- from wherever it would otherwise sit, on both axes.
+--- wrapped line's worth of them when it is. Each child's own `margin`
+--- insets it from wherever it would otherwise sit, on both axes.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param lineChildren WaffleFlexNode[]
@@ -1157,8 +1224,6 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
   local gap = node.gap or 0
   local isRow = mainAxis == "width"
   local visibleCount = #lineChildren
-  local crossMinField = isRow and "minHeight" or "minWidth"
-  local crossMaxField = isRow and "maxHeight" or "maxWidth"
 
   local parentWidth = isRow and mainSize or crossSize
   local parentHeight = isRow and crossSize or mainSize
@@ -1168,48 +1233,13 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
 
   local mainOffset = mainStart + justifyOffset
   for _, child in ipairs(lineChildren) do
-    local childFrame = _W.Utils:ResolveFrame(child, frame, defaultFrameFactory)
-
-    if _W.Utils:ParseVisibility(child.visibility) == "INVISIBLE" then
-      childFrame:Hide()
-    else
-      childFrame:Show()
-    end
-    childFrame:ClearAllPoints()
-    childFrame:SetParent(frame)
+    local childFrame = self:PrepareChildFrame(child, frame, defaultFrameFactory)
 
     local size = sizes[child]
+    local childCrossSize, crossOffset = self:ResolveChildCross(node, child, crossAxis, crossSize, crossStart,
+      parentWidth, parentHeight, size)
 
     local marginMainLeading, marginMainTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
-    local marginCrossLeading, marginCrossTrailing = _W.Sizing:ResolveBoxAxis(child, crossAxis, "margin")
-
-    local align
-    if child.alignSelf ~= nil then
-      align = _W.Utils:ParseEnum("alignSelf", child.alignSelf, ALIGNS)
-    else
-      align = _W.Utils:ParseEnum("align", node.align or "STRETCH", ALIGNS)
-    end
-    local childCrossSize
-    if align == "STRETCH" then
-      childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight, size) or
-          _W.Sizing:ClampSize(child, crossSize - marginCrossLeading - marginCrossTrailing, crossMinField, crossMaxField)
-    else
-      childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight, size)
-      if not childCrossSize then
-        error("Waffle: a child aligned '" ..
-          align ..
-          "' (not 'STRETCH') needs its own `" ..
-          crossAxis .. "`, alignment doesn't fall back to the container's cross size", 0)
-      end
-    end
-
-    local crossOffset = crossStart + marginCrossLeading
-    if align == "CENTER" or align == "END" then
-      local outerCrossSize = childCrossSize + marginCrossLeading + marginCrossTrailing
-      local leftover = crossSize - outerCrossSize
-      crossOffset = crossStart + (align == "CENTER" and leftover / 2 or leftover) + marginCrossLeading
-    end
-
     local childMainOffset = mainOffset + marginMainLeading
     local childWidth, childHeight
 
