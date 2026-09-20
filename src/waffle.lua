@@ -547,9 +547,10 @@ end
 --- both ends. `nil` if it's flexible there.
 --- @param child WaffleFlexNode
 --- @param axis "width" | "height"
+--- @param otherAxisSize? integer Only for an `"AUTO"` `child`; see `ComputeAutoCrossSize`.
 --- @return integer?
-function _W.Sizing:ResolveOuterDimension(child, axis)
-  local size = self:ResolveDimension(child, axis)
+function _W.Sizing:ResolveOuterDimension(child, axis, otherAxisSize)
+  local size = self:ResolveDimension(child, axis, nil, nil, otherAxisSize)
   if not size then
     return nil
   end
@@ -563,18 +564,28 @@ end
 --- any visible child is flexible, there's no space yet for it to split.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
+--- @param parentWidth? integer Needed only if `node`'s own other axis is a percentage.
+--- @param parentHeight? integer Same as `parentWidth`, for `height`.
+--- @param otherAxisSize? integer What `node`'s own other axis resolves to when it is flexible, so an `"AUTO"` child that wraps has a size to wrap against.
 --- @return integer
-function _W.Sizing:ComputeAutoSize(node, axis)
+function _W.Sizing:ComputeAutoSize(node, axis, parentWidth, parentHeight, otherAxisSize)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a size from")
 
   local gap = node.gap or 0
   local total = 0
   local visibleCount = 0
 
+  local crossAxis = axis == "width" and "height" or "width"
+  local crossLeading, crossTrailing = self:ResolveBoxAxis(node, crossAxis, "padding")
+  local crossSize = self:ResolveKnownDimension(node, crossAxis, parentWidth, parentHeight) or otherAxisSize
+  local contentCrossSize = crossSize and (crossSize - crossLeading - crossTrailing)
+
   for _, child in ipairs(node.children) do
     if _W.Utils:ParseVisibility(child.visibility) ~= "GONE" then
       visibleCount = visibleCount + 1
-      local size = self:ResolveOuterDimension(child, axis)
+      local childOtherAxisSize = contentCrossSize and child[axis] == "AUTO" and
+          self:ResolveStretchedSize(child, crossAxis, contentCrossSize) or nil
+      local size = self:ResolveOuterDimension(child, axis, childOtherAxisSize)
       if not size then
         error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
           axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split", 0)
@@ -616,8 +627,9 @@ end
 --- @param axis "width" | "height"
 --- @param parentWidth? integer Needed only if `node`'s own main axis is itself a percentage.
 --- @param parentHeight? integer Same as `parentWidth`, for `height`.
+--- @param otherAxisSize? integer What `node`'s own main axis resolves to when it is flexible, so `wrap` has a size to wrap against.
 --- @return integer
-function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight)
+function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, otherAxisSize)
   assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from")
 
   local gap = node.gap or 0
@@ -635,7 +647,7 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight)
   local lines
   if node.wrap then
     local mainAxis = axis == "width" and "height" or "width"
-    local mainSize = self:ResolveDimension(node, mainAxis, parentWidth, parentHeight)
+    local mainSize = self:ResolveDimension(node, mainAxis, parentWidth, parentHeight) or otherAxisSize
     if mainSize then
       -- Lines have to match what `_W.FlexLayout:Layout` will actually
       -- produce, which sorts before splitting; without this, a child
@@ -695,6 +707,27 @@ function _W.Sizing:LineCrossSize(children, axis, fallback)
   return max or fallback
 end
 
+--- Like `ResolveDimension`, but `nil` instead of computing an `"AUTO"`
+--- or erroring on a percentage with no parent size to resolve against.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @param parentWidth? integer
+--- @param parentHeight? integer
+--- @return integer?
+function _W.Sizing:ResolveKnownDimension(node, axis, parentWidth, parentHeight)
+  local value = node[axis]
+  local parentSize
+  if axis == "width" then
+    parentSize = parentWidth
+  else
+    parentSize = parentHeight
+  end
+  if value == "AUTO" or (type(value) == "string" and not parentSize) then
+    return nil
+  end
+  return self:ResolveDimension(node, axis, parentWidth, parentHeight)
+end
+
 --- Resolves `node`'s size along `axis`: the given number, a percentage of
 --- `parentWidth`/`parentHeight` (whichever matches `axis`), computed from
 --- its own children if `"AUTO"` (a sum along `node`'s own main axis, a max
@@ -705,8 +738,9 @@ end
 --- @param axis "width" | "height"
 --- @param parentWidth? integer Needed only if `node`'s own `width` needs it: directly, if `width` is a percentage, or indirectly, if a cross-axis `"AUTO"` needs `width` resolved as a step first.
 --- @param parentHeight? integer Same as `parentWidth`, for `height`.
+--- @param otherAxisSize? integer Only for an `"AUTO"` node; see `ComputeAutoCrossSize`.
 --- @return integer?
-function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight)
+function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight, otherAxisSize)
   local value = node[axis]
 
   if type(value) ~= "string" then
@@ -719,8 +753,8 @@ function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight)
       local isMainAxis = _W.Utils:ParseFlexDirection(node) == (axis == "width")
       cached = (
         isMainAxis and
-        self:ComputeAutoSize(node, axis) or
-        self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight)
+        self:ComputeAutoSize(node, axis, parentWidth, parentHeight, otherAxisSize) or
+        self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, otherAxisSize)
       )
       _W.LayoutCache:SetResolvedDimension(node, axis, cached)
     end
@@ -764,6 +798,20 @@ function _W.Sizing:ClampSize(node, value, minField, maxField)
   end
 
   return value
+end
+
+--- The size `child` takes along `axis` when its container stretches it
+--- across `crossSize`: what is left after its own `margin`, clamped to
+--- its own `min`/`max`.
+--- @param child WaffleFlexNode
+--- @param axis "width" | "height"
+--- @param crossSize integer
+--- @return integer
+function _W.Sizing:ResolveStretchedSize(child, axis, crossSize)
+  local leading, trailing = self:ResolveBoxAxis(child, axis, "margin")
+  local isWidth = axis == "width"
+  return self:ClampSize(child, crossSize - leading - trailing, isWidth and "minWidth" or "minHeight",
+    isWidth and "maxWidth" or "maxHeight")
 end
 
 -- =============================================================================
@@ -960,6 +1008,7 @@ end
 --- @return number totalShrink Surviving shrinkable weight, `0` once nothing has a positive share left to give.
 function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
   local isRow = mainAxis == "width"
+  local crossAxis = isRow and "height" or "width"
   local minField = isRow and "minWidth" or "minHeight"
   local maxField = isRow and "maxWidth" or "maxHeight"
   local visibleCount = #lineChildren
@@ -983,7 +1032,12 @@ function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossS
     local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
     fixedTotal = fixedTotal + marginLeading + marginTrailing
 
-    local size = _W.Sizing:ResolveDimension(child, mainAxis, parentWidth, parentHeight)
+    -- A wrapping child that is `"AUTO"` across this line has to know its
+    -- own width along it, which for a perpendicular child is its stretched
+    -- one.
+    local otherAxisSize = child[mainAxis] == "AUTO" and
+        _W.Sizing:ResolveStretchedSize(child, crossAxis, crossSize) or nil
+    local size = _W.Sizing:ResolveDimension(child, mainAxis, parentWidth, parentHeight, otherAxisSize)
     if size then
       fixedTotal = fixedTotal + size
       totalShrink = totalShrink + (child.shrink or 1) * size
@@ -1143,10 +1197,10 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
     end
     local childCrossSize
     if align == "STRETCH" then
-      childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight) or
+      childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight, size) or
           _W.Sizing:ClampSize(child, crossSize - marginCrossLeading - marginCrossTrailing, crossMinField, crossMaxField)
     else
-      childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight)
+      childCrossSize = _W.Sizing:ResolveDimension(child, crossAxis, parentWidth, parentHeight, size)
       if not childCrossSize then
         error("Waffle: a child aligned '" ..
           align ..
