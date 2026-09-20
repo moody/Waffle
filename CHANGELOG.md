@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Breaking:** `direction`, `align`, `alignSelf`, and `justify` now throw an error on an unrecognized value, where before it silently fell back to a default. `SetDirection()`, `SetAlign()`, `SetAlignSelf()`, and `SetJustify()` throw for one too. Still case insensitive.
 
+### Fixed
+
+- A wrapping node with `height = "AUTO"` (or a wrapping COLUMN with `width = "AUTO"`) now counts the lines its actual width produces when that width is stretched by its parent or flexed with `grow`. Before, only an explicit or percentage width was counted, so the node reported a single line's height while its children wrapped past it. It also holds through nested `"AUTO"` containers.
+
 ## [0.10.0] - 2026-09-20
 
 ### Added
