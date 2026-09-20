@@ -1773,9 +1773,9 @@ function _W.FlexComponent:SetVisibility(visibility)
   end
 end
 
---- Returns this node's own `visibility`, never an ancestor's: a node whose
---- ancestor is `"INVISIBLE"` or `"GONE"` still returns `nil`/`"VISIBLE"` here,
---- even though its own frame is hidden too.
+--- Returns this node's own `visibility` as given, never an ancestor's: a node
+--- whose ancestor is `"INVISIBLE"` or `"GONE"` still returns `nil`/`"VISIBLE"`
+--- here, even though its own frame is hidden too.
 --- @return WaffleFlexVisibility?
 function _W.FlexComponent:GetVisibility()
   return self.node.visibility
