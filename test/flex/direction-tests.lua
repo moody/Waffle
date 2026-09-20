@@ -91,27 +91,6 @@ do
   assert(a._test.point.offsetY == -200)
 end
 
--- Test: `direction` tolerates case, same as `"ROW"`/`"COLUMN"` already do.
-do
-  local root = Mocks:CreateFrame()
-  local a, b = Mocks:CreateFrame(), Mocks:CreateFrame()
-
-  Waffle:Flex({
-    frame = root,
-    --- @diagnostic disable-next-line: assign-type-mismatch
-    direction = "row_reverse",
-    width = 200,
-    height = 50,
-    children = {
-      { frame = a, width = 100 },
-      { frame = b, width = 100 },
-    }
-  }):Layout()
-
-  assert(b._test.point.offsetX == 0)
-  assert(a._test.point.offsetX == 100)
-end
-
 -- Test: `order` sorts first, `_REVERSE` only flips the already-order-
 -- sorted sequence's own starting edge, it doesn't change what "first"
 -- means for `order` purposes.

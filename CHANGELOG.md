@@ -5,11 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-09-20
+
+### Added
+
+- `Component:IsVisible()`: returns `true` if a node's own `visibility` is `"VISIBLE"` or unset, in any case. It ignores an ancestor's `visibility` and whether the frame is actually shown.
+
+### Changed
+
+- **Breaking:** `onLayout` receives this node's frame again as its first argument (`onLayout(frame, width, height)`), not its component. If you need the component, keep a reference to it, or look it up from the root with `FindByKey()`.
+- **Breaking:** `direction`, `align`, `alignSelf`, and `justify` now throw an error on an unrecognized value, where before it silently fell back to a default. `SetDirection()`, `SetAlign()`, `SetAlignSelf()`, and `SetJustify()` throw for one too. Still case insensitive.
+
+### Fixed
+
+- A wrapping node with `height = "AUTO"` (or a wrapping COLUMN with `width = "AUTO"`) now counts the lines its actual width produces when that width is stretched by its parent or flexed with `grow`. Before, only an explicit or percentage width was counted, so the node reported a single line's height while its children wrapped past it. It also holds through nested `"AUTO"` containers.
+
 ## [0.10.0] - 2026-09-20
 
 ### Added
 
-- `visibility` node field, with `Component:SetVisibility()` and `Component:GetVisibility()`. `"INVISIBLE"` hides a node's frame but keeps its space in the layout, so its siblings do not reflow. `"GONE"` excludes it from the layout entirely, and `"VISIBLE"` is the default. Case does not matter, and any other value throws an error.
+- `visibility` node field, with `Component:SetVisibility()` and `Component:GetVisibility()`. `"INVISIBLE"` hides a node's frame but keeps its space in the layout, so its siblings do not reflow. `"GONE"` excludes it from the layout entirely, and `"VISIBLE"` is the default. Case insensitive, and any other value throws an error.
 
 ### Changed
 

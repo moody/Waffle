@@ -69,4 +69,34 @@ do
   assert(attached:GetDirection() == "COLUMN") -- untouched by the outer ROW container
 end
 
+-- Test: attaching a component whose root has a `frameFactory` creates its frame
+-- under the outer frame at the first `Layout()`, and its children's under it.
+do
+  local outerFrame = Mocks:CreateFrame()
+  local innerParent, childParent
+
+  local outer = Waffle:Flex({ frame = outerFrame, direction = "ROW", width = 300, height = 50 })
+  local inner = Waffle:Flex({
+    direction = "ROW",
+    frameFactory = function(parent)
+      innerParent = parent
+      return Mocks:CreateFrame()
+    end,
+  })
+  inner:AddChild({
+    frameFactory = function(parent)
+      childParent = parent
+      return Mocks:CreateFrame()
+    end,
+  })
+
+  outer:AttachComponent(inner)
+  assert(innerParent == nil and childParent == nil) -- nothing is created before `Layout()`
+
+  outer:Layout()
+
+  assert(innerParent == outerFrame)
+  assert(childParent == inner:GetFrame())
+end
+
 print("All assertions passed.")

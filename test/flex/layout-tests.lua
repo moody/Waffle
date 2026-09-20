@@ -1,3 +1,5 @@
+--- @diagnostic disable: undefined-field
+
 --- @type Waffle
 local Waffle = require("test/waffle")
 local Mocks = require("test/mocks")
@@ -167,6 +169,24 @@ do
   }):Layout()
 
   assert(parent._test.width == 300 and parent._test.height == 50)
+end
+
+-- Test: each child's frame is parented to its container's frame, including a
+-- frame that started under a different parent.
+do
+  local parent = Mocks:CreateFrame()
+  local child = Mocks:CreateFrame()
+  child:SetParent(Mocks:CreateFrame())
+
+  Waffle:Flex({
+    frame = parent,
+    direction = "ROW",
+    width = 100,
+    height = 50,
+    children = { { frame = child, width = 100 } }
+  }):Layout()
+
+  assert(child._test.parent == parent)
 end
 
 print("All assertions passed.")

@@ -72,8 +72,9 @@ do
 
   container:DetachComponent(leaf)
 
-  local ok = pcall(function() container:FindByKey("sidebar") end)
+  local ok, err = pcall(function() container:FindByKey("sidebar") end)
   assert(not ok)
+  assert(tostring(err):find("sidebar", 1, true))
 end
 
 -- Test: `DetachComponent` returns `false` if `component` isn't actually a
