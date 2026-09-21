@@ -183,6 +183,28 @@ function _W.Utils:ParseVisibility(visibility)
   return self:ParseEnum("visibility", visibility, VISIBILITIES)
 end
 
+--- Returns `node`'s children that are not `"GONE"`, sorted by `order` then
+--- declaration order. Pooled, the caller releases it with `_W.Scratch`.
+--- @param node WaffleFlexNode
+--- @return WaffleFlexNode[]
+function _W.Utils:GetVisibleChildren(node)
+  --- @type WaffleFlexNode[]
+  local visibleChildren = _W.Scratch:Get()
+  local children = node.children or EMPTY_CHILDREN
+  local count = 0
+
+  for i = 1, #children do
+    local child = children[i]
+    if self:ParseVisibility(child.visibility) ~= "GONE" then
+      count = count + 1
+      visibleChildren[count] = child
+    end
+  end
+
+  _W.Sorting:SortFlexChildren(visibleChildren)
+  return visibleChildren
+end
+
 -- =============================================================================
 -- Scratch
 -- =============================================================================
@@ -564,29 +586,30 @@ function _W.Sizing:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, kn
 
   local gap = node.gap or 0
   local total = 0
-  local visibleCount = 0
 
   local crossAxis = axis == "width" and "height" or "width"
   local crossLeading, crossTrailing = self:ResolveBoxAxis(node, crossAxis, "padding")
   local crossSize = self:ResolveKnownDimension(node, crossAxis, parentWidth, parentHeight) or knownOtherAxisSize
   local contentCrossSize = crossSize and (crossSize - crossLeading - crossTrailing)
 
-  for i = 1, #node.children do
-    local child = node.children[i]
-    if _W.Utils:ParseVisibility(child.visibility) ~= "GONE" then
-      visibleCount = visibleCount + 1
-      local size = self:ResolveChildMainSize(child, axis, nil, nil, contentCrossSize)
-      if not size then
-        error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
-          axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split", 0)
-      end
-      local leading, trailing = self:ResolveBoxAxis(child, axis, "margin")
-      total = total + size + leading + trailing
+  local visibleChildren = _W.Utils:GetVisibleChildren(node)
+  for i = 1, #visibleChildren do
+    local child = visibleChildren[i]
+    local size = self:ResolveChildMainSize(child, axis, nil, nil, contentCrossSize)
+    if not size then
+      error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
+        axis .. "`, a flexible child (`nil`) has nothing to split, there's no space yet to split", 0)
     end
+    local leading, trailing = self:ResolveBoxAxis(child, axis, "margin")
+    total = total + size + leading + trailing
   end
 
   local leading, trailing = self:ResolveBoxAxis(node, axis, "padding")
-  return total + gap * math.max(visibleCount - 1, 0) + leading + trailing
+  local autoMainSize = total + gap * math.max(#visibleChildren - 1, 0) + leading + trailing
+
+  _W.Scratch:Release(visibleChildren)
+
+  return autoMainSize
 end
 
 --- The max of every one of `children`'s own outer sizes (own size plus
@@ -627,14 +650,7 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
   local gap = node.gap or 0
   local lineGap = node.lineGap or gap
 
-  --- @type WaffleFlexNode[]
-  local visibleChildren = _W.Scratch:Get()
-  for i = 1, #node.children do
-    local child = node.children[i]
-    if _W.Utils:ParseVisibility(child.visibility) ~= "GONE" then
-      table.insert(visibleChildren, child)
-    end
-  end
+  local visibleChildren = _W.Utils:GetVisibleChildren(node)
 
   --- @type WaffleFlexNode[][]?
   local lines
@@ -642,12 +658,6 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
     local mainAxis = axis == "width" and "height" or "width"
     local mainSize = self:ResolveDimension(node, mainAxis, parentWidth, parentHeight) or knownOtherAxisSize
     if mainSize then
-      -- Lines have to match what `_W.FlexLayout:Layout` will actually
-      -- produce, which sorts before splitting; without this, a child
-      -- moved earlier by `order` could land on a different line here
-      -- than it really will.
-      _W.Sorting:SortFlexChildren(visibleChildren)
-
       -- `axis` itself (`node`'s own cross axis) is what this whole
       -- function is computing, genuinely unresolvable yet; a child's own
       -- percentage on it errors, same as a child's own `"AUTO"` needing
@@ -1334,42 +1344,23 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
   local crossSize = (isRow and height or width) - crossLeading - crossTrailing
 
   -- Declaration order/ownership are assigned here, not in their own pass,
-  -- since this loop is already walking every child anyway. `children` is
-  -- a scratch copy of `node.children`, not `node.children` itself, so
-  -- sorting it doesn't disturb `GetChildren()`'s own declaration-order
-  -- guarantee. Pooled; released right below, once this function is done
-  -- reading it.
-  --- @type WaffleFlexNode[]
-  local children = _W.Scratch:Get()
-  for i, child in ipairs(node.children) do
+  -- since this loop is already walking every child anyway. `"GONE"`
+  -- children, own subtree included, are hidden here, once.
+  for i = 1, #node.children do
+    local child = node.children[i]
     _W.DeclarationOrder:Assign(child)
     _W.Ownership:Claim(child, node)
-    children[i] = child
-  end
-
-  _W.Sorting:SortFlexChildren(children)
-
-  -- `"GONE"` children, own subtree included, are hidden and dropped here,
-  -- once, so neither `SplitFlexLines` nor `LayoutFlexLine` needs to care
-  -- about them at all.
-  -- Pooled; released below, safe by then either way: `SplitFlexLines`
-  -- is done with it under `wrap`, and `LayoutFlexLine` already returned
-  -- without it.
-  --- @type WaffleFlexNode[]
-  local visibleChildren = _W.Scratch:Get()
-
-  local visibleCount = 0
-  for i = 1, #children do
-    local child = children[i]
     if _W.Utils:ParseVisibility(child.visibility) == "GONE" then
       _W.Utils:HideResolvedFrames(child)
-    else
-      visibleCount = visibleCount + 1
-      visibleChildren[visibleCount] = child
     end
   end
 
-  _W.Scratch:Release(children)
+  -- Only what is left is split into lines and laid out, so neither
+  -- `SplitFlexLines` nor `LayoutFlexLine` needs to care about a `"GONE"`
+  -- child. Pooled; released below, safe by then either way: `SplitFlexLines`
+  -- is done with it under `wrap`, and `LayoutFlexLine` already returned
+  -- without it.
+  local visibleChildren = _W.Utils:GetVisibleChildren(node)
 
   if node.wrap then
     local gap = node.gap or 0
