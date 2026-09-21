@@ -183,8 +183,8 @@ function _W.Utils:ParseVisibility(visibility)
   return self:ParseEnum("visibility", visibility, VISIBILITIES)
 end
 
---- Returns `node`'s children that are not `"GONE"`, sorted by `order` then
---- declaration order. Pooled, the caller releases it with `_W.Scratch`.
+--- Returns `node`'s children that are not `"GONE"`, sorted by `order`, ties
+--- in declaration order. Pooled, the caller releases it with `_W.Scratch`.
 --- @param node WaffleFlexNode
 --- @return WaffleFlexNode[]
 function _W.Utils:GetVisibleChildren(node)
@@ -305,7 +305,6 @@ function _W.Ownership:Detach(node, owner)
     if child == node then
       table.remove(owner.children, i)
       self:Release(node)
-      _W.DeclarationOrder:Unassign(node)
       _W.DirtyRoots:Mark(owner)
       return true
     end
@@ -325,34 +324,6 @@ function _W.Ownership:FindRoot(node)
     owner = self.byNode[node]
   end
   return node
-end
-
--- =============================================================================
--- DeclarationOrder
--- =============================================================================
-
---- Used to break `order` ties. `_W.Sorting` reads `byChild` directly, a child
---- not yet assigned counts as `0`. Weak keys so an unreferenced child can
---- still be garbage collected.
-_W.DeclarationOrder = {
-  next = 0,
-  byChild = setmetatable({}, { __mode = "k" })
-}
-
---- Assigns `child` the next declaration order. No-ops if it already has one.
---- @param child WaffleFlexNode
-function _W.DeclarationOrder:Assign(child)
-  if not self.byChild[child] then
-    self.next = self.next + 1
-    self.byChild[child] = self.next
-  end
-end
-
---- Clears `child`'s declaration order, so it's assigned a fresh one if
---- added again later.
---- @param child WaffleFlexNode
-function _W.DeclarationOrder:Unassign(child)
-  self.byChild[child] = nil
 end
 
 -- =============================================================================
@@ -394,24 +365,20 @@ end
 -- Sorting
 -- =============================================================================
 
---- Functions for ordering siblings by `order`, ties broken by
---- declaration order.
+--- Functions for ordering siblings by `order`, ties keeping their
+--- existing order.
 _W.Sorting = {}
 
---- Whether `childA` sorts before `childB`, by `order` then declaration order.
+--- Whether `childA` sorts before `childB`, by `order` alone. Equal values
+--- do not sort before each other.
 --- @param childA WaffleFlexNode
 --- @param childB WaffleFlexNode
 --- @return boolean
 function _W.Sorting:IsFlexChildBefore(childA, childB)
-  local orderA, orderB = childA.order or 0, childB.order or 0
-  if orderA ~= orderB then
-    return orderA < orderB
-  end
-  local byChild = _W.DeclarationOrder.byChild
-  return (byChild[childA] or 0) < (byChild[childB] or 0)
+  return (childA.order or 0) < (childB.order or 0)
 end
 
---- Sorts `children` in place by `order`, ties broken by declaration
+--- Sorts `children` in place by `order`, ties keeping their existing
 --- order. Custom insertion sort, not `table.sort`: Lua's built-in sort
 --- isn't guaranteed stable, which would risk reshuffling those ties.
 --- @param children WaffleFlexNode[]
@@ -1374,12 +1341,11 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
   local mainSize = (isRow and width or height) - mainLeading - mainTrailing
   local crossSize = (isRow and height or width) - crossLeading - crossTrailing
 
-  -- Declaration order/ownership are assigned here, not in their own pass,
-  -- since this loop is already walking every child anyway. `"GONE"`
-  -- children, own subtree included, are hidden here, once.
+  -- Ownership is claimed here, not in its own pass, since this loop is
+  -- already walking every child anyway. `"GONE"` children, own subtree
+  -- included, are hidden here, once.
   for i = 1, #node.children do
     local child = node.children[i]
-    _W.DeclarationOrder:Assign(child)
     _W.Ownership:Claim(child, node)
     if _W.Utils:ParseVisibility(child.visibility) == "GONE" then
       _W.Utils:HideResolvedFrames(child)
@@ -2200,7 +2166,6 @@ function _W.FlexComponent:Clear()
   if #children == 0 then return end
   for i = #children, 1, -1 do
     local child = table.remove(children, i)
-    _W.DeclarationOrder:Unassign(child)
     _W.Ownership:Release(child)
   end
   _W.DirtyRoots:Mark(self.node)
