@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A wrapping node with `"AUTO"` cross size is now sized the same inside a wrapping parent as inside a non-wrapping one. Before, in a wrapping ROW, a wrapping COLUMN with `width = "AUTO"` was one column wide and a wrapping node with a flexed width was one line tall, so its children overflowed.
+- A wrapping node with `height = "AUTO"` and a flexed width inside an `"AUTO"`-height container is now as tall as the lines its width produces. Before, it was one line tall. The container around it is still one line tall.
 
 ## [0.11.0] - 2026-09-20
 
