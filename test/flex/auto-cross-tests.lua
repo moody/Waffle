@@ -403,7 +403,7 @@ do
   assert(gridFrame._test.height == 140) -- two to a line, so four lines: 32 * 4 + 4 * 3
 end
 
--- Test: cross-axis `"AUTO"` on a wrapping node whose width is flexed by a ROW
+-- Test: cross-axis `"AUTO"` on a wrapping node with a flexible width in a ROW
 -- parent counts the lines that width produces.
 do
   local gridFrame = Mocks:CreateFrame()
@@ -575,7 +575,7 @@ do
   assert(gridFrame._test.width == 104) -- two to a column, so three columns: 32 * 3 + 4 * 2
 end
 
--- Test: a wrapping node whose width is flexed by a wrapping ROW parent counts
+-- Test: a wrapping node with a flexible width in a wrapping ROW parent counts
 -- the lines that width produces, and its line is as tall as they are.
 do
   local gridFrame = Mocks:CreateFrame()
@@ -599,8 +599,8 @@ do
   assert(icons[6].frame._test.point.offsetY == -36) -- the sixth icon starts line two
 end
 
--- Test: a wrapping node with a flexed width is sized for the width it ends up
--- with when its parent row has `"AUTO"` height, which is measured before that
+-- Test: a wrapping node with a flexible width is sized for the width it ends up
+-- with when its parent row has `"AUTO"` height, which is sized before that
 -- width is shared out.
 do
   local gridFrame = Mocks:CreateFrame()
@@ -661,7 +661,7 @@ do
   assert(nodeFrame._test.height == 124) -- 3 lines of 32, 2 line gaps of 4, 20 of padding
 end
 
--- Test: an `"AUTO"` height accounts for a child whose width is flexed, here a
+-- Test: an `"AUTO"` height accounts for a child with a flexible width, here a
 -- wrapping grid next to a fixed sibling.
 do
   local rowFrame = Mocks:CreateFrame()
@@ -691,8 +691,8 @@ do
   assert(rowFrame._test.height == 68)
 end
 
--- Test: the container's `gap` is taken out of the space its flexed child is
--- measured for. Nine icons fit four to a 170-wide line, 300 minus 100 and a gap
+-- Test: the parent's `gap` is taken out of the space its flexible child is
+-- sized for. Nine icons fit four to a 170-wide line, 300 minus 100 and a gap
 -- of 30, where five would fit in 200.
 do
   local rowFrame = Mocks:CreateFrame()

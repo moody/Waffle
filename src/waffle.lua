@@ -616,7 +616,7 @@ end
 --- children, or of each wrapped line) along its cross axis. Splitting
 --- children into wrapped lines (`SplitFlexLines`) and sharing a line's
 --- main-axis space out (`ResolveLineSizes`) are sizing too, so they live
---- here, for measuring and for layout alike.
+--- here, for computing `"AUTO"` sizes and for layout alike.
 _W.Sizing = {}
 
 --- The per-side field names of each box value, per axis, as
@@ -675,17 +675,17 @@ function _W.Sizing:ClampSize(node, value, minField, maxField)
   return value
 end
 
---- The size `child` takes along `axis` when its container stretches it
---- across `crossSize`: what is left after its own `margin`, clamped to
+--- The size `child` takes along `axis` when its parent stretches it
+--- across `contentCrossSize`: what is left after its own `margin`, clamped to
 --- its own `min`/`max`.
 --- @param child WaffleFlexNode
 --- @param axis "width" | "height"
---- @param crossSize integer
+--- @param contentCrossSize integer
 --- @return integer
-function _W.Sizing:ResolveStretchedSize(child, axis, crossSize)
+function _W.Sizing:ResolveStretchedSize(child, axis, contentCrossSize)
   local leading, trailing = self:ResolveBoxAxis(child, axis, "margin")
   local isWidth = axis == "width"
-  return self:ClampSize(child, crossSize - leading - trailing, isWidth and "minWidth" or "minHeight",
+  return self:ClampSize(child, contentCrossSize - leading - trailing, isWidth and "minWidth" or "minHeight",
     isWidth and "maxWidth" or "maxHeight")
 end
 
@@ -762,7 +762,7 @@ end
 --- @param axis "width" | "height"
 --- @param knownOtherAxisSize? integer See `ResolveDimension`.
 --- @return integer?
-function _W.Sizing:ResolveOuterDimension(child, axis, knownOtherAxisSize)
+function _W.Sizing:ResolveOuterSize(child, axis, knownOtherAxisSize)
   local size = self:ResolveDimension(child, axis, nil, nil, knownOtherAxisSize)
   if not size then
     return nil
@@ -771,21 +771,21 @@ function _W.Sizing:ResolveOuterDimension(child, axis, knownOtherAxisSize)
   return size + leading + trailing
 end
 
---- Resolves `child`'s size along `axis`, its container's main axis, when the
---- container stretches `child` across `crossSize` on the other axis.
---- `crossSize` is `nil` while the container's own cross size is unknown.
+--- Resolves `child`'s size along `axis`, its parent's main axis, when the
+--- parent stretches `child` across `contentCrossSize` on the other axis.
+--- `contentCrossSize` is `nil` while the parent's own cross size is unknown.
 --- @param child WaffleFlexNode
 --- @param axis "width" | "height"
 --- @param parentWidth? integer
 --- @param parentHeight? integer
---- @param crossSize? integer
+--- @param contentCrossSize? integer
 --- @return integer?
-function _W.Sizing:ResolveChildMainSize(child, axis, parentWidth, parentHeight, crossSize)
+function _W.Sizing:ResolveChildMainSize(child, axis, parentWidth, parentHeight, contentCrossSize)
   local value = child[axis]
   if value == "AUTO" then
     local knownOtherAxisSize
-    if crossSize then
-      knownOtherAxisSize = self:ResolveStretchedSize(child, axis == "width" and "height" or "width", crossSize)
+    if contentCrossSize then
+      knownOtherAxisSize = self:ResolveStretchedSize(child, axis == "width" and "height" or "width", contentCrossSize)
     end
     return self:ResolveDimension(child, axis, parentWidth, parentHeight, knownOtherAxisSize)
   end
@@ -837,7 +837,7 @@ function _W.Sizing:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, kn
 end
 
 --- Computes `node`'s size along its own cross axis (`axis`) as the sum
---- of every line's own tallest child (`MeasureLineCrossSize`), plus
+--- of every line's own tallest child (`ComputeAutoLineCrossSize`), plus
 --- `lineGap` between lines and padding on each end. One line, a flat max
 --- with no gap term, unless `node.wrap` is set and its own main size is
 --- known to wrap against.
@@ -876,11 +876,11 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
   if lines then
     lineCount = #lines
     for i = 1, lineCount do
-      total = total + self:MeasureLineCrossSize(lines[i], axis, mainAxis, contentMainSize, gap)
+      total = total + self:ComputeAutoLineCrossSize(lines[i], axis, mainAxis, contentMainSize, gap)
     end
     _W.Sizing:ReleaseLines(lines)
   else
-    total = self:MeasureLineCrossSize(visibleChildren, axis, mainAxis, contentMainSize, gap)
+    total = self:ComputeAutoLineCrossSize(visibleChildren, axis, mainAxis, contentMainSize, gap)
     lineCount = 1
   end
 
@@ -890,18 +890,19 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
   return total + lineGap * math.max(lineCount - 1, 0) + leading + trailing
 end
 
---- The tallest of `lineChildren` along `axis`, once their own main-axis
---- space is shared out across `contentMainSize`. Only a child whose own
---- `axis` is `"AUTO"` depends on its main size, so nothing is shared out
---- without one, or if `contentMainSize` is `nil`: a child with a flexed main
---- size has none to be measured for.
+--- The cross size of one line of `lineChildren` along `axis`, the tallest of
+--- them, once their own main-axis space is shared out across
+--- `contentMainSize`. Sharing out only happens when some child's own `axis`
+--- is `"AUTO"`, since only then does its main size change the answer.
+--- Without `contentMainSize`, a child with a flexible main size has no size to
+--- base its cross size on.
 --- @param lineChildren WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @param mainAxis "width" | "height"
 --- @param contentMainSize? integer
 --- @param gap integer
 --- @return integer
-function _W.Sizing:MeasureLineCrossSize(lineChildren, axis, mainAxis, contentMainSize, gap)
+function _W.Sizing:ComputeAutoLineCrossSize(lineChildren, axis, mainAxis, contentMainSize, gap)
   local dependsOnMainSize = false
   for i = 1, #lineChildren do
     if lineChildren[i][axis] == "AUTO" then
@@ -911,28 +912,27 @@ function _W.Sizing:MeasureLineCrossSize(lineChildren, axis, mainAxis, contentMai
   end
 
   if not (contentMainSize and dependsOnMainSize) then
-    return self:MaxCrossSize(lineChildren, axis)
+    return self:MaxOuterSize(lineChildren, axis)
   end
 
   local mainSizes = _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, contentMainSize, nil, gap)
-  local size = self:MaxCrossSize(lineChildren, axis, mainSizes)
+  local size = self:MaxOuterSize(lineChildren, axis, mainSizes)
   _W.Scratch:Release(mainSizes)
   return size
 end
 
 --- The max of every one of `children`'s own outer sizes (own size plus
---- `margin`) along `axis`. Errors if any is flexible, there's nothing of
---- its own to measure. The strict counterpart to `LineCrossSize`, which
---- falls back instead.
+--- `margin`) along `axis`. Errors if any is flexible, it has no size of its
+--- own. The strict counterpart to `LineCrossSize`, which falls back instead.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @param mainSizes? WaffleFlexNodeSizes Each of `children`'s own main-axis size, for a child whose own cross size depends on it. `nil` if not known yet.
 --- @return integer
-function _W.Sizing:MaxCrossSize(children, axis, mainSizes)
+function _W.Sizing:MaxOuterSize(children, axis, mainSizes)
   local max = 0
   for i = 1, #children do
     local child = children[i]
-    local size = self:ResolveOuterDimension(child, axis, mainSizes and mainSizes[child])
+    local size = self:ResolveOuterSize(child, axis, mainSizes and mainSizes[child])
     if not size then
       error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
         axis .. "`, a flexible child (`nil`) has nothing of its own to measure", 0)
@@ -955,7 +955,7 @@ function _W.Sizing:LineCrossSize(children, axis, fallback, mainSizes)
   local max
   for i = 1, #children do
     local child = children[i]
-    local size = self:ResolveOuterDimension(child, axis, mainSizes[child])
+    local size = self:ResolveOuterSize(child, axis, mainSizes[child])
     if size then
       max = max and math.max(max, size) or size
     end
@@ -964,38 +964,38 @@ function _W.Sizing:LineCrossSize(children, axis, fallback, mainSizes)
 end
 
 --- Splits `children` (already sorted, already visible-only) into lines
---- along `axis`: each line is as many children as fit within `mainSize`,
+--- along `axis`: each line is as many children as fit within `contentMainSize`,
 --- in order, counting each child's own `margin` as part of its size. A
 --- fixed-size child that would overflow the current line starts a new
 --- one instead, unless the current line is still empty, a lone child
---- bigger than `mainSize` still gets placed on one rather than looping
+--- bigger than `contentMainSize` still gets placed on one rather than looping
 --- forever. A flexible child (no fixed size of its own yet) always joins
 --- the current line, there's nothing of its own yet to check for
 --- overflow, though its `margin` still counts toward the running total.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
---- @param mainSize integer
---- @param crossSize? integer The container's own cross size, if resolved yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `_W.Sizing:ComputeAutoCrossSize`, that's the container's own cross axis, what it's still computing.
+--- @param contentMainSize integer
+--- @param contentCrossSize? integer The parent's content cross size, if known yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `_W.Sizing:ComputeAutoCrossSize`, that's the container's own cross axis, what it's still computing.
 --- @param gap integer
 --- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; the caller releases them with `ReleaseLines`.
-function _W.Sizing:SplitFlexLines(children, axis, mainSize, crossSize, gap)
+function _W.Sizing:SplitFlexLines(children, axis, contentMainSize, contentCrossSize, gap)
   --- @type WaffleFlexNode[][]
   local lines = _W.Scratch:Get()
   --- @type WaffleFlexNode[]
   local currentLine = _W.Scratch:Get()
   local currentLineTotal = 0
 
-  local parentWidth = axis == "width" and mainSize or crossSize
-  local parentHeight = axis == "height" and mainSize or crossSize
+  local parentWidth = axis == "width" and contentMainSize or contentCrossSize
+  local parentHeight = axis == "height" and contentMainSize or contentCrossSize
 
   for i = 1, #children do
     local child = children[i]
-    local size = _W.Sizing:ResolveChildMainSize(child, axis, parentWidth, parentHeight, crossSize)
+    local size = _W.Sizing:ResolveChildMainSize(child, axis, parentWidth, parentHeight, contentCrossSize)
     local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, axis, "margin")
     local margin = marginLeading + marginTrailing
     local outerSize = size and (size + margin)
 
-    if outerSize and #currentLine > 0 and currentLineTotal + gap + outerSize > mainSize then
+    if outerSize and #currentLine > 0 and currentLineTotal + gap + outerSize > contentMainSize then
       table.insert(lines, currentLine)
       currentLine = _W.Scratch:Get()
       currentLineTotal = 0
@@ -1032,19 +1032,19 @@ end
 --- `shrink` alone).
 --- @param lineChildren WaffleFlexNode[]
 --- @param mainAxis "width" | "height"
---- @param mainSize integer
---- @param crossSize integer Needed only for a child's own percentage/`"AUTO"` along the cross axis.
+--- @param contentMainSize integer
+--- @param contentCrossSize integer Needed only for a child's own percentage/`"AUTO"` along the cross axis.
 --- @param gap integer
---- @return WaffleFlexNodeSizes sizes Every child's size; pooled, `LayoutFlexLine` releases it once done, not this function.
+--- @return WaffleFlexNodeSizes mainSizes Every child's size; pooled, `LayoutFlexLine` releases it once done, not this function.
 --- @return number freeSpace Space no child claimed after every size and `margin`, for `justify`. `0` whenever a flexible child takes the leftover space, or there's a deficit.
-function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
+function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, contentMainSize, contentCrossSize, gap)
   local isRow = mainAxis == "width"
   local minField = isRow and "minWidth" or "minHeight"
   local maxField = isRow and "maxWidth" or "maxHeight"
   local visibleCount = #lineChildren
 
-  local parentWidth = isRow and mainSize or crossSize
-  local parentHeight = isRow and crossSize or mainSize
+  local parentWidth = isRow and contentMainSize or contentCrossSize
+  local parentHeight = isRow and contentCrossSize or contentMainSize
 
   local fixedTotal = 0
   local totalGrow = 0
@@ -1056,19 +1056,19 @@ function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize,
   local shrinkConstrained
   -- Holds each fixed/percentage child's own stated size first, then every
   -- child's final size. `shrink`'s own weight formula needs the stated
-  -- sizes on every round, not just once.
+  -- mainSizes on every round, not just once.
   --- @type WaffleFlexNodeSizes
-  local sizes = _W.Scratch:Get()
+  local mainSizes = _W.Scratch:Get()
   for i = 1, #lineChildren do
     local child = lineChildren[i]
     local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
     fixedTotal = fixedTotal + marginLeading + marginTrailing
 
-    local size = _W.Sizing:ResolveChildMainSize(child, mainAxis, parentWidth, parentHeight, crossSize)
+    local size = _W.Sizing:ResolveChildMainSize(child, mainAxis, parentWidth, parentHeight, contentCrossSize)
     if size then
       fixedTotal = fixedTotal + size
       totalShrink = totalShrink + (child.shrink or 1) * size
-      sizes[child] = size
+      mainSizes[child] = size
       if child[minField] then
         shrinkConstrained = shrinkConstrained or _W.Scratch:Get()
         shrinkConstrained[#shrinkConstrained + 1] = child
@@ -1083,7 +1083,7 @@ function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize,
   end
 
   local totalGap = gap * math.max(visibleCount - 1, 0)
-  local rawRemaining = mainSize - fixedTotal - totalGap
+  local rawRemaining = contentMainSize - fixedTotal - totalGap
   local remaining = math.max(rawRemaining, 0)
   local deficit = math.max(-rawRemaining, 0)
 
@@ -1098,13 +1098,13 @@ function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize,
   local shrunkSizes
   if deficit > 0 and shrinkConstrained then
     shrunkSizes, deficit, totalShrink = _W.SpaceDistributor:Shrink(shrinkConstrained, deficit, totalShrink, minField,
-      sizes)
+      mainSizes)
   end
 
   -- Resolve each child's final size after grow/shrink
   for i = 1, #lineChildren do
     local child = lineChildren[i]
-    local size = sizes[child]
+    local size = mainSizes[child]
     if size then
       if shrunkSizes and shrunkSizes[child] then
         size = shrunkSizes[child]
@@ -1117,7 +1117,7 @@ function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize,
         size = totalGrow > 0 and (remaining * (child.grow or 1) / totalGrow) or 0
       end
     end
-    sizes[child] = size
+    mainSizes[child] = size
   end
 
   _W.Scratch:Release(growConstrained)
@@ -1125,7 +1125,7 @@ function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize,
   _W.Scratch:Release(clampedSizes)
   _W.Scratch:Release(shrunkSizes)
 
-  return sizes, totalGrow > 0 and 0 or remaining
+  return mainSizes, totalGrow > 0 and 0 or remaining
 end
 
 -- =============================================================================
@@ -1206,15 +1206,15 @@ end
 --- @param node WaffleFlexNode
 --- @param child WaffleFlexNode
 --- @param crossAxis "width" | "height"
---- @param crossSize integer
+--- @param lineCrossSize integer
 --- @param crossStart integer
 --- @param parentWidth integer
 --- @param parentHeight integer
 --- @param childMainSize integer `child`'s own already-resolved main-axis size.
 --- @return integer childCrossSize
 --- @return number crossOffset
-function _W.FlexLayout:ResolveChildCross(node, child, crossAxis, crossSize, crossStart, parentWidth, parentHeight,
-                                         childMainSize)
+function _W.FlexLayout:AlignChild(node, child, crossAxis, lineCrossSize, crossStart, parentWidth, parentHeight,
+                                   childMainSize)
   local isWidth = crossAxis == "width"
   local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, crossAxis, "margin")
 
@@ -1233,13 +1233,13 @@ function _W.FlexLayout:ResolveChildCross(node, child, crossAxis, crossSize, cros
         "' (not 'STRETCH') needs its own `" ..
         crossAxis .. "`, alignment doesn't fall back to the container's cross size", 0)
     end
-    childCrossSize = _W.Sizing:ClampSize(child, crossSize - marginLeading - marginTrailing,
+    childCrossSize = _W.Sizing:ClampSize(child, lineCrossSize - marginLeading - marginTrailing,
       isWidth and "minWidth" or "minHeight", isWidth and "maxWidth" or "maxHeight")
   end
 
   local crossOffset = crossStart + marginLeading
   if align == "CENTER" or align == "END" then
-    local leftover = crossSize - (childCrossSize + marginLeading + marginTrailing)
+    local leftover = lineCrossSize - (childCrossSize + marginLeading + marginTrailing)
     crossOffset = crossStart + (align == "CENTER" and leftover / 2 or leftover) + marginLeading
   end
 
@@ -1247,7 +1247,7 @@ function _W.FlexLayout:ResolveChildCross(node, child, crossAxis, crossSize, cros
 end
 
 --- Positions `lineChildren` along `mainAxis`, starting at `mainStart`, and
---- aligns each within `crossSize` starting at `crossStart`. One line is
+--- aligns each within `contentCrossSize` starting at `crossStart`. One line is
 --- every one of `node.children` when `node.wrap` isn't set, or one
 --- wrapped line's worth of them when it is. Each child's own `margin`
 --- insets it from wherever it would otherwise sit, on both axes.
@@ -1257,26 +1257,28 @@ end
 --- @param mainAxis "width" | "height"
 --- @param crossAxis "width" | "height"
 --- @param isReverse boolean If true, `lineChildren` arrives already reversed by the caller.
---- @param mainSize integer
---- @param crossSize integer The container's own cross size. A wrapped line is only as tall as its tallest child.
+--- @param contentMainSize integer
+--- @param contentCrossSize integer The parent's content cross size. A wrapped line is only as tall as its tallest child.
 --- @param mainStart integer
 --- @param crossStart integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
 --- @param onLayoutQueue table Passed through to a `children` recursion; a visited child's own `onLayout` (if any) is queued onto it, not fired yet.
 --- @return integer lineCrossSize
-function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize,
+function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, contentMainSize, contentCrossSize,
                                       mainStart, crossStart, defaultFrameFactory, onLayoutQueue)
   local gap = node.gap or 0
   local isRow = mainAxis == "width"
   local visibleCount = #lineChildren
 
-  local sizes, freeSpace = _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
+  local mainSizes, freeSpace = _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, contentMainSize, contentCrossSize,
+    gap)
+  local lineCrossSize = contentCrossSize
   if node.wrap then
-    crossSize = _W.Sizing:LineCrossSize(lineChildren, crossAxis, crossSize, sizes)
+    lineCrossSize = _W.Sizing:LineCrossSize(lineChildren, crossAxis, contentCrossSize, mainSizes)
   end
 
-  local parentWidth = isRow and mainSize or crossSize
-  local parentHeight = isRow and crossSize or mainSize
+  local parentWidth = isRow and contentMainSize or lineCrossSize
+  local parentHeight = isRow and lineCrossSize or contentMainSize
 
   local justifyOffset, justifyGap = self:ResolveLineJustify(node, freeSpace, visibleCount, isReverse)
 
@@ -1285,19 +1287,19 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
     local child = lineChildren[i]
     local childFrame = self:PrepareChildFrame(child, frame, defaultFrameFactory)
 
-    local size = sizes[child]
-    local childCrossSize, crossOffset = self:ResolveChildCross(node, child, crossAxis, crossSize, crossStart,
-      parentWidth, parentHeight, size)
+    local childMainSize = mainSizes[child]
+    local childCrossSize, crossOffset = self:AlignChild(node, child, crossAxis, lineCrossSize, crossStart,
+      parentWidth, parentHeight, childMainSize)
 
-    local marginMainLeading, marginMainTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
-    local childMainOffset = mainOffset + marginMainLeading
+    local marginLeading, marginTrailing = _W.Sizing:ResolveBoxAxis(child, mainAxis, "margin")
+    local childMainOffset = mainOffset + marginLeading
     local childWidth, childHeight
 
     if isRow then
-      childWidth, childHeight = size, childCrossSize
+      childWidth, childHeight = childMainSize, childCrossSize
       childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", childMainOffset, -crossOffset)
     else
-      childWidth, childHeight = childCrossSize, size
+      childWidth, childHeight = childCrossSize, childMainSize
       childFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", crossOffset, -childMainOffset)
     end
 
@@ -1313,20 +1315,20 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
       _W.OnLayoutQueue:Add(onLayoutQueue, child, childWidth, childHeight)
     end
 
-    mainOffset = mainOffset + marginMainLeading + size + marginMainTrailing + gap + justifyGap
+    mainOffset = mainOffset + marginLeading + childMainSize + marginTrailing + gap + justifyGap
   end
 
   -- Acquired by `ResolveLineSizes`, released here instead: still read by
   -- the loop above.
-  _W.Scratch:Release(sizes)
+  _W.Scratch:Release(mainSizes)
 
-  return crossSize
+  return lineCrossSize
 end
 
 --- Positions `node.children` in a row or column within `frame`, sized to
 --- `width`/`height`, one line (`node.wrap` unset) or several (`node.wrap`
 --- set, overflowing children start a new one instead of continuing past
---- `mainSize`). `frame` must already be resolved/sized by the caller.
+--- `contentMainSize`). `frame` must already be resolved/sized by the caller.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param width integer
@@ -1341,8 +1343,8 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
   local mainLeading, mainTrailing = _W.Sizing:ResolveBoxAxis(node, mainAxis, "padding")
   local crossLeading, crossTrailing = _W.Sizing:ResolveBoxAxis(node, crossAxis, "padding")
 
-  local mainSize = (isRow and width or height) - mainLeading - mainTrailing
-  local crossSize = (isRow and height or width) - crossLeading - crossTrailing
+  local contentMainSize = (isRow and width or height) - mainLeading - mainTrailing
+  local contentCrossSize = (isRow and height or width) - crossLeading - crossTrailing
 
   -- Ownership is claimed here, not in its own pass, since this loop is
   -- already walking every child anyway. `"GONE"` children, own subtree
@@ -1370,14 +1372,14 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
     -- Pooled, from `SplitFlexLines`. Released below: `lineChildren` once
     -- its own line is done, `lines` once every line is.
     --- @type WaffleFlexNode[][]
-    local lines = _W.Sizing:SplitFlexLines(visibleChildren, mainAxis, mainSize, crossSize, gap)
+    local lines = _W.Sizing:SplitFlexLines(visibleChildren, mainAxis, contentMainSize, contentCrossSize, gap)
     for _, lineChildren in ipairs(lines) do
       if isReverse then
         _W.Utils:ReverseArray(lineChildren)
       end
 
-      local lineCrossSize = self:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, mainSize,
-        crossSize, mainLeading, crossOffset, defaultFrameFactory, onLayoutQueue)
+      local lineCrossSize = self:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, contentMainSize,
+        contentCrossSize, mainLeading, crossOffset, defaultFrameFactory, onLayoutQueue)
       crossOffset = crossOffset + lineCrossSize + lineGap
 
       _W.Scratch:Release(lineChildren)
@@ -1388,7 +1390,7 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
       _W.Utils:ReverseArray(visibleChildren)
     end
 
-    self:LayoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, isReverse, mainSize, crossSize, mainLeading,
+    self:LayoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, isReverse, contentMainSize, contentCrossSize, mainLeading,
       crossLeading, defaultFrameFactory, onLayoutQueue)
   end
 
