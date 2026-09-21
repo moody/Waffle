@@ -629,4 +629,98 @@ do
   assert(gridFrame._test.height == 68) -- five to a line, so two lines
 end
 
+-- Test: a wrapping node's own padding is left out of the width it wraps against
+-- when its `"AUTO"` height is measured. Six 32-wide icons with `gap` 4 fit two to
+-- a 90-wide line, the 110-wide node less 10 of padding on each side.
+do
+  local nodeFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 6 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "COLUMN",
+    width = 400,
+    height = 400,
+    children = {
+      {
+        frame = nodeFrame,
+        direction = "ROW",
+        wrap = true,
+        width = 110,
+        height = "AUTO",
+        padding = 10,
+        gap = 4,
+        lineGap = 4,
+        children = icons
+      }
+    }
+  }):Layout()
+
+  assert(icons[5].frame._test.point.offsetY == -82) -- the fifth icon starts line three
+  assert(nodeFrame._test.height == 124) -- 3 lines of 32, 2 line gaps of 4, 20 of padding
+end
+
+-- Test: an `"AUTO"` height accounts for a child whose width is flexed, here a
+-- wrapping grid next to a fixed sibling.
+do
+  local rowFrame = Mocks:CreateFrame()
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 8 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "COLUMN",
+    width = 300,
+    height = 400,
+    children = {
+      {
+        frame = rowFrame,
+        direction = "ROW",
+        height = "AUTO",
+        children = {
+          { frame = Mocks:CreateFrame(), width = 100, height = 20 },
+          { frame = gridFrame, direction = "ROW", height = "AUTO", wrap = true, gap = 4, lineGap = 4, children = icons },
+        }
+      }
+    }
+  }):Layout()
+
+  assert(gridFrame._test.height == 68) -- five to a line in 200, so two lines
+  assert(rowFrame._test.height == 68)
+end
+
+-- Test: the container's `gap` is taken out of the space its flexed child is
+-- measured for. Nine icons fit four to a 170-wide line, 300 minus 100 and a gap
+-- of 30, where five would fit in 200.
+do
+  local rowFrame = Mocks:CreateFrame()
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 9 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "COLUMN",
+    width = 300,
+    height = 400,
+    children = {
+      {
+        frame = rowFrame,
+        direction = "ROW",
+        height = "AUTO",
+        gap = 30,
+        children = {
+          { frame = Mocks:CreateFrame(), width = 100, height = 20 },
+          { frame = gridFrame, direction = "ROW", height = "AUTO", wrap = true, gap = 4, lineGap = 4, children = icons },
+        }
+      }
+    }
+  }):Layout()
+
+  assert(gridFrame._test.width == 170)
+  assert(rowFrame._test.height == 104) -- three lines: 32 * 3 + 4 * 2
+end
+
 print("All assertions passed.")
