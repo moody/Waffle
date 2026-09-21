@@ -183,28 +183,6 @@ function _W.Utils:ParseVisibility(visibility)
   return self:ParseEnum("visibility", visibility, VISIBILITIES)
 end
 
---- Returns `node`'s children that are not `"GONE"`, sorted by `order`, ties
---- in declaration order. Pooled, the caller releases it with `_W.Scratch`.
---- @param node WaffleFlexNode
---- @return WaffleFlexNode[]
-function _W.Utils:GetVisibleChildren(node)
-  --- @type WaffleFlexNode[]
-  local visibleChildren = _W.Scratch:Get()
-  local children = node.children or EMPTY_CHILDREN
-  local count = 0
-
-  for i = 1, #children do
-    local child = children[i]
-    if self:ParseVisibility(child.visibility) ~= "GONE" then
-      count = count + 1
-      visibleChildren[count] = child
-    end
-  end
-
-  _W.Sorting:SortFlexChildren(visibleChildren)
-  return visibleChildren
-end
-
 -- =============================================================================
 -- Scratch
 -- =============================================================================
@@ -366,7 +344,7 @@ end
 -- =============================================================================
 
 --- Functions for ordering siblings by `order`, ties keeping their
---- existing order.
+--- existing order, and for collecting a node's visible ones in that order.
 _W.Sorting = {}
 
 --- Whether `childA` sorts before `childB`, by `order` alone. Equal values
@@ -392,6 +370,28 @@ function _W.Sorting:SortFlexChildren(children)
     end
     children[j + 1] = child
   end
+end
+
+--- Returns `node`'s children that are not `"GONE"`, sorted by `order`, ties
+--- in declaration order. Pooled, the caller releases it with `_W.Scratch`.
+--- @param node WaffleFlexNode
+--- @return WaffleFlexNode[]
+function _W.Sorting:GetVisibleChildren(node)
+  --- @type WaffleFlexNode[]
+  local visibleChildren = _W.Scratch:Get()
+  local children = node.children or EMPTY_CHILDREN
+  local count = 0
+
+  for i = 1, #children do
+    local child = children[i]
+    if _W.Utils:ParseVisibility(child.visibility) ~= "GONE" then
+      count = count + 1
+      visibleChildren[count] = child
+    end
+  end
+
+  self:SortFlexChildren(visibleChildren)
+  return visibleChildren
 end
 
 -- =============================================================================
@@ -559,7 +559,7 @@ function _W.Sizing:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, kn
   local crossSize = self:ResolveKnownDimension(node, crossAxis, parentWidth, parentHeight) or knownOtherAxisSize
   local contentCrossSize = crossSize and (crossSize - crossLeading - crossTrailing)
 
-  local visibleChildren = _W.Utils:GetVisibleChildren(node)
+  local visibleChildren = _W.Sorting:GetVisibleChildren(node)
   for i = 1, #visibleChildren do
     local child = visibleChildren[i]
     local size = self:ResolveChildMainSize(child, axis, nil, nil, contentCrossSize)
@@ -623,7 +623,7 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
   local mainSize = self:ResolveKnownDimension(node, mainAxis, parentWidth, parentHeight) or knownOtherAxisSize
   local contentMainSize = mainSize and (mainSize - mainLeading - mainTrailing)
 
-  local visibleChildren = _W.Utils:GetVisibleChildren(node)
+  local visibleChildren = _W.Sorting:GetVisibleChildren(node)
 
   -- Without a main size there is nothing to wrap against or to share out,
   -- so `visibleChildren` is the one and only line.
@@ -1357,7 +1357,7 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
   -- child. Pooled; released below, safe by then either way: `SplitFlexLines`
   -- is done with it under `wrap`, and `LayoutFlexLine` already returned
   -- without it.
-  local visibleChildren = _W.Utils:GetVisibleChildren(node)
+  local visibleChildren = _W.Sorting:GetVisibleChildren(node)
 
   if node.wrap then
     local gap = node.gap or 0
