@@ -92,9 +92,7 @@ local EMPTY_CHILDREN = {}
 -- Utils
 -- =============================================================================
 
---- Small, otherwise-homeless utilities: each is single-purpose and
---- doesn't share enough with anything else in the file to earn its own
---- category.
+--- Small helpers that do not belong to a section of their own.
 _W.Utils = {}
 
 --- Reverses `t` in place.
@@ -187,9 +185,7 @@ end
 -- Scratch
 -- =============================================================================
 
---- A small pool of reusable scratch tables for repeated, short-lived use
---- throughout Waffle. Uncapped; a session's own UI tree rarely changes shape,
---- so this settles at a small size on its own and stays there.
+--- A pool of reusable tables for short-lived use. It has no size cap.
 _W.Scratch = {
   pool = {}
 }
@@ -431,7 +427,7 @@ end
 -- LayoutCache
 -- =============================================================================
 
---- Internal memoization and table reuse for `Layout()`.
+--- Per-pass memo of `"AUTO"` sizes for `Layout()`.
 _W.LayoutCache = {}
 
 --- Bumped once per `Layout()` pass (see `FlexComponent:Layout()`).
@@ -493,28 +489,24 @@ end
 -- SpaceDistributor
 -- =============================================================================
 
---- Functions that resolve how much of a line's own leftover main-axis
---- space or deficit each constrained child gets: freezing whichever
---- hits its min/max bound each round and redistributing the rest, for
---- both `Grow` (growing up from `0`) and `Shrink` (shrinking down from a
---- stated size). Each wraps `Distribute` with its own strategy and
---- extra arguments (none for `Grow`, `statedSizes` for `Shrink`), so a
---- caller never passes `strategy` directly.
+--- Functions that resolve how much of a line's leftover main-axis space or
+--- deficit each constrained child gets. Each round freezes whichever child
+--- hits its min/max bound and shares the rest among the others. `Grow`
+--- grows children up from `0`, `Shrink` shrinks them down from a stated
+--- size.
 _W.SpaceDistributor = {}
 
 --- A size, per child.
 --- @alias WaffleFlexNodeSizes table<WaffleFlexNode, number>
 
---- The shared interface behind `GrowStrategy`/`ShrinkStrategy`,
---- `Distribute`'s only two strategies.
+--- What `Distribute` needs from `GrowStrategy` and `ShrinkStrategy`.
 --- @class WaffleSpaceDistributorStrategy
 --- @field weight fun(child: WaffleFlexNode, statedSizes?: WaffleFlexNodeSizes): number
 --- @field toCandidate fun(child: WaffleFlexNode, share: number, statedSizes?: WaffleFlexNodeSizes): number
 --- @field toConsumed fun(child: WaffleFlexNode, clamped: number, statedSizes?: WaffleFlexNodeSizes): number
 
---- Shared by `Grow` (share itself is the candidate) and `Shrink`
---- (candidate is a node's own stated size minus its share). Plain
---- tables, not closures: both are created once, never per call.
+--- For `Grow`, a child's share is its candidate size. For `Shrink`, the
+--- candidate is its stated size minus its share.
 --- @type WaffleSpaceDistributorStrategy
 _W.SpaceDistributor.GrowStrategy = {
   weight = function(child) return child.grow or 1 end,
@@ -530,15 +522,11 @@ _W.SpaceDistributor.ShrinkStrategy = {
   toConsumed = function(child, clamped, statedSizes) return statedSizes[child] - clamped end,
 }
 
---- Shared core behind `Grow`/`Shrink`: distributes `mainAxisSpace`
---- proportionally among `constrained` children by `strategy.weight`,
---- clamping each round's own computed value (`strategy.toCandidate`) to
---- `minField`/`maxField`. Freezes (and redistributes the space/weight
---- among the rest) whichever gets clamped, subtracting
---- `strategy.toConsumed` from `mainAxisSpace` each time, until a round
---- freezes nobody new. The two only differ in what a raw share becomes,
---- not in how the space/weight get redistributed round to round.
---- @param constrained WaffleFlexNode[] Only children with `minField` and/or `maxField` set; the caller filters out everyone else, nothing else could ever violate a bound.
+--- Distributes `mainAxisSpace` among `constrained` children in proportion to
+--- `strategy.weight`, clamping each child's candidate size
+--- (`strategy.toCandidate`) to `minField`/`maxField`. A clamped child is
+--- frozen, and the rounds repeat until one freezes nobody new.
+--- @param constrained WaffleFlexNode[] Only children with `minField` or `maxField` set, the caller filters out the rest.
 --- @param mainAxisSpace number Space to give out (`Grow`) or claim back (`Shrink`).
 --- @param totalWeight number Sum of every `constrained` child's own `strategy.weight`.
 --- @param minField "minWidth" | "minHeight"
@@ -576,14 +564,14 @@ end
 
 --- Distributes leftover main-axis space among flexible children, each
 --- growing up from `0`, clamped to `minField`/`maxField`.
---- @param constrained WaffleFlexNode[] Only children with `minField` and/or `maxField` set; the caller filters out everyone else, nothing else could ever violate a bound.
+--- @param constrained WaffleFlexNode[] See `Distribute`.
 --- @param mainAxisSpace number Leftover main-axis space to give out.
 --- @param totalWeight number Sum of every `constrained` child's own `grow` (default `1`).
 --- @param minField "minWidth" | "minHeight"
 --- @param maxField? "maxWidth" | "maxHeight"
---- @return WaffleFlexNodeSizes? frozen `nil` unless a round actually froze someone; pooled, the caller releases it once done.
---- @return number mainAxisSpace Floored at `0`, a min floor can claim more than `mainAxisSpace` has left to give.
---- @return number totalWeight Reduced by every frozen child's own weight, leaving just the unfrozen ones' total.
+--- @return WaffleFlexNodeSizes? frozen See `Distribute`.
+--- @return number mainAxisSpace See `Distribute`.
+--- @return number totalWeight See `Distribute`.
 function _W.SpaceDistributor:Grow(constrained, mainAxisSpace, totalWeight, minField, maxField)
   return self:Distribute(constrained, mainAxisSpace, totalWeight, minField, maxField, self.GrowStrategy)
 end
@@ -592,14 +580,14 @@ end
 --- shrinking down from its own stated size in `statedSizes`, clamped to
 --- `minField`. `maxField` never applies, a child only ever shrinks down
 --- from it, never up past it.
---- @param constrained WaffleFlexNode[] Only children with `minField` set; the caller filters out everyone else, nothing else could ever violate the floor.
+--- @param constrained WaffleFlexNode[] Only children with `minField` set, the caller filters out the rest.
 --- @param mainAxisSpace number Main-axis deficit to claim back.
 --- @param totalWeight number Sum of every `constrained` child's own `shrink` (default `1`) times its own stated size.
 --- @param minField "minWidth" | "minHeight"
 --- @param statedSizes WaffleFlexNodeSizes Each `constrained` child's own already-resolved size; `shrink`'s own weight formula needs it every round, not just once.
---- @return WaffleFlexNodeSizes? frozen `nil` unless a round actually froze someone; pooled, the caller releases it once done.
---- @return number mainAxisSpace Floored at `0`, a min floor can claim more than `mainAxisSpace` has left to give.
---- @return number totalWeight Reduced by every frozen child's own weight, leaving just the unfrozen ones' total.
+--- @return WaffleFlexNodeSizes? frozen See `Distribute`.
+--- @return number mainAxisSpace See `Distribute`.
+--- @return number totalWeight See `Distribute`.
 function _W.SpaceDistributor:Shrink(constrained, mainAxisSpace, totalWeight, minField, statedSizes)
   return self:Distribute(constrained, mainAxisSpace, totalWeight, minField, nil, self.ShrinkStrategy, statedSizes)
 end
@@ -710,8 +698,7 @@ end
 --- its own children if `"AUTO"` (a sum along `node`'s own main axis, a max
 --- along its cross axis), or `nil` if `node` is flexible along `axis`
 --- instead. An `"AUTO"` result is cached for the rest of the current
---- pass for the `knownOtherAxisSize` it was computed for, a percentage isn't,
---- resolving it is a single multiply.
+--- pass for the `knownOtherAxisSize` it was computed for.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @param parentWidth? integer Needed only if `node`'s own `width` needs it: directly, if `width` is a percentage, or indirectly, if a cross-axis `"AUTO"` needs `width` resolved as a step first.
@@ -756,8 +743,7 @@ function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight, known
   return parentSize * (number / 100)
 end
 
---- `child`'s own resolved size along `axis`, plus its own `margin` on
---- both ends. `nil` if it's flexible there.
+--- `child`'s outer size along `axis`, `nil` if it is flexible there.
 --- @param child WaffleFlexNode
 --- @param axis "width" | "height"
 --- @param knownOtherAxisSize? integer See `ResolveDimension`.
@@ -865,10 +851,8 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
   --- @type WaffleFlexNode[][]?
   local lines
   if node.wrap and contentMainSize then
-    -- `axis` itself (`node`'s own cross axis) is what this whole
-    -- function is computing, genuinely unresolvable yet; a child's own
-    -- percentage on it errors, same as a child's own `"AUTO"` needing
-    -- to sum along it would.
+    -- The cross size is what is being computed here, so a child's own
+    -- percentage along it errors.
     lines = _W.Sizing:SplitFlexLines(visibleChildren, mainAxis, contentMainSize, nil, gap)
   end
 
@@ -975,7 +959,7 @@ end
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
 --- @param contentMainSize integer
---- @param contentCrossSize? integer The parent's content cross size, if known yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `_W.Sizing:ComputeAutoCrossSize`, that's the container's own cross axis, what it's still computing.
+--- @param contentCrossSize? integer The parent's content cross size, if known yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `ComputeAutoCrossSize`, where the node's own cross size is what is being computed.
 --- @param gap integer
 --- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; the caller releases them with `ReleaseLines`.
 function _W.Sizing:SplitFlexLines(children, axis, contentMainSize, contentCrossSize, gap)
@@ -1054,9 +1038,8 @@ function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, contentMainSize, con
   local growConstrained
   --- @type WaffleFlexNode[]
   local shrinkConstrained
-  -- Holds each fixed/percentage child's own stated size first, then every
-  -- child's final size. `shrink`'s own weight formula needs the stated
-  -- mainSizes on every round, not just once.
+  -- Holds each fixed/percentage child's stated size first, then every
+  -- child's final size. `Shrink` needs the stated sizes on every round.
   --- @type WaffleFlexNodeSizes
   local mainSizes = _W.Scratch:Get()
   for i = 1, #lineChildren do
@@ -1247,10 +1230,10 @@ function _W.FlexLayout:AlignChild(node, child, crossAxis, lineCrossSize, crossSt
 end
 
 --- Positions `lineChildren` along `mainAxis`, starting at `mainStart`, and
---- aligns each within `contentCrossSize` starting at `crossStart`. One line is
---- every one of `node.children` when `node.wrap` isn't set, or one
---- wrapped line's worth of them when it is. Each child's own `margin`
---- insets it from wherever it would otherwise sit, on both axes.
+--- aligns each within its line's cross size, starting at `crossStart`. One
+--- line is every one of `node.children` when `node.wrap` isn't set, or one
+--- wrapped line's worth of them when it is. Each child's `margin` insets it
+--- from wherever it would otherwise sit, on both axes.
 --- @param node WaffleFlexNode
 --- @param frame WaffleFrame
 --- @param lineChildren WaffleFlexNode[]
@@ -1258,14 +1241,14 @@ end
 --- @param crossAxis "width" | "height"
 --- @param isReverse boolean If true, `lineChildren` arrives already reversed by the caller.
 --- @param contentMainSize integer
---- @param contentCrossSize integer The parent's content cross size. A wrapped line is only as tall as its tallest child.
+--- @param contentCrossSize integer The parent's content cross size.
 --- @param mainStart integer
 --- @param crossStart integer
 --- @param defaultFrameFactory? fun(parent: WaffleFrame): WaffleFrame
 --- @param onLayoutQueue table Passed through to a `children` recursion; a visited child's own `onLayout` (if any) is queued onto it, not fired yet.
---- @return integer lineCrossSize
-function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, contentMainSize, contentCrossSize,
-                                      mainStart, crossStart, defaultFrameFactory, onLayoutQueue)
+--- @return integer lineCrossSize `contentCrossSize`, or under `wrap` the line's tallest child.
+function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, contentMainSize,
+                                      contentCrossSize, mainStart, crossStart, defaultFrameFactory, onLayoutQueue)
   local gap = node.gap or 0
   local isRow = mainAxis == "width"
   local visibleCount = #lineChildren
@@ -1318,8 +1301,7 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
     mainOffset = mainOffset + marginLeading + childMainSize + marginTrailing + gap + justifyGap
   end
 
-  -- Acquired by `ResolveLineSizes`, released here instead: still read by
-  -- the loop above.
+  -- Pooled by `ResolveLineSizes`, released once the loop is done with it
   _W.Scratch:Release(mainSizes)
 
   return lineCrossSize
@@ -1357,11 +1339,8 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
     end
   end
 
-  -- Only what is left is split into lines and laid out, so neither
-  -- `SplitFlexLines` nor `LayoutFlexLine` needs to care about a `"GONE"`
-  -- child. Pooled; released below, safe by then either way: `SplitFlexLines`
-  -- is done with it under `wrap`, and `LayoutFlexLine` already returned
-  -- without it.
+  -- Only visible children are split into lines and laid out. Pooled,
+  -- released below.
   local visibleChildren = _W.Sorting:GetVisibleChildren(node)
 
   if node.wrap then
@@ -1378,8 +1357,8 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
         _W.Utils:ReverseArray(lineChildren)
       end
 
-      local lineCrossSize = self:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse, contentMainSize,
-        contentCrossSize, mainLeading, crossOffset, defaultFrameFactory, onLayoutQueue)
+      local lineCrossSize = self:LayoutFlexLine(node, frame, lineChildren, mainAxis, crossAxis, isReverse,
+        contentMainSize, contentCrossSize, mainLeading, crossOffset, defaultFrameFactory, onLayoutQueue)
       crossOffset = crossOffset + lineCrossSize + lineGap
 
       _W.Scratch:Release(lineChildren)
@@ -1390,8 +1369,8 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
       _W.Utils:ReverseArray(visibleChildren)
     end
 
-    self:LayoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, isReverse, contentMainSize, contentCrossSize, mainLeading,
-      crossLeading, defaultFrameFactory, onLayoutQueue)
+    self:LayoutFlexLine(node, frame, visibleChildren, mainAxis, crossAxis, isReverse, contentMainSize,
+      contentCrossSize, mainLeading, crossLeading, defaultFrameFactory, onLayoutQueue)
   end
 
   _W.Scratch:Release(visibleChildren)
@@ -1401,19 +1380,15 @@ end
 -- FlexComponent
 -- =============================================================================
 
---- Wraps a single node, regardless of whether it has children: that's a
---- fact about the node, not a distinct type, so one component covers
---- both. Returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `AddColumn`,
+--- Wraps a single node, with or without children. Returned by `Waffle:Flex()`, `AddChild`, `AddRow`, `AddColumn`,
 --- `AttachComponent`, `FindByKey`, and `GetChildren`.
 --- @class WaffleFlexComponent
 --- @field package node WaffleFlexNode
 _W.FlexComponent = {}
 _W.FlexComponent.__index = _W.FlexComponent
 
---- Never `setmetatable`'d onto anything: a `FlexComponent` method is
---- reachable from any component a consumer holds (it is that component's
---- own metatable), so construction stays a separate table instead, out
---- of reach from `someComponent:___()`.
+--- Constructs components. Kept apart from `FlexComponent` so `New` is not
+--- reachable as a method on a component.
 _W.FlexComponentFactory = {}
 
 --- Constructs a component wrapping `node` as-is.
@@ -1444,15 +1419,12 @@ function _W.FlexComponentFactory:FindNodeByKey(node, key)
   end
 end
 
--- Every setter below is a no-op unless the value actually changes, so
--- redundant calls (e.g. from a per-frame OnUpdate) stay cheap (`SetKey`
--- is the one exception, see below). Each is immediately followed by its
--- own getter, returning the raw value most recently given, `nil` if
--- never set; the effective default, if any, is documented on the
--- setter, not repeated on the getter. `frame` has no setter (`GetFrame()`
--- still works); `frameFactory` has neither, not changeable after
--- construction. Ordered to match `WaffleFlexNode`'s own field
--- declaration order above.
+-- Every setter below is a no-op unless the value changes, so redundant calls
+-- (for example from an `OnUpdate`) stay cheap. `SetKey` is the exception.
+-- Each setter is followed by its getter, which returns the raw value last
+-- given, `nil` if never set. The default is documented on the setter only.
+-- `frame` has a getter but no setter, and `frameFactory` has neither, since
+-- neither changes after construction. Ordered as `WaffleFlexNode`'s fields are.
 
 --- Sets a frame factory for any descendant that gives neither `frame` nor
 --- its own `frameFactory`. `nil` removes it. An already-resolved
@@ -2078,9 +2050,8 @@ function _W.FlexComponent:Layout()
   end
 end
 
--- Vivifies `self.node.children` on first use: a direct node mutation, but
--- the same kind `AddRow`/`AddColumn` already make forcing a fresh node's
--- own `direction`, since adding a child inherently needs somewhere to put it.
+-- `AddChild`, `AddRow`, `AddColumn`, and `AttachComponent` create
+-- `children` on the node if it has none.
 
 --- Appends `node` as a child as-is, returning its own component. Errors
 --- if `node` already belongs to a different component, call
