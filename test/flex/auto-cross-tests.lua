@@ -599,4 +599,34 @@ do
   assert(icons[6].frame._test.point.offsetY == -36) -- the sixth icon starts line two
 end
 
+-- Test: a wrapping node with a flexed width is sized for the width it ends up
+-- with when its parent row has `"AUTO"` height, which is measured before that
+-- width is shared out.
+do
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 8 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "COLUMN",
+    width = 300,
+    height = 400,
+    children = {
+      {
+        frame = Mocks:CreateFrame(),
+        direction = "ROW",
+        height = "AUTO",
+        children = {
+          { frame = Mocks:CreateFrame(), width = 100, height = 20 },
+          { frame = gridFrame, direction = "ROW", height = "AUTO", wrap = true, gap = 4, lineGap = 4, children = icons },
+        }
+      }
+    }
+  }):Layout()
+
+  assert(gridFrame._test.width == 200) -- 300 - 100
+  assert(gridFrame._test.height == 68) -- five to a line, so two lines
+end
+
 print("All assertions passed.")
