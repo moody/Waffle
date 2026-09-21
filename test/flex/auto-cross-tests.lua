@@ -200,7 +200,7 @@ do
     }
   }):Layout()
 
-  assert(autoFrame._test.width == 60)  -- 20 + 30 + gap(10), main-axis sum
+  assert(autoFrame._test.width == 60) -- 20 + 30 + gap(10), main-axis sum
   assert(autoFrame._test.height == 40) -- max(15, 40), cross-axis max
 end
 
@@ -551,6 +551,52 @@ do
 
   assert(containerFrame._test.width == 100)
   assert(containerFrame._test.height == 10)
+end
+
+-- Test: a wrapping COLUMN with `width = "AUTO"` counts its columns against the
+-- height it is stretched to, the same when its ROW parent wraps.
+do
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 6 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "ROW",
+    wrap = true,
+    width = 400,
+    height = 100,
+    children = {
+      { frame = gridFrame, direction = "COLUMN", width = "AUTO", wrap = true, gap = 4, lineGap = 4, children = icons },
+    }
+  }):Layout()
+
+  assert(gridFrame._test.height == 100)
+  assert(gridFrame._test.width == 104) -- two to a column, so three columns: 32 * 3 + 4 * 2
+end
+
+-- Test: a wrapping node whose width is flexed by a wrapping ROW parent counts
+-- the lines that width produces, and its line is as tall as they are.
+do
+  local gridFrame = Mocks:CreateFrame()
+  local icons = {}
+  for i = 1, 8 do icons[i] = { frame = Mocks:CreateFrame(), width = 32, height = 32 } end
+
+  Waffle:Flex({
+    frame = Mocks:CreateFrame(),
+    direction = "ROW",
+    wrap = true,
+    width = 300,
+    height = 400,
+    children = {
+      { frame = Mocks:CreateFrame(), width = 100, height = 20 },
+      { frame = gridFrame, direction = "ROW", height = "AUTO", wrap = true, gap = 4, lineGap = 4, children = icons },
+    }
+  }):Layout()
+
+  assert(gridFrame._test.width == 200) -- 300 - 100
+  assert(gridFrame._test.height == 68) -- five to a line, so two lines
+  assert(icons[6].frame._test.point.offsetY == -36) -- the sixth icon starts line two
 end
 
 print("All assertions passed.")
