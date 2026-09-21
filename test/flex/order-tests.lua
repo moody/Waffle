@@ -192,4 +192,51 @@ do
   assert(frames[1]:GetFrame() == a and frames[2]:GetFrame() == b and frames[3]:GetFrame() == c)
 end
 
+-- Test: siblings with equal `order` keep their declaration order within each
+-- group when two groups are interleaved.
+do
+  local root = Mocks:CreateFrame()
+  local a, b, c, d = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  Waffle:Flex({
+    frame = root,
+    direction = "ROW",
+    width = 400,
+    height = 50,
+    children = {
+      { frame = a, width = 100, order = 1 },
+      { frame = b, width = 100, order = 0 },
+      { frame = c, width = 100, order = 1 },
+      { frame = d, width = 100, order = 0 },
+    }
+  }):Layout()
+
+  assert(b._test.point.offsetX == 0 and d._test.point.offsetX == 100) -- order 0
+  assert(a._test.point.offsetX == 200 and c._test.point.offsetX == 300) -- order 1
+end
+
+-- Test: siblings made equal by `SetOrder` go back to their declaration order,
+-- not the visual order they had before.
+do
+  local root = Mocks:CreateFrame()
+  local a, b, c = Mocks:CreateFrame(), Mocks:CreateFrame(), Mocks:CreateFrame()
+
+  local container = Waffle:Flex({ frame = root, direction = "ROW", width = 300, height = 50 })
+  local leafA = container:AddChild({ frame = a, width = 100, order = 2 })
+  local leafB = container:AddChild({ frame = b, width = 100, order = 1 })
+  local leafC = container:AddChild({ frame = c, width = 100, order = 0 })
+  container:Layout()
+
+  assert(c._test.point.offsetX == 0 and b._test.point.offsetX == 100 and a._test.point.offsetX == 200)
+
+  leafA:SetOrder(0)
+  leafB:SetOrder(0)
+  leafC:SetOrder(0)
+  container:Layout()
+
+  assert(a._test.point.offsetX == 0)
+  assert(b._test.point.offsetX == 100)
+  assert(c._test.point.offsetX == 200)
+end
+
 print("All assertions passed.")
