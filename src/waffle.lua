@@ -618,12 +618,13 @@ end
 --- falls back instead.
 --- @param children WaffleFlexNode[]
 --- @param axis "width" | "height"
+--- @param mainSizes? WaffleFlexNodeSizes Each of `children`'s own main-axis size, for a child whose own cross size depends on it. `nil` if not known yet.
 --- @return integer
-function _W.Sizing:MaxCrossSize(children, axis)
+function _W.Sizing:MaxCrossSize(children, axis, mainSizes)
   local max = 0
   for i = 1, #children do
     local child = children[i]
-    local size = self:ResolveOuterDimension(child, axis)
+    local size = self:ResolveOuterDimension(child, axis, mainSizes and mainSizes[child])
     if not size then
       error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
         axis .. "`, a flexible child (`nil`) has nothing of its own to measure", 0)
@@ -634,10 +635,10 @@ function _W.Sizing:MaxCrossSize(children, axis)
 end
 
 --- Computes `node`'s size along its own cross axis (`axis`) as the sum
---- of every line's own `MaxCrossSize`, plus `lineGap` between lines and
---- padding on each end. One line, a flat max with no gap term, unless
---- `node.wrap` is set and its own main axis resolves to a number to wrap
---- against.
+--- of every line's own tallest child (`MeasureLineCrossSize`), plus
+--- `lineGap` between lines and padding on each end. One line, a flat max
+--- with no gap term, unless `node.wrap` is set and its own main size is
+--- known to wrap against.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @param parentWidth? integer Needed only if `node`'s own main axis is itself a percentage.
@@ -650,34 +651,34 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
   local gap = node.gap or 0
   local lineGap = node.lineGap or gap
 
+  local mainAxis = axis == "width" and "height" or "width"
+  local mainLeading, mainTrailing = self:ResolveBoxAxis(node, mainAxis, "padding")
+  local mainSize = self:ResolveKnownDimension(node, mainAxis, parentWidth, parentHeight) or knownOtherAxisSize
+  local contentMainSize = mainSize and (mainSize - mainLeading - mainTrailing)
+
   local visibleChildren = _W.Utils:GetVisibleChildren(node)
 
+  -- Without a main size there is nothing to wrap against or to share out,
+  -- so `visibleChildren` is the one and only line.
   --- @type WaffleFlexNode[][]?
   local lines
-  if node.wrap then
-    local mainAxis = axis == "width" and "height" or "width"
-    local mainSize = self:ResolveDimension(node, mainAxis, parentWidth, parentHeight) or knownOtherAxisSize
-    if mainSize then
-      -- `axis` itself (`node`'s own cross axis) is what this whole
-      -- function is computing, genuinely unresolvable yet; a child's own
-      -- percentage on it errors, same as a child's own `"AUTO"` needing
-      -- to sum along it would.
-      lines = _W.FlexLayout:SplitFlexLines(visibleChildren, mainAxis, mainSize, nil, gap)
-    end
+  if node.wrap and contentMainSize then
+    -- `axis` itself (`node`'s own cross axis) is what this whole
+    -- function is computing, genuinely unresolvable yet; a child's own
+    -- percentage on it errors, same as a child's own `"AUTO"` needing
+    -- to sum along it would.
+    lines = _W.FlexLayout:SplitFlexLines(visibleChildren, mainAxis, contentMainSize, nil, gap)
   end
 
-  -- `lines` stays `nil` unless `node.wrap` actually split something:
-  -- `visibleChildren` is the one and only line itself then.
-  local total, lineCount
+  local total, lineCount = 0, 0
   if lines then
-    total = 0
     lineCount = #lines
-    for _, lineChildren in ipairs(lines) do
-      total = total + self:MaxCrossSize(lineChildren, axis)
+    for i = 1, lineCount do
+      total = total + self:MeasureLineCrossSize(lines[i], axis, mainAxis, contentMainSize, gap)
     end
     _W.FlexLayout:ReleaseLines(lines)
   else
-    total = self:MaxCrossSize(visibleChildren, axis)
+    total = self:MeasureLineCrossSize(visibleChildren, axis, mainAxis, contentMainSize, gap)
     lineCount = 1
   end
 
@@ -685,6 +686,36 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
 
   local leading, trailing = self:ResolveBoxAxis(node, axis, "padding")
   return total + lineGap * math.max(lineCount - 1, 0) + leading + trailing
+end
+
+--- The tallest of `lineChildren` along `axis`, once their own main-axis
+--- space is shared out across `contentMainSize`. Only a child whose own
+--- `axis` is `"AUTO"` depends on its main size, so nothing is shared out
+--- without one, or if `contentMainSize` is `nil`: a child with a flexed main
+--- size has none to be measured for.
+--- @param lineChildren WaffleFlexNode[]
+--- @param axis "width" | "height"
+--- @param mainAxis "width" | "height"
+--- @param contentMainSize? integer
+--- @param gap integer
+--- @return integer
+function _W.Sizing:MeasureLineCrossSize(lineChildren, axis, mainAxis, contentMainSize, gap)
+  local dependsOnMainSize = false
+  for i = 1, #lineChildren do
+    if lineChildren[i][axis] == "AUTO" then
+      dependsOnMainSize = true
+      break
+    end
+  end
+
+  if not (contentMainSize and dependsOnMainSize) then
+    return self:MaxCrossSize(lineChildren, axis)
+  end
+
+  local mainSizes = _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, contentMainSize, nil, gap)
+  local size = self:MaxCrossSize(lineChildren, axis, mainSizes)
+  _W.Scratch:Release(mainSizes)
+  return size
 end
 
 --- A line's own cross-size: the max of every child's own outer size (own
