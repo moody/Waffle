@@ -417,31 +417,41 @@ _W.LayoutCache = {}
 --- so a stale one from an earlier pass is never reused.
 _W.LayoutCache.currentPass = 0
 
---- `node`'s own `"AUTO"` result per axis, tagged with the pass that
---- computed it. Weak keys so an unreferenced node can still be garbage
---- collected.
+--- `node`'s own `"AUTO"` result per axis, with the known other-axis size it
+--- was computed for, tagged with the pass that computed it. Weak keys so an
+--- unreferenced node can still be garbage collected.
 _W.LayoutCache.resolvedDimensions = setmetatable({}, { __mode = "k" })
 
+--- The field of a `resolvedDimensions` entry holding the known other-axis
+--- size that `axis`'s result was computed for.
+--- @type table<"width" | "height", string>
+local KNOWN_SIZE_FIELDS = { width = "widthKnownSize", height = "heightKnownSize" }
+
 --- Returns `node`'s cached `"AUTO"` result for `axis`, `nil` if it was
---- never computed or is from a stale pass.
+--- never computed, is from a stale pass, or was computed for a different
+--- `knownOtherAxisSize`.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
+--- @param knownOtherAxisSize? integer
 --- @return integer?
-function _W.LayoutCache:GetResolvedDimension(node, axis)
+function _W.LayoutCache:GetResolvedDimension(node, axis, knownOtherAxisSize)
   local entry = self.resolvedDimensions[node]
-  if entry and entry.pass == self.currentPass then
+  if entry and entry.pass == self.currentPass and entry[KNOWN_SIZE_FIELDS[axis]] == knownOtherAxisSize then
     return entry[axis]
   end
   return nil
 end
 
---- Records `node`'s `"AUTO"` result for `axis` for the rest of the
---- current pass. Reuses `node`'s own existing entry rather than
---- allocating a new one, resetting it first if it's from a stale pass.
+--- Records `node`'s `"AUTO"` result for `axis`, computed for
+--- `knownOtherAxisSize`, for the rest of the current pass. Reuses `node`'s
+--- own existing entry rather than allocating a new one, resetting it first
+--- if it's from a stale pass. A later result for another
+--- `knownOtherAxisSize` replaces this one.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
+--- @param knownOtherAxisSize? integer
 --- @param value integer
-function _W.LayoutCache:SetResolvedDimension(node, axis, value)
+function _W.LayoutCache:SetResolvedDimension(node, axis, knownOtherAxisSize, value)
   local entry = self.resolvedDimensions[node]
   if not entry then
     entry = { pass = self.currentPass }
@@ -450,8 +460,11 @@ function _W.LayoutCache:SetResolvedDimension(node, axis, value)
     entry.pass = self.currentPass
     entry.width = nil
     entry.height = nil
+    entry.widthKnownSize = nil
+    entry.heightKnownSize = nil
   end
   entry[axis] = value
+  entry[KNOWN_SIZE_FIELDS[axis]] = knownOtherAxisSize
 end
 
 -- =============================================================================
@@ -718,7 +731,8 @@ end
 --- its own children if `"AUTO"` (a sum along `node`'s own main axis, a max
 --- along its cross axis), or `nil` if `node` is flexible along `axis`
 --- instead. An `"AUTO"` result is cached for the rest of the current
---- pass, a percentage isn't, resolving it is a single multiply.
+--- pass for the `knownOtherAxisSize` it was computed for, a percentage isn't,
+--- resolving it is a single multiply.
 --- @param node WaffleFlexNode
 --- @param axis "width" | "height"
 --- @param parentWidth? integer Needed only if `node`'s own `width` needs it: directly, if `width` is a percentage, or indirectly, if a cross-axis `"AUTO"` needs `width` resolved as a step first.
@@ -733,7 +747,7 @@ function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight, known
   end
 
   if value == "AUTO" then
-    local cached = _W.LayoutCache:GetResolvedDimension(node, axis)
+    local cached = _W.LayoutCache:GetResolvedDimension(node, axis, knownOtherAxisSize)
     if cached == nil then
       local isMainAxis = _W.Utils:ParseFlexDirection(node) == (axis == "width")
       cached = (
@@ -741,7 +755,7 @@ function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight, known
         self:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize) or
         self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
       )
-      _W.LayoutCache:SetResolvedDimension(node, axis, cached)
+      _W.LayoutCache:SetResolvedDimension(node, axis, knownOtherAxisSize, cached)
     end
     return cached
   end
