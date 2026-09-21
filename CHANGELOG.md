@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A wrapping node with `"AUTO"` cross size is now sized the same inside a wrapping parent as inside a non-wrapping one. Before, in a wrapping ROW, a wrapping COLUMN with `width = "AUTO"` was one column wide and a wrapping node with a flexed width was one line tall, so its children overflowed.
+
 ## [0.11.0] - 2026-09-20
 
 ### Added
