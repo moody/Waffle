@@ -490,6 +490,121 @@ function _W.OnLayoutQueue:FireAll(queue)
 end
 
 -- =============================================================================
+-- SpaceDistributor
+-- =============================================================================
+
+--- Functions that resolve how much of a line's own leftover main-axis
+--- space or deficit each constrained child gets: freezing whichever
+--- hits its min/max bound each round and redistributing the rest, for
+--- both `Grow` (growing up from `0`) and `Shrink` (shrinking down from a
+--- stated size). Each wraps `Distribute` with its own strategy and
+--- extra arguments (none for `Grow`, `statedSizes` for `Shrink`), so a
+--- caller never passes `strategy` directly.
+_W.SpaceDistributor = {}
+
+--- A size, per child.
+--- @alias WaffleFlexNodeSizes table<WaffleFlexNode, number>
+
+--- The shared interface behind `GrowStrategy`/`ShrinkStrategy`,
+--- `Distribute`'s only two strategies.
+--- @class WaffleSpaceDistributorStrategy
+--- @field weight fun(child: WaffleFlexNode, statedSizes?: WaffleFlexNodeSizes): number
+--- @field toCandidate fun(child: WaffleFlexNode, share: number, statedSizes?: WaffleFlexNodeSizes): number
+--- @field toConsumed fun(child: WaffleFlexNode, clamped: number, statedSizes?: WaffleFlexNodeSizes): number
+
+--- Shared by `Grow` (share itself is the candidate) and `Shrink`
+--- (candidate is a node's own stated size minus its share). Plain
+--- tables, not closures: both are created once, never per call.
+--- @type WaffleSpaceDistributorStrategy
+_W.SpaceDistributor.GrowStrategy = {
+  weight = function(child) return child.grow or 1 end,
+  toCandidate = function(_, share) return share end,
+  toConsumed = function(_, clamped) return clamped end,
+}
+
+--- @see _W.SpaceDistributor.GrowStrategy
+--- @type WaffleSpaceDistributorStrategy
+_W.SpaceDistributor.ShrinkStrategy = {
+  weight = function(child, statedSizes) return (child.shrink or 1) * statedSizes[child] end,
+  toCandidate = function(child, share, statedSizes) return statedSizes[child] - share end,
+  toConsumed = function(child, clamped, statedSizes) return statedSizes[child] - clamped end,
+}
+
+--- Shared core behind `Grow`/`Shrink`: distributes `mainAxisSpace`
+--- proportionally among `constrained` children by `strategy.weight`,
+--- clamping each round's own computed value (`strategy.toCandidate`) to
+--- `minField`/`maxField`. Freezes (and redistributes the space/weight
+--- among the rest) whichever gets clamped, subtracting
+--- `strategy.toConsumed` from `mainAxisSpace` each time, until a round
+--- freezes nobody new. The two only differ in what a raw share becomes,
+--- not in how the space/weight get redistributed round to round.
+--- @param constrained WaffleFlexNode[] Only children with `minField` and/or `maxField` set; the caller filters out everyone else, nothing else could ever violate a bound.
+--- @param mainAxisSpace number Space to give out (`Grow`) or claim back (`Shrink`).
+--- @param totalWeight number Sum of every `constrained` child's own `strategy.weight`.
+--- @param minField "minWidth" | "minHeight"
+--- @param maxField? "maxWidth" | "maxHeight"
+--- @param strategy WaffleSpaceDistributorStrategy
+--- @vararg any Passed through to every one of `strategy`'s own functions, as their final argument(s).
+--- @return WaffleFlexNodeSizes? frozen `nil` unless a round actually froze someone; pooled, the caller releases it once done.
+--- @return number mainAxisSpace Floored at `0`, a min floor can claim more than `mainAxisSpace` has left to give.
+--- @return number totalWeight Reduced by every frozen child's own weight, leaving just the unfrozen ones' total.
+function _W.SpaceDistributor:Distribute(constrained, mainAxisSpace, totalWeight, minField, maxField, strategy, ...)
+  local frozen
+  local frozeAny = true
+  while frozeAny and totalWeight > 0 do
+    frozeAny = false
+    local roundMainAxisSpace, roundWeight = mainAxisSpace, totalWeight
+    for _, child in ipairs(constrained) do
+      if not (frozen and frozen[child]) then
+        local childWeight = strategy.weight(child, ...)
+        local share = roundWeight > 0 and (roundMainAxisSpace * childWeight / roundWeight) or 0
+        local candidate = strategy.toCandidate(child, share, ...)
+        local clamped = _W.Sizing:ClampSize(child, candidate, minField, maxField)
+
+        if clamped ~= candidate then
+          frozen = frozen or _W.Scratch:Get()
+          frozen[child] = clamped
+          mainAxisSpace = mainAxisSpace - strategy.toConsumed(child, clamped, ...)
+          totalWeight = totalWeight - childWeight
+          frozeAny = true
+        end
+      end
+    end
+  end
+  return frozen, math.max(mainAxisSpace, 0), totalWeight
+end
+
+--- Distributes leftover main-axis space among flexible children, each
+--- growing up from `0`, clamped to `minField`/`maxField`.
+--- @param constrained WaffleFlexNode[] Only children with `minField` and/or `maxField` set; the caller filters out everyone else, nothing else could ever violate a bound.
+--- @param mainAxisSpace number Leftover main-axis space to give out.
+--- @param totalWeight number Sum of every `constrained` child's own `grow` (default `1`).
+--- @param minField "minWidth" | "minHeight"
+--- @param maxField? "maxWidth" | "maxHeight"
+--- @return WaffleFlexNodeSizes? frozen `nil` unless a round actually froze someone; pooled, the caller releases it once done.
+--- @return number mainAxisSpace Floored at `0`, a min floor can claim more than `mainAxisSpace` has left to give.
+--- @return number totalWeight Reduced by every frozen child's own weight, leaving just the unfrozen ones' total.
+function _W.SpaceDistributor:Grow(constrained, mainAxisSpace, totalWeight, minField, maxField)
+  return self:Distribute(constrained, mainAxisSpace, totalWeight, minField, maxField, self.GrowStrategy)
+end
+
+--- Distributes a main-axis deficit among fixed/percentage children, each
+--- shrinking down from its own stated size in `statedSizes`, clamped to
+--- `minField`. `maxField` never applies, a child only ever shrinks down
+--- from it, never up past it.
+--- @param constrained WaffleFlexNode[] Only children with `minField` set; the caller filters out everyone else, nothing else could ever violate the floor.
+--- @param mainAxisSpace number Main-axis deficit to claim back.
+--- @param totalWeight number Sum of every `constrained` child's own `shrink` (default `1`) times its own stated size.
+--- @param minField "minWidth" | "minHeight"
+--- @param statedSizes WaffleFlexNodeSizes Each `constrained` child's own already-resolved size; `shrink`'s own weight formula needs it every round, not just once.
+--- @return WaffleFlexNodeSizes? frozen `nil` unless a round actually froze someone; pooled, the caller releases it once done.
+--- @return number mainAxisSpace Floored at `0`, a min floor can claim more than `mainAxisSpace` has left to give.
+--- @return number totalWeight Reduced by every frozen child's own weight, leaving just the unfrozen ones' total.
+function _W.SpaceDistributor:Shrink(constrained, mainAxisSpace, totalWeight, minField, statedSizes)
+  return self:Distribute(constrained, mainAxisSpace, totalWeight, minField, nil, self.ShrinkStrategy, statedSizes)
+end
+
+-- =============================================================================
 -- Sizing
 -- =============================================================================
 
@@ -498,7 +613,10 @@ end
 --- own `min`/`max`. `ResolveDimension` is the entry point. It sends
 --- `"AUTO"` to `ComputeAutoMainSize` (sum of the children) along the
 --- node's own main axis, and to `ComputeAutoCrossSize` (max of the
---- children, or of each wrapped line) along its cross axis.
+--- children, or of each wrapped line) along its cross axis. Splitting
+--- children into wrapped lines (`SplitFlexLines`) and sharing a line's
+--- main-axis space out (`ResolveLineSizes`) are sizing too, so they live
+--- here, for measuring and for layout alike.
 _W.Sizing = {}
 
 --- The per-side field names of each box value, per axis, as
@@ -634,7 +752,7 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
     -- function is computing, genuinely unresolvable yet; a child's own
     -- percentage on it errors, same as a child's own `"AUTO"` needing
     -- to sum along it would.
-    lines = _W.FlexLayout:SplitFlexLines(visibleChildren, mainAxis, contentMainSize, nil, gap)
+    lines = _W.Sizing:SplitFlexLines(visibleChildren, mainAxis, contentMainSize, nil, gap)
   end
 
   local total, lineCount = 0, 0
@@ -643,7 +761,7 @@ function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, k
     for i = 1, lineCount do
       total = total + self:MeasureLineCrossSize(lines[i], axis, mainAxis, contentMainSize, gap)
     end
-    _W.FlexLayout:ReleaseLines(lines)
+    _W.Sizing:ReleaseLines(lines)
   else
     total = self:MeasureLineCrossSize(visibleChildren, axis, mainAxis, contentMainSize, gap)
     lineCount = 1
@@ -679,7 +797,7 @@ function _W.Sizing:MeasureLineCrossSize(lineChildren, axis, mainAxis, contentMai
     return self:MaxCrossSize(lineChildren, axis)
   end
 
-  local mainSizes = _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, contentMainSize, nil, gap)
+  local mainSizes = _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, contentMainSize, nil, gap)
   local size = self:MaxCrossSize(lineChildren, axis, mainSizes)
   _W.Scratch:Release(mainSizes)
   return size
@@ -845,133 +963,6 @@ function _W.Sizing:ResolveChildMainSize(child, axis, parentWidth, parentHeight, 
   return self:ResolveDimension(child, axis, parentWidth, parentHeight)
 end
 
--- =============================================================================
--- SpaceDistributor
--- =============================================================================
-
---- Functions that resolve how much of a line's own leftover main-axis
---- space or deficit each constrained child gets: freezing whichever
---- hits its min/max bound each round and redistributing the rest, for
---- both `Grow` (growing up from `0`) and `Shrink` (shrinking down from a
---- stated size). Each wraps `Distribute` with its own strategy and
---- extra arguments (none for `Grow`, `statedSizes` for `Shrink`), so a
---- caller never passes `strategy` directly.
-_W.SpaceDistributor = {}
-
---- A size, per child.
---- @alias WaffleFlexNodeSizes table<WaffleFlexNode, number>
-
---- The shared interface behind `GrowStrategy`/`ShrinkStrategy`,
---- `Distribute`'s only two strategies.
---- @class WaffleSpaceDistributorStrategy
---- @field weight fun(child: WaffleFlexNode, statedSizes?: WaffleFlexNodeSizes): number
---- @field toCandidate fun(child: WaffleFlexNode, share: number, statedSizes?: WaffleFlexNodeSizes): number
---- @field toConsumed fun(child: WaffleFlexNode, clamped: number, statedSizes?: WaffleFlexNodeSizes): number
-
---- Shared by `Grow` (share itself is the candidate) and `Shrink`
---- (candidate is a node's own stated size minus its share). Plain
---- tables, not closures: both are created once, never per call.
---- @type WaffleSpaceDistributorStrategy
-_W.SpaceDistributor.GrowStrategy = {
-  weight = function(child) return child.grow or 1 end,
-  toCandidate = function(_, share) return share end,
-  toConsumed = function(_, clamped) return clamped end,
-}
-
---- @see _W.SpaceDistributor.GrowStrategy
---- @type WaffleSpaceDistributorStrategy
-_W.SpaceDistributor.ShrinkStrategy = {
-  weight = function(child, statedSizes) return (child.shrink or 1) * statedSizes[child] end,
-  toCandidate = function(child, share, statedSizes) return statedSizes[child] - share end,
-  toConsumed = function(child, clamped, statedSizes) return statedSizes[child] - clamped end,
-}
-
---- Shared core behind `Grow`/`Shrink`: distributes `mainAxisSpace`
---- proportionally among `constrained` children by `strategy.weight`,
---- clamping each round's own computed value (`strategy.toCandidate`) to
---- `minField`/`maxField`. Freezes (and redistributes the space/weight
---- among the rest) whichever gets clamped, subtracting
---- `strategy.toConsumed` from `mainAxisSpace` each time, until a round
---- freezes nobody new. The two only differ in what a raw share becomes,
---- not in how the space/weight get redistributed round to round.
---- @param constrained WaffleFlexNode[] Only children with `minField` and/or `maxField` set; the caller filters out everyone else, nothing else could ever violate a bound.
---- @param mainAxisSpace number Space to give out (`Grow`) or claim back (`Shrink`).
---- @param totalWeight number Sum of every `constrained` child's own `strategy.weight`.
---- @param minField "minWidth" | "minHeight"
---- @param maxField? "maxWidth" | "maxHeight"
---- @param strategy WaffleSpaceDistributorStrategy
---- @vararg any Passed through to every one of `strategy`'s own functions, as their final argument(s).
---- @return WaffleFlexNodeSizes? frozen `nil` unless a round actually froze someone; pooled, the caller releases it once done.
---- @return number mainAxisSpace Floored at `0`, a min floor can claim more than `mainAxisSpace` has left to give.
---- @return number totalWeight Reduced by every frozen child's own weight, leaving just the unfrozen ones' total.
-function _W.SpaceDistributor:Distribute(constrained, mainAxisSpace, totalWeight, minField, maxField, strategy, ...)
-  local frozen
-  local frozeAny = true
-  while frozeAny and totalWeight > 0 do
-    frozeAny = false
-    local roundMainAxisSpace, roundWeight = mainAxisSpace, totalWeight
-    for _, child in ipairs(constrained) do
-      if not (frozen and frozen[child]) then
-        local childWeight = strategy.weight(child, ...)
-        local share = roundWeight > 0 and (roundMainAxisSpace * childWeight / roundWeight) or 0
-        local candidate = strategy.toCandidate(child, share, ...)
-        local clamped = _W.Sizing:ClampSize(child, candidate, minField, maxField)
-
-        if clamped ~= candidate then
-          frozen = frozen or _W.Scratch:Get()
-          frozen[child] = clamped
-          mainAxisSpace = mainAxisSpace - strategy.toConsumed(child, clamped, ...)
-          totalWeight = totalWeight - childWeight
-          frozeAny = true
-        end
-      end
-    end
-  end
-  return frozen, math.max(mainAxisSpace, 0), totalWeight
-end
-
---- Distributes leftover main-axis space among flexible children, each
---- growing up from `0`, clamped to `minField`/`maxField`.
---- @param constrained WaffleFlexNode[] Only children with `minField` and/or `maxField` set; the caller filters out everyone else, nothing else could ever violate a bound.
---- @param mainAxisSpace number Leftover main-axis space to give out.
---- @param totalWeight number Sum of every `constrained` child's own `grow` (default `1`).
---- @param minField "minWidth" | "minHeight"
---- @param maxField? "maxWidth" | "maxHeight"
---- @return WaffleFlexNodeSizes? frozen `nil` unless a round actually froze someone; pooled, the caller releases it once done.
---- @return number mainAxisSpace Floored at `0`, a min floor can claim more than `mainAxisSpace` has left to give.
---- @return number totalWeight Reduced by every frozen child's own weight, leaving just the unfrozen ones' total.
-function _W.SpaceDistributor:Grow(constrained, mainAxisSpace, totalWeight, minField, maxField)
-  return self:Distribute(constrained, mainAxisSpace, totalWeight, minField, maxField, self.GrowStrategy)
-end
-
---- Distributes a main-axis deficit among fixed/percentage children, each
---- shrinking down from its own stated size in `statedSizes`, clamped to
---- `minField`. `maxField` never applies, a child only ever shrinks down
---- from it, never up past it.
---- @param constrained WaffleFlexNode[] Only children with `minField` set; the caller filters out everyone else, nothing else could ever violate the floor.
---- @param mainAxisSpace number Main-axis deficit to claim back.
---- @param totalWeight number Sum of every `constrained` child's own `shrink` (default `1`) times its own stated size.
---- @param minField "minWidth" | "minHeight"
---- @param statedSizes WaffleFlexNodeSizes Each `constrained` child's own already-resolved size; `shrink`'s own weight formula needs it every round, not just once.
---- @return WaffleFlexNodeSizes? frozen `nil` unless a round actually froze someone; pooled, the caller releases it once done.
---- @return number mainAxisSpace Floored at `0`, a min floor can claim more than `mainAxisSpace` has left to give.
---- @return number totalWeight Reduced by every frozen child's own weight, leaving just the unfrozen ones' total.
-function _W.SpaceDistributor:Shrink(constrained, mainAxisSpace, totalWeight, minField, statedSizes)
-  return self:Distribute(constrained, mainAxisSpace, totalWeight, minField, nil, self.ShrinkStrategy, statedSizes)
-end
-
--- =============================================================================
--- FlexLayout
--- =============================================================================
-
---- Functions that position `node.children` in a row or column,
---- splitting into wrapped lines first when needed. `Layout` handles one
---- node's children as one line, or several under `wrap`, and calls
---- `LayoutFlexLine` on each. `LayoutFlexLine` resolves the line's
---- main-axis sizes with `ResolveLineSizes`, then places each child and
---- calls `Layout` on the child's own children.
-_W.FlexLayout = {}
-
 --- Splits `children` (already sorted, already visible-only) into lines
 --- along `axis`: each line is as many children as fit within `mainSize`,
 --- in order, counting each child's own `margin` as part of its size. A
@@ -987,7 +978,7 @@ _W.FlexLayout = {}
 --- @param crossSize? integer The container's own cross size, if resolved yet; needed only for a child's own percentage/`"AUTO"` along that axis. `nil` from `_W.Sizing:ComputeAutoCrossSize`, that's the container's own cross axis, what it's still computing.
 --- @param gap integer
 --- @return WaffleFlexNode[][] lines Pooled, `lines` itself and every line in it; the caller releases them with `ReleaseLines`.
-function _W.FlexLayout:SplitFlexLines(children, axis, mainSize, crossSize, gap)
+function _W.Sizing:SplitFlexLines(children, axis, mainSize, crossSize, gap)
   --- @type WaffleFlexNode[][]
   local lines = _W.Scratch:Get()
   --- @type WaffleFlexNode[]
@@ -1023,7 +1014,7 @@ end
 
 --- Returns `lines`, and every line in it, to the pool.
 --- @param lines WaffleFlexNode[][]
-function _W.FlexLayout:ReleaseLines(lines)
+function _W.Sizing:ReleaseLines(lines)
   for _, lineChildren in ipairs(lines) do
     _W.Scratch:Release(lineChildren)
   end
@@ -1046,7 +1037,7 @@ end
 --- @param gap integer
 --- @return WaffleFlexNodeSizes sizes Every child's size; pooled, `LayoutFlexLine` releases it once done, not this function.
 --- @return number freeSpace Space no child claimed after every size and `margin`, for `justify`. `0` whenever a flexible child takes the leftover space, or there's a deficit.
-function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
+function _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
   local isRow = mainAxis == "width"
   local minField = isRow and "minWidth" or "minHeight"
   local maxField = isRow and "maxWidth" or "maxHeight"
@@ -1136,6 +1127,18 @@ function _W.FlexLayout:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossS
 
   return sizes, totalGrow > 0 and 0 or remaining
 end
+
+-- =============================================================================
+-- FlexLayout
+-- =============================================================================
+
+--- Functions that position `node.children` in a row or column,
+--- splitting into wrapped lines first when needed. `Layout` handles one
+--- node's children as one line, or several under `wrap`, and calls
+--- `LayoutFlexLine` on each. `LayoutFlexLine` resolves the line's
+--- main-axis sizes with `ResolveLineSizes`, then places each child and
+--- calls `Layout` on the child's own children.
+_W.FlexLayout = {}
 
 --- Resolves `node.justify`'s main-axis offset/gap for one line.
 --- @param node WaffleFlexNode
@@ -1267,7 +1270,7 @@ function _W.FlexLayout:LayoutFlexLine(node, frame, lineChildren, mainAxis, cross
   local isRow = mainAxis == "width"
   local visibleCount = #lineChildren
 
-  local sizes, freeSpace = self:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
+  local sizes, freeSpace = _W.Sizing:ResolveLineSizes(lineChildren, mainAxis, mainSize, crossSize, gap)
   if node.wrap then
     crossSize = _W.Sizing:LineCrossSize(lineChildren, crossAxis, crossSize, sizes)
   end
@@ -1367,7 +1370,7 @@ function _W.FlexLayout:Layout(node, frame, width, height, defaultFrameFactory, o
     -- Pooled, from `SplitFlexLines`. Released below: `lineChildren` once
     -- its own line is done, `lines` once every line is.
     --- @type WaffleFlexNode[][]
-    local lines = self:SplitFlexLines(visibleChildren, mainAxis, mainSize, crossSize, gap)
+    local lines = _W.Sizing:SplitFlexLines(visibleChildren, mainAxis, mainSize, crossSize, gap)
     for _, lineChildren in ipairs(lines) do
       if isReverse then
         _W.Utils:ReverseArray(lineChildren)
