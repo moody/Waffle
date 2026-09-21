@@ -340,6 +340,39 @@ function _W.FrameReadyQueue:Fire(node)
 end
 
 -- =============================================================================
+-- OnLayoutQueue
+-- =============================================================================
+
+--- Defers `onLayout` firing until its `Layout()` pass is fully resolved
+--- and clean, so a mutation made inside one schedules a future
+--- `Layout()` call rather than being lost.
+_W.OnLayoutQueue = {}
+
+--- Records `node`'s pending `onLayout` call in `queue`, a table from
+--- `_W.Scratch`, fired later by `FireAll`.
+--- @param queue table
+--- @param node WaffleFlexNode
+--- @param width integer
+--- @param height integer
+function _W.OnLayoutQueue:Add(queue, node, width, height)
+  local entry = _W.Scratch:Get()
+  entry.node, entry.width, entry.height = node, width, height
+  queue[#queue + 1] = entry
+end
+
+--- Fires every `onLayout` recorded in `queue`, in the order they were
+--- added (bottom-up, children before parents, visual sibling order),
+--- releasing each entry back to `_W.Scratch` right after.
+--- @param queue table
+function _W.OnLayoutQueue:FireAll(queue)
+  for i = 1, #queue do
+    local entry = queue[i]
+    entry.node.onLayout(entry.node.frame, entry.width, entry.height)
+    _W.Scratch:Release(entry)
+  end
+end
+
+-- =============================================================================
 -- Sorting
 -- =============================================================================
 
@@ -454,39 +487,6 @@ function _W.LayoutCache:SetResolvedDimension(node, axis, knownOtherAxisSize, val
   end
   entry[axis] = value
   entry[KNOWN_SIZE_FIELDS[axis]] = knownOtherAxisSize
-end
-
--- =============================================================================
--- OnLayoutQueue
--- =============================================================================
-
---- Defers `onLayout` firing until its `Layout()` pass is fully resolved
---- and clean, so a mutation made inside one schedules a future
---- `Layout()` call rather than being lost.
-_W.OnLayoutQueue = {}
-
---- Records `node`'s pending `onLayout` call in `queue`, a table from
---- `_W.Scratch`, fired later by `FireAll`.
---- @param queue table
---- @param node WaffleFlexNode
---- @param width integer
---- @param height integer
-function _W.OnLayoutQueue:Add(queue, node, width, height)
-  local entry = _W.Scratch:Get()
-  entry.node, entry.width, entry.height = node, width, height
-  queue[#queue + 1] = entry
-end
-
---- Fires every `onLayout` recorded in `queue`, in the order they were
---- added (bottom-up, children before parents, visual sibling order),
---- releasing each entry back to `_W.Scratch` right after.
---- @param queue table
-function _W.OnLayoutQueue:FireAll(queue)
-  for i = 1, #queue do
-    local entry = queue[i]
-    entry.node.onLayout(entry.node.frame, entry.width, entry.height)
-    _W.Scratch:Release(entry)
-  end
 end
 
 -- =============================================================================
@@ -641,6 +641,121 @@ function _W.Sizing:ResolveBoxAxis(node, axis, prefix)
   return node[sides[1]] or shorthand, node[sides[2]] or shorthand
 end
 
+--- The parent size a percentage on `axis` resolves against, `nil` if unknown.
+--- @param axis "width" | "height"
+--- @param parentWidth? integer
+--- @param parentHeight? integer
+--- @return integer?
+function _W.Sizing:ResolveParentSize(axis, parentWidth, parentHeight)
+  if axis == "width" then
+    return parentWidth
+  end
+  return parentHeight
+end
+
+--- Clamps `value` to `node[minField]`/`node[maxField]`, whichever is
+--- set. Errors if both are set and the min is greater than the max.
+--- @param node WaffleFlexNode
+--- @param value number
+--- @param minField "minWidth" | "minHeight"
+--- @param maxField? "maxWidth" | "maxHeight"
+--- @return number
+function _W.Sizing:ClampSize(node, value, minField, maxField)
+  local min, max = node[minField], node[maxField]
+  if min and max and min > max then
+    error("Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node", 0)
+  end
+
+  if min and value < min then
+    return min
+  elseif max and value > max then
+    return max
+  end
+
+  return value
+end
+
+--- The size `child` takes along `axis` when its container stretches it
+--- across `crossSize`: what is left after its own `margin`, clamped to
+--- its own `min`/`max`.
+--- @param child WaffleFlexNode
+--- @param axis "width" | "height"
+--- @param crossSize integer
+--- @return integer
+function _W.Sizing:ResolveStretchedSize(child, axis, crossSize)
+  local leading, trailing = self:ResolveBoxAxis(child, axis, "margin")
+  local isWidth = axis == "width"
+  return self:ClampSize(child, crossSize - leading - trailing, isWidth and "minWidth" or "minHeight",
+    isWidth and "maxWidth" or "maxHeight")
+end
+
+--- Like `ResolveDimension`, but `nil` instead of computing an `"AUTO"`
+--- or erroring on a percentage with no parent size to resolve against.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @param parentWidth? integer
+--- @param parentHeight? integer
+--- @return integer?
+function _W.Sizing:ResolveKnownDimension(node, axis, parentWidth, parentHeight)
+  local value = node[axis]
+  local parentSize = self:ResolveParentSize(axis, parentWidth, parentHeight)
+  if value == "AUTO" or (type(value) == "string" and not parentSize) then
+    return nil
+  end
+  return self:ResolveDimension(node, axis, parentWidth, parentHeight)
+end
+
+--- Resolves `node`'s size along `axis`: the given number, a percentage of
+--- `parentWidth`/`parentHeight` (whichever matches `axis`), computed from
+--- its own children if `"AUTO"` (a sum along `node`'s own main axis, a max
+--- along its cross axis), or `nil` if `node` is flexible along `axis`
+--- instead. An `"AUTO"` result is cached for the rest of the current
+--- pass for the `knownOtherAxisSize` it was computed for, a percentage isn't,
+--- resolving it is a single multiply.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @param parentWidth? integer Needed only if `node`'s own `width` needs it: directly, if `width` is a percentage, or indirectly, if a cross-axis `"AUTO"` needs `width` resolved as a step first.
+--- @param parentHeight? integer Same as `parentWidth`, for `height`.
+--- @param knownOtherAxisSize? integer `node`'s exact size along the other axis, when the caller already knows it and `node` has none of its own. Only used to compute `"AUTO"`: a wrapping node wraps against it.
+--- @return integer?
+function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
+  local value = node[axis]
+
+  if type(value) ~= "string" then
+    return value
+  end
+
+  if value == "AUTO" then
+    local cached = _W.LayoutCache:GetResolvedDimension(node, axis, knownOtherAxisSize)
+    if cached == nil then
+      local isMainAxis = _W.Utils:ParseFlexDirection(node) == (axis == "width")
+      cached = (
+        isMainAxis and
+        self:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize) or
+        self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
+      )
+      _W.LayoutCache:SetResolvedDimension(node, axis, knownOtherAxisSize, cached)
+    end
+    return cached
+  end
+
+  local number = value:match("^(%d+%.?%d*)%%$")
+  number = number and tonumber(number)
+  if not number then
+    error("Waffle: `" .. axis .. "` must be a number, `\"AUTO\"`, or a percentage string like `\"50%\"`, got `" ..
+      value .. "`", 0)
+  end
+
+  local parentSize = self:ResolveParentSize(axis, parentWidth, parentHeight)
+  if not parentSize then
+    error("Waffle: `" .. axis .. "` given as a percentage needs a resolvable parent `" ..
+      axis .. "` to size against; none here, either this is the root or the parent's own `" ..
+      axis .. "` is itself still being computed", 0)
+  end
+
+  return parentSize * (number / 100)
+end
+
 --- `child`'s own resolved size along `axis`, plus its own `margin` on
 --- both ends. `nil` if it's flexible there.
 --- @param child WaffleFlexNode
@@ -654,6 +769,30 @@ function _W.Sizing:ResolveOuterDimension(child, axis, knownOtherAxisSize)
   end
   local leading, trailing = self:ResolveBoxAxis(child, axis, "margin")
   return size + leading + trailing
+end
+
+--- Resolves `child`'s size along `axis`, its container's main axis, when the
+--- container stretches `child` across `crossSize` on the other axis.
+--- `crossSize` is `nil` while the container's own cross size is unknown.
+--- @param child WaffleFlexNode
+--- @param axis "width" | "height"
+--- @param parentWidth? integer
+--- @param parentHeight? integer
+--- @param crossSize? integer
+--- @return integer?
+function _W.Sizing:ResolveChildMainSize(child, axis, parentWidth, parentHeight, crossSize)
+  local value = child[axis]
+  if value == "AUTO" then
+    local knownOtherAxisSize
+    if crossSize then
+      knownOtherAxisSize = self:ResolveStretchedSize(child, axis == "width" and "height" or "width", crossSize)
+    end
+    return self:ResolveDimension(child, axis, parentWidth, parentHeight, knownOtherAxisSize)
+  end
+  if type(value) ~= "string" then
+    return value
+  end
+  return self:ResolveDimension(child, axis, parentWidth, parentHeight)
 end
 
 --- Computes `node`'s size along its own main axis (`axis`) as the sum of
@@ -695,28 +834,6 @@ function _W.Sizing:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, kn
   _W.Scratch:Release(visibleChildren)
 
   return autoMainSize
-end
-
---- The max of every one of `children`'s own outer sizes (own size plus
---- `margin`) along `axis`. Errors if any is flexible, there's nothing of
---- its own to measure. The strict counterpart to `LineCrossSize`, which
---- falls back instead.
---- @param children WaffleFlexNode[]
---- @param axis "width" | "height"
---- @param mainSizes? WaffleFlexNodeSizes Each of `children`'s own main-axis size, for a child whose own cross size depends on it. `nil` if not known yet.
---- @return integer
-function _W.Sizing:MaxCrossSize(children, axis, mainSizes)
-  local max = 0
-  for i = 1, #children do
-    local child = children[i]
-    local size = self:ResolveOuterDimension(child, axis, mainSizes and mainSizes[child])
-    if not size then
-      error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
-        axis .. "`, a flexible child (`nil`) has nothing of its own to measure", 0)
-    end
-    max = math.max(max, size)
-  end
-  return max
 end
 
 --- Computes `node`'s size along its own cross axis (`axis`) as the sum
@@ -803,6 +920,28 @@ function _W.Sizing:MeasureLineCrossSize(lineChildren, axis, mainAxis, contentMai
   return size
 end
 
+--- The max of every one of `children`'s own outer sizes (own size plus
+--- `margin`) along `axis`. Errors if any is flexible, there's nothing of
+--- its own to measure. The strict counterpart to `LineCrossSize`, which
+--- falls back instead.
+--- @param children WaffleFlexNode[]
+--- @param axis "width" | "height"
+--- @param mainSizes? WaffleFlexNodeSizes Each of `children`'s own main-axis size, for a child whose own cross size depends on it. `nil` if not known yet.
+--- @return integer
+function _W.Sizing:MaxCrossSize(children, axis, mainSizes)
+  local max = 0
+  for i = 1, #children do
+    local child = children[i]
+    local size = self:ResolveOuterDimension(child, axis, mainSizes and mainSizes[child])
+    if not size then
+      error("Waffle: every child of an `\"AUTO\"` node that is not `\"GONE\"` needs its own `" ..
+        axis .. "`, a flexible child (`nil`) has nothing of its own to measure", 0)
+    end
+    max = math.max(max, size)
+  end
+  return max
+end
+
 --- A line's own cross-size: the max of every child's own outer size (own
 --- size plus `margin`) along `axis` that has one, skipping any that
 --- don't (e.g. a `STRETCH` child on its cross axis) rather than
@@ -822,145 +961,6 @@ function _W.Sizing:LineCrossSize(children, axis, fallback, mainSizes)
     end
   end
   return max or fallback
-end
-
---- The parent size a percentage on `axis` resolves against, `nil` if unknown.
---- @param axis "width" | "height"
---- @param parentWidth? integer
---- @param parentHeight? integer
---- @return integer?
-function _W.Sizing:ResolveParentSize(axis, parentWidth, parentHeight)
-  if axis == "width" then
-    return parentWidth
-  end
-  return parentHeight
-end
-
---- Like `ResolveDimension`, but `nil` instead of computing an `"AUTO"`
---- or erroring on a percentage with no parent size to resolve against.
---- @param node WaffleFlexNode
---- @param axis "width" | "height"
---- @param parentWidth? integer
---- @param parentHeight? integer
---- @return integer?
-function _W.Sizing:ResolveKnownDimension(node, axis, parentWidth, parentHeight)
-  local value = node[axis]
-  local parentSize = self:ResolveParentSize(axis, parentWidth, parentHeight)
-  if value == "AUTO" or (type(value) == "string" and not parentSize) then
-    return nil
-  end
-  return self:ResolveDimension(node, axis, parentWidth, parentHeight)
-end
-
---- Resolves `node`'s size along `axis`: the given number, a percentage of
---- `parentWidth`/`parentHeight` (whichever matches `axis`), computed from
---- its own children if `"AUTO"` (a sum along `node`'s own main axis, a max
---- along its cross axis), or `nil` if `node` is flexible along `axis`
---- instead. An `"AUTO"` result is cached for the rest of the current
---- pass for the `knownOtherAxisSize` it was computed for, a percentage isn't,
---- resolving it is a single multiply.
---- @param node WaffleFlexNode
---- @param axis "width" | "height"
---- @param parentWidth? integer Needed only if `node`'s own `width` needs it: directly, if `width` is a percentage, or indirectly, if a cross-axis `"AUTO"` needs `width` resolved as a step first.
---- @param parentHeight? integer Same as `parentWidth`, for `height`.
---- @param knownOtherAxisSize? integer `node`'s exact size along the other axis, when the caller already knows it and `node` has none of its own. Only used to compute `"AUTO"`: a wrapping node wraps against it.
---- @return integer?
-function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
-  local value = node[axis]
-
-  if type(value) ~= "string" then
-    return value
-  end
-
-  if value == "AUTO" then
-    local cached = _W.LayoutCache:GetResolvedDimension(node, axis, knownOtherAxisSize)
-    if cached == nil then
-      local isMainAxis = _W.Utils:ParseFlexDirection(node) == (axis == "width")
-      cached = (
-        isMainAxis and
-        self:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize) or
-        self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
-      )
-      _W.LayoutCache:SetResolvedDimension(node, axis, knownOtherAxisSize, cached)
-    end
-    return cached
-  end
-
-  local number = value:match("^(%d+%.?%d*)%%$")
-  number = number and tonumber(number)
-  if not number then
-    error("Waffle: `" .. axis .. "` must be a number, `\"AUTO\"`, or a percentage string like `\"50%\"`, got `" ..
-      value .. "`", 0)
-  end
-
-  local parentSize = self:ResolveParentSize(axis, parentWidth, parentHeight)
-  if not parentSize then
-    error("Waffle: `" .. axis .. "` given as a percentage needs a resolvable parent `" ..
-      axis .. "` to size against; none here, either this is the root or the parent's own `" ..
-      axis .. "` is itself still being computed", 0)
-  end
-
-  return parentSize * (number / 100)
-end
-
---- Clamps `value` to `node[minField]`/`node[maxField]`, whichever is
---- set. Errors if both are set and the min is greater than the max.
---- @param node WaffleFlexNode
---- @param value number
---- @param minField "minWidth" | "minHeight"
---- @param maxField? "maxWidth" | "maxHeight"
---- @return number
-function _W.Sizing:ClampSize(node, value, minField, maxField)
-  local min, max = node[minField], node[maxField]
-  if min and max and min > max then
-    error("Waffle: `" .. minField .. "` cannot be greater than `" .. maxField .. "` on the same node", 0)
-  end
-
-  if min and value < min then
-    return min
-  elseif max and value > max then
-    return max
-  end
-
-  return value
-end
-
---- The size `child` takes along `axis` when its container stretches it
---- across `crossSize`: what is left after its own `margin`, clamped to
---- its own `min`/`max`.
---- @param child WaffleFlexNode
---- @param axis "width" | "height"
---- @param crossSize integer
---- @return integer
-function _W.Sizing:ResolveStretchedSize(child, axis, crossSize)
-  local leading, trailing = self:ResolveBoxAxis(child, axis, "margin")
-  local isWidth = axis == "width"
-  return self:ClampSize(child, crossSize - leading - trailing, isWidth and "minWidth" or "minHeight",
-    isWidth and "maxWidth" or "maxHeight")
-end
-
---- Resolves `child`'s size along `axis`, its container's main axis, when the
---- container stretches `child` across `crossSize` on the other axis.
---- `crossSize` is `nil` while the container's own cross size is unknown.
---- @param child WaffleFlexNode
---- @param axis "width" | "height"
---- @param parentWidth? integer
---- @param parentHeight? integer
---- @param crossSize? integer
---- @return integer?
-function _W.Sizing:ResolveChildMainSize(child, axis, parentWidth, parentHeight, crossSize)
-  local value = child[axis]
-  if value == "AUTO" then
-    local knownOtherAxisSize
-    if crossSize then
-      knownOtherAxisSize = self:ResolveStretchedSize(child, axis == "width" and "height" or "width", crossSize)
-    end
-    return self:ResolveDimension(child, axis, parentWidth, parentHeight, knownOtherAxisSize)
-  end
-  if type(value) ~= "string" then
-    return value
-  end
-  return self:ResolveDimension(child, axis, parentWidth, parentHeight)
 end
 
 --- Splits `children` (already sorted, already visible-only) into lines
