@@ -337,6 +337,27 @@ do
   assert(text._test.height == 60) -- five to a line, so six lines
 end
 
+-- Test: `MarkDirty` makes `onMeasure` run again with the content's new
+-- size, applied on the next `Layout()`.
+do
+  local text = Mocks:CreateFrame()
+  local words = 10
+  local container = Waffle:Flex({ frame = Mocks:CreateFrame(), direction = "COLUMN", width = 100, height = 300 })
+  local leaf = container:AddChild({
+    frame = text,
+    height = "AUTO",
+    onMeasure = function(_, width) return Paragraph(words)(nil, width) end
+  })
+  container:Layout()
+  assert(text._test.height == 20) -- five words to a line, so two lines
+
+  words = 30
+  leaf:MarkDirty()
+  container:Layout()
+  assert(text._test.height == 60) -- six lines
+end
+
+
 -- Test: an `onMeasure` node with `children` throws an error when it is measured.
 do
   local ok, err = pcall(function()

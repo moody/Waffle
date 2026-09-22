@@ -126,4 +126,21 @@ do
   assert(a._test.clearedPoints == 1)
 end
 
+-- Test: `MarkDirty` marks the tree dirty even though no field changed, and
+-- works the same from a nested node.
+do
+  local root = Mocks:CreateFrame()
+  local container = Waffle:Flex({ frame = root, direction = "COLUMN", width = 100, height = 300 })
+  local nested = container:AddColumn({ frame = Mocks:CreateFrame(), height = 50 })
+  local leaf = nested:AddChild({ frame = Mocks:CreateFrame(), height = 10 })
+  container:Layout()
+  assert(container:IsDirty() == false)
+
+  leaf:MarkDirty()
+  assert(container:IsDirty() == true)
+
+  container:Layout()
+  assert(container:IsDirty() == false)
+end
+
 print("All assertions passed.")
