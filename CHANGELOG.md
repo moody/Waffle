@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-09-21
+
+### Added
+
+- `onMeasure` node field, with `Component:SetOnMeasure()` and `Component:GetOnMeasure()`, for content Waffle cannot size itself, such as text whose height depends on its width. A node that leaves its `width` or `height` `"AUTO"` is asked for the size, given the width and height already known. A node with `onMeasure` cannot have `children`.
+- `Component:MarkDirty()`, which marks a node's tree dirty so the next `Layout()` runs even though no field changed. Useful for content that changed outside Waffle, such as text `onMeasure` sizes.
+
+### Fixed
+
+- A wrapping node with `"AUTO"` cross size is now sized the same inside a wrapping parent as inside a non-wrapping one. Before, in a wrapping ROW, a wrapping COLUMN with `width = "AUTO"` was one column wide and a wrapping node with a flexible width was one line tall, so its children overflowed.
+- A node with an `"AUTO"` cross size now sizes a flexible child for the size the child ends up with. Before, a wrapping node with `height = "AUTO"` and a flexible width was one line tall, and so was the node around it.
+- A wrapping node's own `padding` is now left out of the width its `"AUTO"` height wraps against, so its children no longer overflow it.
+
 ## [0.11.0] - 2026-09-20
 
 ### Added

@@ -121,6 +121,28 @@ local SPECS = {
       }
     }
   },
+  {
+    description = "onMeasure children, stretched, flexible, and in an AUTO parent",
+    node = {
+      frame = CreateFrame(),
+      direction = "COLUMN",
+      width = 200,
+      height = 400,
+      children = {
+        { frame = CreateFrame(), height = "AUTO", onMeasure = function(_, width) return width or 50, 20 end },
+        {
+          frame = CreateFrame(),
+          direction = "ROW",
+          height = "AUTO",
+          children = {
+            { frame = CreateFrame(), width = 60, height = 10 },
+            { frame = CreateFrame(), height = "AUTO", onMeasure = function(_, width) return width or 50, 30 end },
+            { frame = CreateFrame(), width = "AUTO", height = "AUTO", onMeasure = function() return 40, 15 end },
+          }
+        },
+      }
+    }
+  },
 }
 
 -- =============================================================================

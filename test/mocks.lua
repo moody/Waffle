@@ -1,12 +1,10 @@
 --- @class WaffleMocks
 local Mocks = {}
 
---- @class WaffleMockFrame : WaffleFrame
---- @field _test table
-
 --- Returns a mock frame, recording every call made to it under `._test`.
 --- @return WaffleMockFrame MockFrame
 function Mocks:CreateFrame()
+  --- @class WaffleMockFrame
   local MockFrame = {
     _test = {
       width = nil,

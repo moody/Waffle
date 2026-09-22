@@ -178,4 +178,39 @@ do
   assert(mid._test.height == 40) -- sums both lines' own heights
 end
 
+-- Test: a percentage `width` errors when its parent's own width is still being
+-- computed, even though the parent's height is known.
+do
+  local ok, err = pcall(function()
+    Waffle:Flex({
+      frame = Mocks:CreateFrame(),
+      direction = "ROW",
+      width = 400,
+      height = 300,
+      children = {
+        {
+          frame = Mocks:CreateFrame(),
+          direction = "COLUMN",
+          wrap = true,
+          width = "AUTO",
+          height = 100,
+          children = {
+            {
+              frame = Mocks:CreateFrame(),
+              direction = "ROW",
+              wrap = true,
+              width = "50%",
+              height = "AUTO",
+              children = { { frame = Mocks:CreateFrame(), width = 10, height = 10 } }
+            },
+          }
+        },
+      }
+    }):Layout()
+  end)
+
+  assert(not ok)
+  assert(tostring(err):find("percentage"), tostring(err))
+end
+
 print("All assertions passed.")
