@@ -1,5 +1,5 @@
 -- =============================================================================
--- Waffle: 0.11.1 - https://github.com/moody/Waffle
+-- Waffle: 0.12.0 - https://github.com/moody/Waffle
 -- =============================================================================
 
 local _, Addon = ...
@@ -75,6 +75,7 @@ local VISIBILITIES = { VISIBLE = true, INVISIBLE = true, GONE = true }
 --- @field key? string For lookup via `FindByKey(key)`. Duplicate keys aren't validated against, the first match wins.
 --- @field order? integer Visual position among siblings, independent of declaration order. Default `0`, ties broken by declaration order. No effect on the root.
 --- @field onLayout? fun(frame: WaffleFrame, width: integer, height: integer) Fires once the whole `Layout()` pass is resolved and clean, not while it's still running, bottom-up, root last. Mutating a different node from here schedules a future `Layout()` call, the same as any other setter.
+--- @field onMeasure? fun(frame: WaffleFrame, width?: number, height?: number): number, number Returns the content's `width, height` when this node leaves either `"AUTO"`. Called with the sizes already known: the axis being asked is `nil`, and so is the other one if it is not known yet. Only the `"AUTO"` axis of the result is used, and `shrink` still applies afterward. Cannot be given together with `children`. May run more than once per `Layout()` pass, so it must be safe to repeat. Never called for a `"GONE"` node.
 
 -- =============================================================================
 -- Internal Data Table
@@ -125,6 +126,30 @@ function _W.Utils:ResolveFrame(node, parent, defaultFrameFactory)
   end
 
   return node.frame
+end
+
+--- Resolves `node.frame` like `ResolveFrame`, creating its ancestors' frames
+--- first if they do not exist yet, so a node can have a frame before layout
+--- reaches it. `node` and its ancestors must already have an owner recorded.
+--- @param node WaffleFlexNode
+--- @return WaffleFrame
+function _W.Utils:EnsureFrame(node)
+  if node.frame then
+    return node.frame
+  end
+
+  local owners = _W.Ownership.byNode
+  local parent = owners[node]
+  local parentFrame = parent and self:EnsureFrame(parent)
+
+  local defaultFrameFactory
+  local ancestor = parent
+  while ancestor and not defaultFrameFactory do
+    defaultFrameFactory = ancestor.defaultFrameFactory
+    ancestor = owners[ancestor]
+  end
+
+  return self:ResolveFrame(node, parentFrame, defaultFrameFactory)
 end
 
 --- Hides every already-resolved frame in `node`'s own subtree. A
@@ -402,7 +427,8 @@ function _W.Sorting:SortFlexChildren(children)
 end
 
 --- Returns `node`'s children that are not `"GONE"`, sorted by `order`, ties
---- in declaration order. Pooled, the caller releases it with `_W.Scratch`.
+--- in declaration order, and records `node` as their owner. Pooled, the caller
+--- releases it with `_W.Scratch`.
 --- @param node WaffleFlexNode
 --- @return WaffleFlexNode[]
 function _W.Sorting:GetVisibleChildren(node)
@@ -414,6 +440,9 @@ function _W.Sorting:GetVisibleChildren(node)
   for i = 1, #children do
     local child = children[i]
     if _W.Utils:ParseVisibility(child.visibility) ~= "GONE" then
+      if _W.Ownership.byNode[child] ~= node then
+        _W.Ownership:Claim(child, node)
+      end
       count = count + 1
       visibleChildren[count] = child
     end
@@ -696,7 +725,7 @@ end
 --- Resolves `node`'s size along `axis`: the given number, a percentage of
 --- `parentWidth`/`parentHeight` (whichever matches `axis`), computed from
 --- its own children if `"AUTO"` (a sum along `node`'s own main axis, a max
---- along its cross axis), or `nil` if `node` is flexible along `axis`
+--- along its cross axis, or from its `onMeasure`), or `nil` if `node` is flexible along `axis`
 --- instead. An `"AUTO"` result is cached for the rest of the current
 --- pass for the `knownOtherAxisSize` it was computed for.
 --- @param node WaffleFlexNode
@@ -715,12 +744,13 @@ function _W.Sizing:ResolveDimension(node, axis, parentWidth, parentHeight, known
   if value == "AUTO" then
     local cached = _W.LayoutCache:GetResolvedDimension(node, axis, knownOtherAxisSize)
     if cached == nil then
-      local isMainAxis = _W.Utils:ParseFlexDirection(node) == (axis == "width")
-      cached = (
-        isMainAxis and
-        self:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize) or
-        self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
-      )
+      if node.onMeasure then
+        cached = self:ComputeMeasuredSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
+      elseif _W.Utils:ParseFlexDirection(node) == (axis == "width") then
+        cached = self:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
+      else
+        cached = self:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
+      end
       _W.LayoutCache:SetResolvedDimension(node, axis, knownOtherAxisSize, cached)
     end
     return cached
@@ -779,6 +809,39 @@ function _W.Sizing:ResolveChildMainSize(child, axis, parentWidth, parentHeight, 
     return value
   end
   return self:ResolveDimension(child, axis, parentWidth, parentHeight)
+end
+
+--- Asks `node.onMeasure` for `node`'s size along `axis`, passing the size of
+--- the other axis when it is known: `node`'s own, or `knownOtherAxisSize`.
+--- The frame is created first if layout has not reached it yet. Errors if
+--- `node` has `children`, or `onMeasure` returns no number for `axis`.
+--- @param node WaffleFlexNode
+--- @param axis "width" | "height"
+--- @param parentWidth? integer Needed only if `node`'s own other axis is a percentage.
+--- @param parentHeight? integer Same as `parentWidth`, for `height`.
+--- @param knownOtherAxisSize? integer See `ResolveDimension`.
+--- @return number
+function _W.Sizing:ComputeMeasuredSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
+  assert(not (node.children and #node.children > 0), "Waffle: a node with `onMeasure` cannot have `children`")
+
+  local isWidth = axis == "width"
+  local otherAxis = isWidth and "height" or "width"
+  local otherSize = self:ResolveKnownDimension(node, otherAxis, parentWidth, parentHeight) or knownOtherAxisSize
+
+  local frame = _W.Utils:EnsureFrame(node)
+  local width, height
+  if isWidth then
+    width, height = node.onMeasure(frame, nil, otherSize)
+  else
+    width, height = node.onMeasure(frame, otherSize, nil)
+  end
+
+  local size = isWidth and width or height
+  if type(size) ~= "number" then
+    error("Waffle: `onMeasure` must return the `width` and `height` as numbers, got `" .. tostring(size) ..
+      "` for `" .. axis .. "`", 0)
+  end
+  return size
 end
 
 --- Computes `node`'s size along its own main axis (`axis`) as the sum of
@@ -1944,6 +2007,23 @@ end
 --- @return fun(frame: WaffleFrame, width: integer, height: integer)?
 function _W.FlexComponent:GetOnLayout()
   return self.node.onLayout
+end
+
+--- Sets the callback that sizes this node's content when it leaves a size
+--- `"AUTO"`. `nil` removes it.
+--- @param onMeasure? fun(frame: WaffleFrame, width?: number, height?: number): number, number
+function _W.FlexComponent:SetOnMeasure(onMeasure)
+  if self.node.onMeasure ~= onMeasure then
+    self.node.onMeasure = onMeasure
+    _W.DirtyRoots:Mark(self.node)
+  end
+end
+
+--- Returns the callback that sizes this node's content when it leaves a size
+--- `"AUTO"`.
+--- @return (fun(frame: WaffleFrame, width?: number, height?: number): number, number)?
+function _W.FlexComponent:GetOnMeasure()
+  return self.node.onMeasure
 end
 
 --- Looks up a component anywhere in the tree by its `key`, erroring if
