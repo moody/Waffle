@@ -1,5 +1,5 @@
 -- =============================================================================
--- Waffle: 0.12.0 - https://github.com/moody/Waffle
+-- Waffle: 0.12.1 - https://github.com/moody/Waffle
 -- =============================================================================
 
 local _, Addon = ...
@@ -855,7 +855,7 @@ end
 --- @param knownOtherAxisSize? integer See `ResolveDimension`.
 --- @return integer
 function _W.Sizing:ComputeAutoMainSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
-  assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a size from")
+  assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a size from, or `onMeasure` on a leaf")
 
   local gap = node.gap or 0
   local total = 0
@@ -897,7 +897,7 @@ end
 --- @param knownOtherAxisSize? integer See `ResolveDimension`.
 --- @return integer
 function _W.Sizing:ComputeAutoCrossSize(node, axis, parentWidth, parentHeight, knownOtherAxisSize)
-  assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from")
+  assert(node.children, "Waffle: `\"AUTO\"` needs `children` to compute a cross size from, or `onMeasure` on a leaf")
 
   local gap = node.gap or 0
   local lineGap = node.lineGap or gap
