@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `onMeasure` node field, with `Component:SetOnMeasure()` and `Component:GetOnMeasure()`, for content Waffle cannot size itself, such as text whose height depends on its width. A node that leaves its `width` or `height` `"AUTO"` is asked for the size, given the width and height already known. A node with `onMeasure` cannot have `children`.
+- `Component:MarkDirty()`, which marks a node's tree dirty so the next `Layout()` runs even though no field changed. Useful for content that changed outside Waffle, such as text `onMeasure` sizes.
 
 ### Fixed
 
