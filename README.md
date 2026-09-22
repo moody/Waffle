@@ -119,7 +119,7 @@ root:AddChild({
 })
 ```
 
-If `root` is a COLUMN, it stretches its children to its width, so `onMeasure` is asked for the height of the text at that width. Only the `"AUTO"` size of the result is used, and `shrink` still applies afterward. The callback may run more than once per `Layout()`, so it must be safe to repeat. A node with `onMeasure` cannot have `children`.
+If `root` is a COLUMN, it stretches its children to its width, so `onMeasure` is asked for the height of the text at that width. Only the `"AUTO"` size of the result is used, and `shrink` still applies afterward. The callback may run more than once per `Layout()`, so it must be safe to repeat. Waffle cannot see the text change, so call `MarkDirty()` on the node after changing it. A node with `onMeasure` cannot have `children`.
 
 ## API
 
@@ -399,6 +399,10 @@ local frame = component:GetFrame()
 
 -- Returns true if this node's tree has changed since its last Layout() call.
 local isDirty = component:IsDirty()
+
+-- Marks this node's tree dirty, so the next Layout() runs even though no field changed.
+-- For a node whose content changed, such as text sized by onMeasure.
+component:MarkDirty()
 
 -- Setters and Getters
 
