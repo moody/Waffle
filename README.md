@@ -13,7 +13,7 @@ Instead of anchoring every frame with `SetPoint` and computing sizes and offsets
 - `visibility`, to hide a node while keeping its space or remove it and let its siblings reflow
 - Frame factories that create each frame the first time it is laid out, already parented, so a node that is never shown never builds a frame
 - A fluent API (`AddRow`, `AddColumn`, `AddChild`) or a fully declarative table, lookup by `key`, visual `order`, and moving components between trees
-- `onLayout` and `WhenFrameReady` callbacks
+- `onMeasure` to size content Waffle cannot, such as text, and `onLayout` and `WhenFrameReady` callbacks
 - Annotated with [LuaCATS](https://luals.github.io/wiki/annotations/), and no dependencies
 
 ## Installation
@@ -99,6 +99,27 @@ What Waffle does here:
 - `Layout()` does nothing unless something changed since the last call, so it is cheap to call from an `OnUpdate` handler.
 
 The same tree can be built step by step with `AddRow`, `AddColumn`, and `AddChild`. Every field and method is listed below.
+
+## Sizing Content
+
+Waffle sizes `"AUTO"` from a node's children. For content it cannot size itself, such as text, give the node `onMeasure`. It is called with the width and height already known, `nil` for a size that is not, and returns the content's width and height for them:
+
+```lua
+root:AddChild({
+  height = "AUTO",
+  frameFactory = function(parent)
+    local text = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    text:SetText("A long paragraph that wraps to the width it is given.")
+    return text
+  end,
+  onMeasure = function(text, width)
+    text:SetWidth(width)
+    return width, text:GetStringHeight()
+  end,
+})
+```
+
+If `root` is a COLUMN, it stretches its children to its width, so `onMeasure` is asked for the height of the text at that width. Only the `"AUTO"` size of the result is used, and `shrink` still applies afterward. The callback may run more than once per `Layout()`, so it must be safe to repeat. A node with `onMeasure` cannot have `children`.
 
 ## API
 
@@ -302,6 +323,15 @@ local node = {
   -- the same as any other setter. Can also be toggled after the fact with
   -- SetOnLayout().
   onLayout = function(frame, width, height) end,
+
+  -- Sizes this node's content when its width or height is "AUTO", for content Waffle
+  -- cannot size itself. Called with the width and height already known: nil for the
+  -- size being asked, and for the other if it is not known yet. Returns width, height;
+  -- only the "AUTO" size of the result is used, and shrink still applies afterward.
+  -- Cannot be combined with children. May run more than once per Layout() call, so it
+  -- must be safe to repeat. Never called for a "GONE" node.
+  -- Can also be toggled after the fact with SetOnMeasure().
+  onMeasure = function(frame, width, height) return width, height end,
 }
 ```
 
@@ -523,6 +553,11 @@ local order = child:GetOrder()
 -- nil to remove it.
 component:SetOnLayout(function(frame, width, height) end)
 local onLayout = component:GetOnLayout()
+
+-- Sets the callback that sizes this node's content when it leaves a size "AUTO". Pass nil
+-- to remove it.
+component:SetOnMeasure(function(frame, width, height) return width, height end)
+local onMeasure = component:GetOnMeasure()
 
 -- Calls callback once with this node's frame: immediately if the frame already exists,
 -- otherwise right after Waffle creates it, before it is parented, sized, or shown.
