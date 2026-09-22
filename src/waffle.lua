@@ -2080,6 +2080,13 @@ function _W.FlexComponent:IsDirty()
   return _W.DirtyRoots:IsDirty(_W.Ownership:FindRoot(self.node))
 end
 
+--- Marks this node's tree dirty, so the next `Layout()` runs even though no
+--- field changed. For a node whose content changed, such as text sized by
+--- `onMeasure`.
+function _W.FlexComponent:MarkDirty()
+  _W.DirtyRoots:Mark(self.node)
+end
+
 --- Runs the layout for the tree containing this node, starting from its
 --- actual current root. No-ops unless something changed since the last
 --- call, cheap to call from e.g. an `OnUpdate` handler every frame.
