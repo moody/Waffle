@@ -13,7 +13,7 @@ Instead of anchoring every frame with `SetPoint` and computing sizes and offsets
 - `visibility`, to hide a node while keeping its space or remove it and let its siblings reflow
 - Frame factories that create each frame the first time it is laid out, already parented, so a node that is never shown never builds a frame
 - A fluent API (`AddRow`, `AddColumn`, `AddChild`) or a fully declarative table, lookup by `key`, visual `order`, and moving components between trees
-- `onMeasure` to size content Waffle cannot, such as text, and `onLayout` and `WhenFrameReady` callbacks
+- `onMeasure` to size content Waffle cannot, plus `onLayout` and `WhenFrameReady` callbacks
 - Annotated with [LuaCATS](https://luals.github.io/wiki/annotations/), and no dependencies
 
 ## Installation
@@ -121,6 +121,39 @@ root:AddChild({
 
 If `root` is a COLUMN, it stretches its children to its width, so `onMeasure` is asked for the height of the text at that width. Only the `"AUTO"` size of the result is used, and `shrink` still applies afterward. The callback may run more than once per `Layout()`, so it must be safe to repeat. Waffle cannot see the text change, so call `MarkDirty()` on the node after changing it. A node with `onMeasure` cannot have `children`.
 
+`onMeasure` sizes content Waffle cannot size itself. For content Waffle does not own at all, such as a native `ScrollFrame`'s scroll child, use `onLayout` instead: it hands back the resolved size once `Layout()` is done, for anything outside the tree that still needs to track it.
+
+```lua
+local slider
+local scrollPanel = root:AddChild({
+  frameFactory = function(parent)
+    local scrollFrame = CreateFrame("ScrollFrame", nil, parent)
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollFrame:SetScrollChild(scrollChild)
+    return scrollFrame
+  end,
+  onLayout = function(frame, width, height)
+    local scrollChild = frame:GetScrollChild()
+    scrollChild:SetWidth(width)
+    local maxScroll = math.max(scrollChild:GetHeight() - height, 0)
+    slider:SetVisibility(maxScroll > 0 and "VISIBLE" or "GONE")
+    slider:GetFrame():SetMinMaxValues(0, maxScroll)
+  end,
+})
+slider = root:AddChild({
+  width = 20,
+  frameFactory = function(parent)
+    local sliderFrame = CreateFrame("Slider", nil, parent)
+    sliderFrame:SetScript("OnValueChanged", function(_, value)
+      scrollPanel:GetFrame():SetVerticalScroll(value)
+    end)
+    return sliderFrame
+  end,
+})
+```
+
+`onLayout` only receives the frame, not a component, so reaching a sibling like `slider` needs a reference captured ahead of time, not `FindByKey`.
+
 ## API
 
 ### `Waffle:Flex(node)`
@@ -138,10 +171,11 @@ local node = {
   -- Not changeable after construction.
   frame = CreateFrame("Frame"),
 
-  -- Creates this node's own frame, once. Receives the resolved parent as an argument.
-  -- Cannot be given together with frame. If it uses $parent name substitution, the parent
-  -- must be passed in immediately here, not reparented later, substitution happens at
-  -- creation time. Not changeable after construction.
+  -- Creates this node's own frame, once. Receives the resolved parent as an argument, nil
+  -- for the root, nothing sits above it to pass in. Cannot be given together with frame.
+  -- If it uses $parent name substitution, the parent must be passed in immediately here,
+  -- not reparented later, substitution happens at creation time. Not changeable after
+  -- construction.
   frameFactory = function(parent)
     return CreateFrame("Frame", "$parent_ChildFrame", parent)
   end,
@@ -179,14 +213,16 @@ local node = {
   -- or "AUTO", a flexible child errors. A percentage string ("50%") sizes it relative
   -- to the parent's own width instead, erroring without one already resolved (the root,
   -- or a parent whose own width is itself still being computed from "AUTO").
+  -- "AUTO" on a node with wrap (direction COLUMN) counts the lines its height produces
+  -- instead, including a height it is stretched to or gets as a flexible node.
   -- Can also be toggled after the fact with SetWidth().
   width = 200,
 
   -- This node's own physical height, always vertical. Same as width in every other
   -- respect, "AUTO" sums along the main axis when direction is COLUMN, maxes along
   -- the cross axis otherwise, a percentage sizes it relative to the parent's own height.
-  -- "AUTO" on a node with wrap counts the lines its width produces, including a width
-  -- it is stretched to or gets as a flexible node.
+  -- "AUTO" on a node with wrap (direction ROW) counts the lines its width produces
+  -- instead, including a width it is stretched to or gets as a flexible node.
   -- Can also be toggled after the fact with SetHeight().
   height = 100,
 
@@ -198,8 +234,9 @@ local node = {
 
   -- This node's own share of its parent's main-axis deficit, when its siblings' own sizes
   -- don't all fit, weighted by this value times this node's own main-axis size, not the
-  -- value alone. Defaults to 1. No effect on a flexible node (nothing stated to reduce),
-  -- or on the root. Can also be toggled after the fact with SetShrink().
+  -- value alone. Defaults to 1; 0 never shrinks below this node's own stated size. No
+  -- effect on a flexible node (nothing stated to reduce), or on the root. Can also be
+  -- toggled after the fact with SetShrink().
   shrink = 1,
 
   -- How this node aligns its own children along the cross axis, if it has any:
@@ -318,10 +355,10 @@ local node = {
   order = 0,
 
   -- Called with this node's own frame and resolved width/height, once the whole
-  -- Layout() pass is resolved and clean. Re-fires on every Layout() call, keep it
-  -- idempotent. Mutating a different node from here schedules a future Layout() call,
-  -- the same as any other setter. Can also be toggled after the fact with
-  -- SetOnLayout().
+  -- Layout() pass is resolved and clean. Fires bottom-up, children before parents,
+  -- root last. Re-fires on every Layout() call, keep it idempotent. Mutating a
+  -- different node from here schedules a future Layout() call, the same as any
+  -- other setter. Can also be toggled after the fact with SetOnLayout().
   onLayout = function(frame, width, height) end,
 
   -- Sizes this node's content when its width or height is "AUTO", for content Waffle
@@ -381,7 +418,7 @@ component:Clear()
 
 -- Runs the layout for the tree containing this node, starting from its actual current
 -- root. Works from any node in the tree, not just the root. No-ops unless something
--- changed since the last call.
+-- changed since the last call, cheap to call from e.g. an OnUpdate handler every frame.
 component:Layout()
 
 -- Queries
@@ -390,8 +427,8 @@ component:Layout()
 -- registered under key.
 local sidebar = component:FindByKey("sidebar")
 
--- Returns every one of this node's own children, wrapped, in declaration order. Doesn't
--- recurse into grandchildren. Empty if it has none.
+-- Returns every one of this node's own children, wrapped, in declaration order, not
+-- necessarily visual order. Doesn't recurse into grandchildren. Empty if it has none.
 local children = component:GetChildren()
 
 -- Returns this node's frame. nil if not resolved yet, e.g. a frameFactory not yet laid out.
