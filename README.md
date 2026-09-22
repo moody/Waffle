@@ -152,8 +152,6 @@ slider = root:AddChild({
 })
 ```
 
-`onLayout` only receives the frame, not a component, so reaching a sibling like `slider` needs a reference captured ahead of time, not `FindByKey`.
-
 ## API
 
 ### `Waffle:Flex(node)`
