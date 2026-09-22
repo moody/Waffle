@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `onMeasure` node field, with `Component:SetOnMeasure()` and `Component:GetOnMeasure()`, for content Waffle cannot size itself, such as text whose height depends on its width. A node that leaves its `width` or `height` `"AUTO"` is asked for the size, given the width and height already known. A node with `onMeasure` cannot have `children`.
+
 ### Fixed
 
 - A wrapping node with `"AUTO"` cross size is now sized the same inside a wrapping parent as inside a non-wrapping one. Before, in a wrapping ROW, a wrapping COLUMN with `width = "AUTO"` was one column wide and a wrapping node with a flexible width was one line tall, so its children overflowed.
