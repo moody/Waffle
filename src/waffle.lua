@@ -1080,7 +1080,7 @@ end
 --- @param lineChildren WaffleFlexNode[]
 --- @param mainAxis "width" | "height"
 --- @param contentMainSize integer
---- @param contentCrossSize integer Needed only for a child's own percentage/`"AUTO"` along the cross axis.
+--- @param contentCrossSize? integer Needed only for a child's own percentage/`"AUTO"` along the cross axis.
 --- @param gap integer
 --- @return WaffleFlexNodeSizes mainSizes Every child's size; pooled, `LayoutFlexLine` releases it once done, not this function.
 --- @return number freeSpace Space no child claimed after every size and `margin`, for `justify`. `0` whenever a flexible child takes the leftover space, or there's a deficit.
