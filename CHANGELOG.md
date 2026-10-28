@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-10-28
+
+### Changed
+
+- `WaffleFlexComponent` now takes the type of its node's frame. A class such as `--- @class ButtonComponent : WaffleFlexComponent<Button>` types the frame in `GetFrame()`, `WhenFrameReady()`, `SetOnLayout()`, and `SetOnMeasure()`. A `WaffleFlexComponent` with no frame type leaves its frame untyped.
+- `Component:AttachComponent()` and `Component:Detach()` now return the type of the component they are given, so a component with its own class keeps it and needs no `@type` or `@cast` afterward.
+
 ## [0.12.1] - 2026-09-22
 
 ### Fixed
