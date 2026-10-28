@@ -1,4 +1,4 @@
-# Waffle 🧇 (0.12.1)
+# Waffle 🧇 (0.12.2)
 
 **W**oW **A**ddon **F**lexible **F**rame **L**ayout **E**ngine
 
@@ -604,6 +604,27 @@ local onMeasure = component:GetOnMeasure()
 -- the frame; changing the tree is unsupported.
 component:WhenFrameReady(function(frame) end)
 ```
+
+### Typing components
+
+`WaffleFlexComponent` takes the type of its node's frame. Give a component of your own a class that extends `WaffleFlexComponent<F>` to type its frame in `GetFrame()`, `WhenFrameReady()`, `SetOnLayout()`, and `SetOnMeasure()`:
+
+```lua
+--- @class ButtonComponent : WaffleFlexComponent<Button>
+local button = Waffle:Flex({
+  frameFactory = function(parent)
+    return CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  end,
+})
+
+button:WhenFrameReady(function(frame)
+  frame:SetText("Save") -- `frame` is a `Button`
+end)
+```
+
+`AttachComponent()` and `Detach()` return the type of the component they are given, so `local save = row:AttachComponent(button)` is a `ButtonComponent`. A `WaffleFlexComponent` with no frame type leaves its frame untyped.
+
+`AddChild()`, `AddRow()`, `AddColumn()`, `FindByKey()`, and `GetChildren()` return plain `WaffleFlexComponent`s, not a component you built. Keep your own reference to a component whose extra methods or fields you need.
 
 ## Testing
 
